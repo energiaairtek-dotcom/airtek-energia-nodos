@@ -1064,12 +1064,52 @@ function AdminPanel({ userProfile, toast }) {
   const [ldN,setLdN]=useState(true);
   const [newNode,setNN]=useState({name:'',zone:'',type:'fibra'});
   const [seeding,setSeeding]=useState(false);
+  const [selNodeId,setSelNodeId]=useState('');
+  const [bulkText,setBulkText]=useState('');
+  const [bulkParsed,setBulkParsed]=useState([]);
+  const [bulkLoading,setBulkLoading]=useState(false);
 
   useEffect(()=>{
     const u=db.collection('energy_users').onSnapshot(s=>{setUsers(s.docs.map(d=>({id:d.id,...d.data()})));setLdU(false);});
     const n=db.collection('energy_nodes').onSnapshot(s=>{setNodes(s.docs.map(d=>({id:d.id,...d.data()})));setLdN(false);});
     return()=>{u();n();};
   },[]);
+
+  const parseBulk = txt => {
+    const lines = txt.split('\n').map(l=>l.trim()).filter(l=>l&&!l.startsWith('#'));
+    const parsed = lines.map((line,i) => {
+      const parts = line.split('|').map(p=>p.trim());
+      const tag = parts[0]||'';
+      const typeRaw = (parts[1]||'').toUpperCase();
+      const type = Object.keys(EQ_TYPES).includes(typeRaw) ? typeRaw : 'OTR';
+      const voltage = parts[2]||'220V';
+      const batRaw = (parts[3]||'').toUpperCase();
+      const batteryType = BAT_TYPES.find(b=>b.toUpperCase()===batRaw)||'No aplica';
+      const hasSolar = ['SI','SÍ','YES','S','1','TRUE'].includes((parts[4]||'').toUpperCase().trim());
+      const notes = parts[5]||'';
+      return { tag, type, voltage, batteryType, hasSolar, notes, valid:!!tag, _line:i+1 };
+    });
+    setBulkParsed(parsed);
+  };
+
+  const importEquipment = async () => {
+    if (!selNodeId) { toast('Selecciona un nodo primero.','error'); return; }
+    const valid = bulkParsed.filter(e=>e.valid);
+    if (!valid.length) { toast('No hay equipos válidos para importar.','error'); return; }
+    setBulkLoading(true);
+    try {
+      const batch = db.batch();
+      valid.forEach(eq => {
+        const ref = db.collection('energy_nodes').doc(selNodeId).collection('energy_equipment').doc();
+        const {_line, valid:_v, ...data} = eq;
+        batch.set(ref,{...data,active:true,installedAt:new Date(),installedBy:userProfile.name,createdAt:TS()});
+      });
+      await batch.commit();
+      toast(valid.length+' equipos importados.','success');
+      setBulkText(''); setBulkParsed([]); setSelNodeId('');
+    } catch(e){ console.error(e); toast('Error al importar.','error'); }
+    setBulkLoading(false);
+  };
 
   const approve=(uid,val,role)=>{
     db.collection('energy_users').doc(uid).update({approved:val,role});
@@ -1107,9 +1147,7 @@ function AdminPanel({ userProfile, toast }) {
     <div className="fin">
       <h2 className="fd" style={{fontSize:'1.3rem',fontWeight:800,color:'var(--tx1)',marginBottom:22}}>Panel de Administración</h2>
       <div style={{borderBottom:'1px solid var(--border)',marginBottom:20,display:'flex'}}>
-        {['usuarios','nodos'].map(t=><button key={t} className={`tab ${tab===t?'on':''}`} onClick={()=>setTab(t)}>
-          {t==='usuarios'?`Usuarios${pending.length>0?` (${pending.length})`:''}` : 'Nodos'}
-        </button>)}
+        {[['usuarios',`Usuarios${pending.length>0?' ('+pending.length+')':''}`],['nodos','Nodos'],['equipos','Carga Equipos']].map(([k,lbl])=><button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)}>{lbl}</button>)}
       </div>
 
       {/* USUARIOS */}
@@ -1143,6 +1181,77 @@ function AdminPanel({ userProfile, toast }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* EQUIPOS - CARGA MASIVA */}
+      {tab==='equipos' && (
+        <div>
+          <div className="card" style={{marginBottom:16,background:'rgba(16,185,129,.04)',borderColor:'rgba(16,185,129,.2)'}}>
+            <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#10b981',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>📋 Formato de Entrada</h3>
+            <div style={{background:'var(--bg-deep)',borderRadius:6,padding:'10px 14px',fontFamily:"'JetBrains Mono',monospace",fontSize:'.75rem',color:'#64748b',lineHeight:1.8}}>
+              <div style={{color:'#475569',marginBottom:4}}># Una línea por equipo — columnas separadas por |</div>
+              <div><span style={{color:'#f59e0b'}}>TAG</span> | <span style={{color:'#10b981'}}>TIPO</span> | <span style={{color:'#3b82f6'}}>TENSIÓN</span> | <span style={{color:'#8b5cf6'}}>BATERÍA</span> | <span style={{color:'#f59e0b'}}>SOLAR</span> | <span style={{color:'#64748b'}}>NOTAS</span></div>
+              <div style={{marginTop:6,color:'#334155'}}>INV00-PV-LFP00 | INV | 220V | LFP | si | Inversor principal</div>
+              <div style={{color:'#334155'}}>ETP00-AC-LFP01 | ETP | | LFP | no | PSU Huawei</div>
+              <div style={{color:'#334155'}}>ATS-DATOS | ATS | | No aplica | no |</div>
+              <div style={{color:'#334155'}}>BAT-BANCO-01 | BAT | | GEL | no | 4 baterías 200Ah</div>
+            </div>
+            <div style={{marginTop:10,display:'flex',gap:16,flexWrap:'wrap',fontSize:'.75rem',color:'#475569'}}>
+              <span><b style={{color:'#10b981'}}>TIPO:</b> INV, ETP, ATS, BAT, OTR</span>
+              <span><b style={{color:'#3b82f6'}}>TENSIÓN:</b> 110V, 220V</span>
+              <span><b style={{color:'#8b5cf6'}}>BATERÍA:</b> LFP, GEL, AGM, VRLA, No aplica</span>
+              <span><b style={{color:'#f59e0b'}}>SOLAR:</b> si / no</span>
+            </div>
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:14}}>
+            <div>
+              <label className="lbl">Nodo Destino</label>
+              <select className="fi" value={selNodeId} onChange={e=>setSelNodeId(e.target.value)}>
+                <option value="">-- Selecciona el nodo --</option>
+                {nodes.filter(n=>n.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(n=>(
+                  <option key={n.id} value={n.id}>{n.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="lbl">Lista de Equipos</label>
+              <textarea className="fi fm" rows={10}
+                style={{resize:'vertical',fontSize:'.82rem',lineHeight:1.7}}
+                value={bulkText}
+                placeholder={"INV00-PV-LFP00 | INV | 220V | LFP | si | Inversor principal\nETP00-AC-LFP01 | ETP | | LFP | no |\nATS-DATOS | ATS | | No aplica | no |"}
+                onChange={e=>{setBulkText(e.target.value);parseBulk(e.target.value);}}
+              />
+            </div>
+          </div>
+
+          {bulkParsed.length>0 && (
+            <div style={{marginTop:16}}>
+              <div style={{fontSize:'.72rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10,fontFamily:"'Exo 2',sans-serif"}}>
+                Vista previa — {bulkParsed.filter(e=>e.valid).length} equipos válidos
+              </div>
+              <div style={{maxHeight:280,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
+                {bulkParsed.map((eq,i)=>{
+                  const ti=EQ_TYPES[eq.type]||EQ_TYPES.OTR;
+                  return (
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 14px',borderBottom:'1px solid var(--border)',background:eq.valid?'transparent':'rgba(239,68,68,.05)',flexWrap:'wrap'}}>
+                      {!eq.valid && <span style={{color:'#ef4444',fontSize:.7+'rem'}}>⚠ línea {eq._line}</span>}
+                      <span className="badge" style={{background:ti.bg,color:ti.color,flexShrink:0}}>{eq.type}</span>
+                      <span className="fm" style={{fontSize:'.85rem',color:'var(--tx1)',fontWeight:600}}>{eq.tag||'(sin tag)'}</span>
+                      {eq.voltage&&eq.type==='INV'&&<span style={{color:'var(--tx3)',fontSize:'.73rem'}}>⚡{eq.voltage}</span>}
+                      {eq.hasSolar&&<span style={{color:'#f59e0b',fontSize:'.73rem'}}>☀️PV</span>}
+                      {eq.batteryType&&eq.batteryType!=='No aplica'&&<span style={{color:'#8b5cf6',fontSize:'.73rem'}}>🔋{eq.batteryType}</span>}
+                      {eq.notes&&<span style={{color:'var(--tx4)',fontSize:'.73rem',marginLeft:'auto'}}>{eq.notes}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+              <button className="bg" style={{marginTop:14,width:'100%'}} onClick={importEquipment} disabled={bulkLoading||!selNodeId}>
+                {bulkLoading?'Importando...':'⚡ Importar '+bulkParsed.filter(e=>e.valid).length+' Equipos'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
