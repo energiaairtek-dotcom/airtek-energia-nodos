@@ -1262,12 +1262,22 @@ function App() {
     return auth.onAuthStateChanged(async user=>{
       if(!user){setAuthState('unauthenticated');setUserProfile(null);return;}
       try {
+        console.log('Auth OK, uid:', user.uid);
         const doc=await db.collection('energy_users').doc(user.uid).get();
-        if(!doc.exists){await auth.signOut();setAuthState('unauthenticated');return;}
+        console.log('Firestore doc exists:', doc.exists, doc.data());
+        if(!doc.exists){
+          console.warn('No energy_users doc for uid:', user.uid);
+          setAuthState('unauthenticated');
+          return;
+        }
         const p={uid:user.uid,...doc.data()};
+        console.log('Profile:', p);
         setUserProfile(p);
         setAuthState(p.approved?'authenticated':'pending');
-      } catch { setAuthState('unauthenticated'); }
+      } catch(e) {
+        console.error('Firestore error:', e.code, e.message);
+        setAuthState('unauthenticated');
+      }
     });
   },[]);
 
