@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Airtek – Gestión de Energía</title>
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg-deep: #07101f;
+      --bg-surface: #0d1626;
+      --bg-card: #121e33;
+      --bg-elevated: #182540;
+      --border: #1a2d47;
+      --border-bright: #243d5e;
+      --amber: #f59e0b;
+      --amber-glow: rgba(245,158,11,0.18);
+      --green: #10b981;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --red: #ef4444;
+      --tx1: #e2e8f0;
+      --tx2: #94a3b8;
+      --tx3: #475569;
+      --tx4: #2a3d5a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg-deep); color: var(--tx1); font-family: 'Barlow', sans-serif; min-height: 100vh; }
+    .fd { font-family: 'Exo 2', sans-serif; }
+    .fm { font-family: 'JetBrains Mono', monospace; }
+
+    /* Grid background */
+    .gridbg {
+      background-image:
+        linear-gradient(rgba(26,45,71,.35) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(26,45,71,.35) 1px, transparent 1px);
+      background-size: 44px 44px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg-surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
+
+    /* Inputs */
+    .fi {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      color: var(--tx1); padding: 9px 13px; border-radius: 7px;
+      width: 100%; font-family: 'Barlow', sans-serif; font-size: .9rem;
+      transition: border-color .18s;
+    }
+    .fi:focus { outline: none; border-color: var(--amber); }
+    .fi::placeholder { color: var(--tx3); }
+    select.fi {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 11px center; padding-right: 32px;
+    }
+    .mi {
+      background: var(--bg-deep); border: 1px solid var(--border); color: var(--green);
+      padding: 7px 10px; border-radius: 5px;
+      font-family: 'JetBrains Mono', monospace; font-size: .88rem; width: 100%;
+    }
+    .mi:focus { outline: none; border-color: var(--green); }
+
+    /* Buttons */
+    .bp { background: var(--amber); color: #000; font-family: 'Exo 2',sans-serif; font-weight: 700; padding: 10px 22px; border-radius: 7px; border: none; cursor: pointer; font-size: .88rem; letter-spacing: .04em; text-transform: uppercase; transition: all .18s; }
+    .bp:hover:not(:disabled) { background: #fbbf24; transform: translateY(-1px); }
+    .bp:disabled { opacity: .45; cursor: not-allowed; }
+    .bs { background: transparent; color: var(--tx2); border: 1px solid var(--border-bright); font-family: 'Exo 2',sans-serif; font-weight: 600; padding: 10px 22px; border-radius: 7px; cursor: pointer; font-size: .88rem; transition: all .18s; }
+    .bs:hover { border-color: var(--amber); color: var(--amber); }
+    .bg { background: var(--green); color: #000; font-family: 'Exo 2',sans-serif; font-weight: 700; padding: 10px 22px; border-radius: 7px; border: none; cursor: pointer; font-size: .88rem; letter-spacing: .04em; text-transform: uppercase; transition: all .18s; }
+    .bg:hover { background: #34d399; transform: translateY(-1px); }
+    .bd { background: transparent; color: var(--red); border: 1px solid rgba(239,68,68,.3); font-family: 'Exo 2',sans-serif; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: .82rem; transition: all .18s; }
+    .bd:hover { background: rgba(239,68,68,.1); }
+    .bi { background: transparent; color: var(--blue); border: 1px solid rgba(59,130,246,.3); font-family: 'Exo 2',sans-serif; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; font-size: .82rem; transition: all .18s; }
+    .bi:hover { background: rgba(59,130,246,.1); }
+
+    /* Card */
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+
+    /* Badge */
+    .badge { font-family: 'Exo 2',sans-serif; font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; padding: 2px 8px; border-radius: 3px; }
+
+    /* Topbar */
+    .topbar { background: var(--bg-surface); border-bottom: 1px solid var(--border); padding: 0 22px; height: 54px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+
+    /* Tabs */
+    .tab { font-family: 'Exo 2',sans-serif; font-weight: 600; font-size: .82rem; letter-spacing: .05em; text-transform: uppercase; padding: 8px 16px; border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent; color: var(--tx3); transition: all .18s; }
+    .tab.on { color: var(--amber); border-bottom-color: var(--amber); }
+    .tab:hover:not(.on) { color: var(--tx2); }
+
+    /* Label */
+    .lbl { display: block; font-family: 'Exo 2',sans-serif; font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--tx2); margin-bottom: 6px; }
+
+    /* Animations */
+    .fin { animation: fin .28s ease; }
+    @keyframes fin { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Toast */
+    .toast { position: fixed; bottom: 22px; right: 22px; padding: 12px 20px; border-radius: 9px; font-family: 'Exo 2',sans-serif; font-weight: 600; font-size: .88rem; z-index: 9999; animation: toast .28s ease; max-width: 340px; color: #fff; }
+    @keyframes toast { from { transform: translateY(18px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Status pulse */
+    .pulse { animation: pulse 2.2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+    /* Overlay */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center; z-index: 200; padding: 16px; }
+
+    /* Node card hover */
+    .ncard { transition: background .18s, border-color .18s; }
+    .ncard:hover { background: var(--bg-elevated) !important; }
+
+    /* Record row hover */
+    .rrow { transition: background .15s; cursor: pointer; }
+    .rrow:hover { background: var(--bg-elevated) !important; }
+
+    @media (max-width: 600px) {
+      .topbar { padding: 0 12px; }
+      .card { padding: 13px; }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ═══════════════════════════════════════════════════
+// ⚙️  CONFIGURACIÓN FIREBASE — REEMPLAZA CON TUS DATOS
+// ═══════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROJECT.firebaseapp.com",
+  projectId: "TU_PROJECT_ID",
+  storageBucket: "TU_PROJECT.appspot.com",
+  messagingSenderId: "TU_SENDER_ID",
+  appId: "TU_APP_ID"
+};
+
+// ═══════════════════════════════════════════════════
+// 📋 CATÁLOGO DE TIPOS DE EQUIPOS
+// ═══════════════════════════════════════════════════
+const EQ_TYPES = {
+  INV: { label:'Inversor',                  color:'#f59e0b', bg:'rgba(245,158,11,.12)' },
+  ETP: { label:'ETP / PSU Huawei',          color:'#10b981', bg:'rgba(16,185,129,.12)' },
+  ATS: { label:'Transferencia Automática',  color:'#3b82f6', bg:'rgba(59,130,246,.12)' },
+  BAT: { label:'Banco de Baterías',         color:'#8b5cf6', bg:'rgba(139,92,246,.12)' },
+  OTR: { label:'Otro',                      color:'#64748b', bg:'rgba(100,116,139,.12)' },
+};
+
+const REC_TYPES = {
+  inspeccion: { label:'Inspección',          color:'#10b981', icon:'🔍' },
+  instalacion:{ label:'Instalación',         color:'#3b82f6', icon:'⚡' },
+  reemplazo:  { label:'Reemplazo / Retiro',  color:'#f59e0b', icon:'🔄' },
+  correctivo: { label:'Mant. Correctivo',    color:'#ef4444', icon:'🔧' },
+};
+
+const NODE_TYPES = {
+  fibra:      { label:'Fibra',      color:'#10b981' },
+  datacenter: { label:'Datacenter', color:'#3b82f6' },
+  headend:    { label:'Headend',    color:'#8b5cf6' },
+  otro:       { label:'Otro',       color:'#64748b' },
+};
+
+const BAT_TYPES = ['LFP','GEL','AGM','VRLA','No aplica'];
+
+// Nodos iniciales Airtek Zulia
+const SEED_NODES = [
+  { name:'Datacenter 18 de Octubre',          zone:'Maracaibo',           type:'datacenter' },
+  { name:'Datacenter El Callao',              zone:'El Callao',           type:'datacenter' },
+  { name:'Nodo Bella Vista',                  zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo Lago Caribe',                  zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo Las Tunas',                    zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo Marite',                       zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo Pomona',                       zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo San Rafael',                   zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo La Concepción',                zone:'La Concepción',       type:'fibra' },
+  { name:'Los Puertos De Altagracia',         zone:'Miranda',             type:'fibra' },
+  { name:'Nodo Cabimas',                      zone:'Cabimas',             type:'fibra' },
+  { name:'Nodo Ciudad Ojeda',                 zone:'Lagunillas',          type:'fibra' },
+  { name:'Nodo Bachaquero',                   zone:'Valmore Rodríguez',   type:'fibra' },
+  { name:'Nodo Mene Grande',                  zone:'Baralt',              type:'fibra' },
+  { name:'Nodo La Villa del Rosario – Celular Point', zone:'Rosario de Perijá', type:'fibra' },
+  { name:'Nodo Machiques',                    zone:'Machiques',           type:'fibra' },
+  { name:'Headend Machiques',                 zone:'Machiques',           type:'headend' },
+  { name:'Nodo San José',                     zone:'San José',            type:'fibra' },
+  { name:'Nodo Barranquitas',                 zone:'Maracaibo',           type:'fibra' },
+  { name:'Nodo La Cañada de Urdaneta',        zone:'Cañada de Urdaneta',  type:'fibra' },
+  { name:'Nodo San Rafael de El Mojan',       zone:'Mara',                type:'fibra' },
+  { name:'Nodo Santa Cruz de Mara',           zone:'Santa Cruz de Mara',  type:'fibra' },
+  { name:'Nodo Paraguaipoa',                  zone:'Guajira',             type:'fibra' },
+];
+
+// ═══════════════════════════════════════════════════
+// 🔥 FIREBASE INIT
+// ═══════════════════════════════════════════════════
+let db, auth;
+try {
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  db = firebase.firestore();
+  auth = firebase.auth();
+} catch(e) { console.error('Firebase error:', e); }
+
+// ═══════════════════════════════════════════════════
+// 🛠️  HELPERS
+// ═══════════════════════════════════════════════════
+const fmtDateTime = d => {
+  if (!d) return '—';
+  const dt = d.toDate ? d.toDate() : new Date(d);
+  return dt.toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit',year:'numeric'}) + ' ' +
+         dt.toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'});
+};
+const fmtDate = d => {
+  if (!d) return '—';
+  const dt = d.toDate ? d.toDate() : new Date(d);
+  return dt.toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit',year:'numeric'});
+};
+const slugify = s => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const TS = () => firebase.firestore.FieldValue.serverTimestamp();
+
+// ═══════════════════════════════════════════════════
+// 🔔 TOAST
+// ═══════════════════════════════════════════════════
+function Toast({ msg, type, onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 3200); return () => clearTimeout(t); }, []);
+  const clr = { success:'#10b981', error:'#ef4444', info:'#3b82f6', warn:'#f59e0b' };
+  return <div className="toast" style={{ background: clr[type]||clr.info }}>{msg}</div>;
+}
+
+// ═══════════════════════════════════════════════════
+// 🔐 AUTH PAGES
+// ═══════════════════════════════════════════════════
+function AuthLogo() {
+  return (
+    <div style={{textAlign:'center',marginBottom:30}}>
+      <div style={{display:'inline-flex',alignItems:'center',gap:12}}>
+        <div style={{width:46,height:46,background:'#f59e0b',borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,boxShadow:'0 0 24px rgba(245,158,11,.3)'}}>⚡</div>
+        <div style={{textAlign:'left'}}>
+          <div className="fd" style={{fontSize:'1.7rem',fontWeight:800,color:'#f59e0b',lineHeight:1,letterSpacing:'.02em'}}>AIRTEK</div>
+          <div style={{fontSize:'.65rem',letterSpacing:'.22em',color:'#334155',textTransform:'uppercase',fontFamily:"'Exo 2',sans-serif"}}>Gestión de Energía</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginPage({ onRegister }) {
+  const [email,setEmail]=useState(''); const [pass,setPass]=useState(''); const [loading,setLoading]=useState(false); const [err,setErr]=useState('');
+  const go = async () => {
+    setErr(''); setLoading(true);
+    try { await auth.signInWithEmailAndPassword(email, pass); }
+    catch { setErr('Credenciales incorrectas. Verifica e intenta de nuevo.'); }
+    setLoading(false);
+  };
+  return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div style={{width:'100%',maxWidth:420}} className="fin">
+        <AuthLogo />
+        <div className="card" style={{boxShadow:'0 0 40px rgba(245,158,11,.08)'}}>
+          <h2 className="fd" style={{fontSize:'1.15rem',fontWeight:700,marginBottom:20}}>Iniciar Sesión</h2>
+          {err && <div style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:6,padding:'10px 14px',marginBottom:16,color:'#fca5a5',fontSize:'.85rem'}}>{err}</div>}
+          <div style={{marginBottom:13}}>
+            <label className="lbl">Correo electrónico</label>
+            <input className="fi" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e=>e.key==='Enter'&&go()} />
+          </div>
+          <div style={{marginBottom:22}}>
+            <label className="lbl">Contraseña</label>
+            <input className="fi" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==='Enter'&&go()} />
+          </div>
+          <button className="bp" style={{width:'100%'}} onClick={go} disabled={loading}>{loading?'Ingresando...':'Ingresar'}</button>
+          <div style={{textAlign:'center',marginTop:16}}>
+            <span style={{color:'#475569',fontSize:'.85rem'}}>¿No tienes cuenta? </span>
+            <button onClick={onRegister} style={{color:'#f59e0b',background:'none',border:'none',cursor:'pointer',fontSize:'.85rem',fontWeight:700}}>Registrarse</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegisterPage({ onBack }) {
+  const [f,setF]=useState({name:'',email:'',pass:'',pass2:''}); const [loading,setLoading]=useState(false); const [err,setErr]=useState(''); const [done,setDone]=useState(false);
+  const go = async () => {
+    setErr('');
+    if (!f.name||!f.email||!f.pass) { setErr('Completa todos los campos.'); return; }
+    if (f.pass!==f.pass2) { setErr('Las contraseñas no coinciden.'); return; }
+    if (f.pass.length<6) { setErr('La contraseña debe tener al menos 6 caracteres.'); return; }
+    setLoading(true);
+    try {
+      const cred = await auth.createUserWithEmailAndPassword(f.email, f.pass);
+      await db.collection('energy_users').doc(cred.user.uid).set({ name:f.name, email:f.email, role:'tecnico', approved:false, createdAt:TS() });
+      await auth.signOut(); setDone(true);
+    } catch(e) {
+      setErr(e.code==='auth/email-already-in-use' ? 'Este correo ya está registrado.' : 'Error al registrar. Intenta de nuevo.');
+    }
+    setLoading(false);
+  };
+  if (done) return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div className="card fin" style={{maxWidth:400,textAlign:'center'}}>
+        <div style={{fontSize:44,marginBottom:14}}>✅</div>
+        <h2 className="fd" style={{fontSize:'1.2rem',fontWeight:700,color:'#f59e0b',marginBottom:8}}>Solicitud enviada</h2>
+        <p style={{color:'#94a3b8',fontSize:'.9rem',marginBottom:20}}>Un administrador aprobará tu cuenta pronto.</p>
+        <button className="bs" onClick={onBack}>Volver al inicio</button>
+      </div>
+    </div>
+  );
+  return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div style={{width:'100%',maxWidth:420}} className="fin">
+        <div className="card">
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
+            <button onClick={onBack} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:20}}>←</button>
+            <h2 className="fd" style={{fontSize:'1.1rem',fontWeight:700}}>Crear Cuenta</h2>
+          </div>
+          {err && <div style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.3)',borderRadius:6,padding:'10px 14px',marginBottom:14,color:'#fca5a5',fontSize:'.85rem'}}>{err}</div>}
+          {[['name','Nombre completo','text','Juan Pérez'],['email','Correo','email','correo@airtek.com'],['pass','Contraseña','password','••••••••'],['pass2','Confirmar contraseña','password','••••••••']].map(([k,lbl,type,ph])=>(
+            <div key={k} style={{marginBottom:13}}>
+              <label className="lbl">{lbl}</label>
+              <input className="fi" type={type} value={f[k]} onChange={e=>setF({...f,[k]:e.target.value})} placeholder={ph} />
+            </div>
+          ))}
+          <button className="bp" style={{width:'100%',marginTop:6}} onClick={go} disabled={loading}>{loading?'Registrando...':'Enviar Solicitud'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PendingPage({ onLogout }) {
+  return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div className="card fin" style={{maxWidth:400,textAlign:'center'}}>
+        <div style={{fontSize:44,marginBottom:14}}>⏳</div>
+        <h2 className="fd" style={{fontSize:'1.2rem',fontWeight:700,color:'#f59e0b',marginBottom:8}}>Cuenta pendiente</h2>
+        <p style={{color:'#94a3b8',fontSize:'.9rem',marginBottom:20}}>Tu cuenta está en espera de aprobación por un administrador.</p>
+        <button className="bd" onClick={onLogout}>Cerrar sesión</button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 📱 QR MODAL
+// ═══════════════════════════════════════════════════
+function QRModal({ node, onClose }) {
+  const ref = useRef(null);
+  const url = `${window.location.href.split('?')[0]}?node=${node.id}`;
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.innerHTML = '';
+    try {
+      new QRCode(ref.current, { text:url, width:200, height:200, colorDark:'#000', colorLight:'#fff', correctLevel:QRCode.CorrectLevel.H });
+    } catch {}
+  }, []);
+  const print = () => {
+    const w = window.open('','_blank');
+    const canvas = ref.current?.querySelector('canvas');
+    const img = canvas ? canvas.toDataURL() : '';
+    w.document.write(`<html><head><title>QR ${node.name}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:40px}h2{font-size:15px;margin:8px 0}p{font-size:11px;color:#666;margin:3px 0}</style></head><body><h2 style="color:#f59e0b">AIRTEK ENERGÍA</h2><img src="${img}" style="width:200px;height:200px;border:2px solid #eee;border-radius:6px"><h2>${node.name}</h2><p>${node.zone||''} — ${(NODE_TYPES[node.type]||{}).label||node.type}</p><p style="font-size:9px;color:#aaa;margin-top:12px;word-break:break-all">${url}</p><script>window.print();window.close();<\/script></body></html>`);
+  };
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card fin" style={{maxWidth:300,width:'100%',textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+        <h3 className="fd" style={{fontWeight:700,color:'#f59e0b',marginBottom:3,fontSize:'1rem'}}>{node.name}</h3>
+        <p style={{color:'#475569',fontSize:'.75rem',marginBottom:16}}>{node.zone}</p>
+        <div ref={ref} style={{display:'flex',justifyContent:'center',background:'white',padding:14,borderRadius:8,marginBottom:14}} />
+        <p style={{color:'#334155',fontSize:'.62rem',marginBottom:16,wordBreak:'break-all'}}>{url}</p>
+        <div style={{display:'flex',gap:8}}>
+          <button className="bs" style={{flex:1,padding:'8px'}} onClick={print}>🖨️ Imprimir</button>
+          <button className="bs" style={{flex:1,padding:'8px'}} onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// ⚡ CAMPO DE MEDICIÓN
+// ═══════════════════════════════════════════════════
+function MF({ label, unit, vals, k, onChange }) {
+  return (
+    <div>
+      <label style={{display:'block',fontSize:'.68rem',color:'#475569',marginBottom:3,fontFamily:"'Exo 2',sans-serif",textTransform:'uppercase',letterSpacing:'.05em'}}>
+        {label} <span style={{color:'#f59e0b'}}>{unit}</span>
+      </label>
+      <input className="mi" type="number" step="any" value={vals[k]??''} onChange={e=>onChange(k,e.target.value)} placeholder="—" />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 📊 MEDICIONES DINÁMICAS POR TIPO DE EQUIPO
+// ═══════════════════════════════════════════════════
+function EqMeasurements({ eq, vals, onChange }) {
+  if (eq.type==='INV') {
+    const is220 = eq.voltage==='220V';
+    const hasPV = eq.hasSolar;
+    return (
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+        <MF label="Carga L1" unit="%" vals={vals} k="L1_carga" onChange={onChange} />
+        <MF label="Potencia L1" unit="kW" vals={vals} k="L1_pot" onChange={onChange} />
+        {is220 && <><MF label="Carga L2" unit="%" vals={vals} k="L2_carga" onChange={onChange} /><MF label="Potencia L2" unit="kW" vals={vals} k="L2_pot" onChange={onChange} /></>}
+        <MF label="V AC OUT" unit="Vac" vals={vals} k="V_ac_out" onChange={onChange} />
+        <MF label="Carga Total" unit="kW" vals={vals} k="load_kw" onChange={onChange} />
+        {hasPV && <><MF label="V Paneles" unit="V" vals={vals} k="V_panel" onChange={onChange} /><MF label="P Paneles" unit="kW" vals={vals} k="P_panel" onChange={onChange} /></>}
+        <MF label="I Batería" unit="Adc" vals={vals} k="I_bat" onChange={onChange} />
+        <MF label="V DC OUT" unit="VDC" vals={vals} k="V_dc_out" onChange={onChange} />
+      </div>
+    );
+  }
+  if (eq.type==='ETP') return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+      <MF label="DC Load" unit="kW" vals={vals} k="DC_load" onChange={onChange} />
+      <MF label="AC Load" unit="kW" vals={vals} k="AC_load" onChange={onChange} />
+      <MF label="I Bat" unit="Acc" vals={vals} k="I_bat" onChange={onChange} />
+    </div>
+  );
+  if (eq.type==='ATS') return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+      <MF label="L1" unit="A" vals={vals} k="L1" onChange={onChange} />
+      <MF label="L2" unit="A" vals={vals} k="L2" onChange={onChange} />
+      <MF label="N" unit="A" vals={vals} k="N" onChange={onChange} />
+    </div>
+  );
+  if (eq.type==='BAT') return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+      <MF label="V Banco" unit="VDC" vals={vals} k="V_banco" onChange={onChange} />
+      <MF label="I Banco" unit="A" vals={vals} k="I_banco" onChange={onChange} />
+    </div>
+  );
+  return (
+    <div>
+      <label className="lbl">Observaciones / Mediciones libres</label>
+      <textarea className="fi" rows={3} value={vals.libre||''} onChange={e=>onChange('libre',e.target.value)} placeholder="Describe el estado del equipo..." style={{resize:'vertical'}} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 📝 FORMULARIO DE REGISTRO
+// ═══════════════════════════════════════════════════
+function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel, toast }) {
+  const [type,setType]=useState('inspeccion');
+  const [date,setDate]=useState(new Date().toISOString().slice(0,16));
+  const [shift,setShift]=useState('dia');
+  const [obs,setObs]=useState('');
+  const [meas,setMeas]=useState({});
+  const [saving,setSaving]=useState(false);
+  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasSolar:false,batteryType:'LFP',notes:''});
+
+  const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
+  const active=equipment.filter(e=>e.active!==false);
+
+  const save = async () => {
+    if (!date){toast('Selecciona la fecha.','error');return;}
+    setSaving(true);
+    try {
+      const cleanMeas={};
+      Object.entries(meas).forEach(([tag,fields])=>{
+        const filled=Object.fromEntries(Object.entries(fields).filter(([,v])=>v!==''&&v!==null&&v!==undefined));
+        if(Object.keys(filled).length>0) cleanMeas[tag]=filled;
+      });
+      await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add({
+        type, date:new Date(date), shift, observations:obs,
+        technicianId:userProfile.uid, technicianName:userProfile.name,
+        measurements: type==='inspeccion' ? cleanMeas : {},
+        equipmentAction: type!=='inspeccion' ? eqAction : null,
+        createdAt:TS()
+      });
+      if (type==='instalacion' && eqAction.tag) {
+        await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
+          tag:eqAction.tag, type:eqAction.type, voltage:eqAction.voltage,
+          hasSolar:eqAction.hasSolar, batteryType:eqAction.batteryType,
+          active:true, installedAt:new Date(date), installedBy:userProfile.name, notes:eqAction.notes
+        });
+      }
+      if (type==='reemplazo' && eqAction.tag) {
+        const eq=active.find(e=>e.tag===eqAction.tag);
+        if(eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({active:false,retiredAt:new Date(date)});
+      }
+      toast('Registro guardado exitosamente.','success');
+      onSave();
+    } catch(e) { console.error(e); toast('Error al guardar. Intenta de nuevo.','error'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fin">
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:22}}>
+        <button onClick={onCancel} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:22}}>←</button>
+        <div>
+          <h2 className="fd" style={{fontSize:'1.1rem',fontWeight:700,color:'var(--tx1)'}}>Nuevo Registro</h2>
+          <p style={{color:'var(--tx3)',fontSize:'.8rem'}}>{nodeName}</p>
+        </div>
+      </div>
+
+      {/* Info general */}
+      <div className="card" style={{marginBottom:14}}>
+        <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>Información General</h3>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div>
+            <label className="lbl">Tipo de Registro</label>
+            <select className="fi" value={type} onChange={e=>setType(e.target.value)}>
+              {Object.entries(REC_TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="lbl">Turno</label>
+            <select className="fi" value={shift} onChange={e=>setShift(e.target.value)}>
+              <option value="dia">☀️ Día</option>
+              <option value="noche">🌙 Noche</option>
+            </select>
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="lbl">Fecha y Hora</label>
+            <input className="fi" type="datetime-local" value={date} onChange={e=>setDate(e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {/* Mediciones */}
+      {type==='inspeccion' && (
+        active.length===0
+          ? <div className="card" style={{textAlign:'center',marginBottom:14,padding:30}}>
+              <p style={{color:'var(--tx3)',marginBottom:12}}>No hay equipos activos en este nodo.</p>
+              <button className="bp" style={{fontSize:'.82rem'}} onClick={()=>setType('instalacion')}>Registrar Instalación</button>
+            </div>
+          : active.map(eq=>{
+              const ti=EQ_TYPES[eq.type]||EQ_TYPES.OTR;
+              return (
+                <div key={eq.id} className="card" style={{marginBottom:12,borderLeft:`3px solid ${ti.color}`}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+                    <span className="badge" style={{background:ti.bg,color:ti.color}}>{eq.type}</span>
+                    <span className="fm" style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:600}}>{eq.tag}</span>
+                    {eq.voltage && <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
+                    {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️PV</span>}
+                    {eq.batteryType && eq.batteryType!=='No aplica' && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
+                  </div>
+                  <EqMeasurements eq={eq} vals={meas[eq.tag]||{}} onChange={(k,v)=>updM(eq.tag,k,v)} />
+                </div>
+              );
+            })
+      )}
+
+      {/* Instalación */}
+      {type==='instalacion' && (
+        <div className="card" style={{marginBottom:14}}>
+          <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>⚡ Equipo a Instalar</h3>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Tag / Identificador del Equipo</label>
+              <input className="fi fm" value={eqAction.tag} onChange={e=>setEqA({...eqAction,tag:e.target.value})} placeholder="Ej: INV00-PV-LFP00" />
+            </div>
+            <div>
+              <label className="lbl">Tipo</label>
+              <select className="fi" value={eqAction.type} onChange={e=>setEqA({...eqAction,type:e.target.value})}>
+                {Object.entries(EQ_TYPES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            {eqAction.type==='INV' && <>
+              <div>
+                <label className="lbl">Tensión de Salida</label>
+                <select className="fi" value={eqAction.voltage} onChange={e=>setEqA({...eqAction,voltage:e.target.value})}>
+                  <option value="110V">110V (1 Línea)</option>
+                  <option value="220V">220V (2 Líneas)</option>
+                </select>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
+                <input type="checkbox" checked={eqAction.hasSolar} onChange={e=>setEqA({...eqAction,hasSolar:e.target.checked})} id="pv" />
+                <label htmlFor="pv" style={{color:'var(--tx2)',fontSize:'.88rem',cursor:'pointer'}}>☀️ Tiene paneles solares (PV)</label>
+              </div>
+            </>}
+            {(eqAction.type==='INV'||eqAction.type==='BAT') && (
+              <div>
+                <label className="lbl">Tipo de Batería</label>
+                <select className="fi" value={eqAction.batteryType} onChange={e=>setEqA({...eqAction,batteryType:e.target.value})}>
+                  {BAT_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Notas del Equipo (opcional)</label>
+              <input className="fi" value={eqAction.notes} onChange={e=>setEqA({...eqAction,notes:e.target.value})} placeholder="Modelo, serie, notas adicionales..." />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reemplazo/Retiro */}
+      {type==='reemplazo' && (
+        <div className="card" style={{marginBottom:14}}>
+          <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>🔄 Equipo a Reemplazar / Retirar</h3>
+          <div>
+            <label className="lbl">Seleccionar Equipo</label>
+            <select className="fi" value={eqAction.tag} onChange={e=>setEqA({...eqAction,tag:e.target.value})}>
+              <option value="">-- Selecciona el equipo a retirar --</option>
+              {active.map(eq=><option key={eq.id} value={eq.tag}>{eq.tag} ({eq.type})</option>)}
+            </select>
+          </div>
+          <div style={{marginTop:12}}>
+            <label className="lbl">Motivo del Retiro</label>
+            <input className="fi" value={eqAction.notes} onChange={e=>setEqA({...eqAction,notes:e.target.value})} placeholder="Falla, actualización, reubicación..." />
+          </div>
+        </div>
+      )}
+
+      {/* Correctivo */}
+      {type==='correctivo' && (
+        <div className="card" style={{marginBottom:14}}>
+          <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>🔧 Detalle del Correctivo</h3>
+          <div>
+            <label className="lbl">Equipo afectado (opcional)</label>
+            <select className="fi" value={eqAction.tag} onChange={e=>setEqA({...eqAction,tag:e.target.value})}>
+              <option value="">-- General / sin equipo específico --</option>
+              {active.map(eq=><option key={eq.id} value={eq.tag}>{eq.tag}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Observaciones */}
+      <div className="card" style={{marginBottom:20}}>
+        <label className="lbl">Observaciones</label>
+        <textarea className="fi" rows={4} value={obs} onChange={e=>setObs(e.target.value)} placeholder="Condiciones del nodo, anomalías detectadas, trabajos realizados..." style={{resize:'vertical'}} />
+      </div>
+
+      <div style={{display:'flex',gap:12}}>
+        <button className="bp" style={{flex:1}} onClick={save} disabled={saving}>{saving?'Guardando...':'💾 Guardar Registro'}</button>
+        <button className="bs" onClick={onCancel} disabled={saving}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🔎 DETALLE DE REGISTRO
+// ═══════════════════════════════════════════════════
+function RecordDetail({ record, onBack }) {
+  const rt = REC_TYPES[record.type]||{label:record.type,icon:'📋',color:'#64748b'};
+  const II = ({label,value,mono}) => (
+    <div>
+      <div style={{fontSize:'.68rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2,fontFamily:"'Exo 2',sans-serif"}}>{label}</div>
+      <div className={mono?'fm':''} style={{fontSize:'.9rem',color:'var(--tx1)',fontWeight:500}}>{value||'—'}</div>
+    </div>
+  );
+  return (
+    <div className="fin">
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:22}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:22}}>←</button>
+        <div>
+          <h2 className="fd" style={{fontSize:'1.1rem',fontWeight:700,color:'var(--tx1)'}}>{rt.icon} {rt.label}</h2>
+          <p style={{color:'var(--tx3)',fontSize:'.8rem'}}>{fmtDateTime(record.date)}</p>
+        </div>
+      </div>
+      <div className="card" style={{marginBottom:14}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <II label="Técnico" value={record.technicianName} />
+          <II label="Turno" value={record.shift==='dia'?'☀️ Día':'🌙 Noche'} />
+          <II label="Fecha" value={fmtDate(record.date)} />
+          <II label="Hora" value={record.date?.toDate?record.date.toDate().toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'}):'—'} />
+        </div>
+        {record.observations && <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+          <div style={{fontSize:'.7rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4,fontFamily:"'Exo 2',sans-serif"}}>Observaciones</div>
+          <p style={{color:'#cbd5e1',fontSize:'.9rem'}}>{record.observations}</p>
+        </div>}
+      </div>
+      {record.measurements && Object.keys(record.measurements).length>0 && (
+        <div>
+          <h3 className="fd" style={{fontSize:'.75rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>Mediciones Registradas</h3>
+          {Object.entries(record.measurements).map(([tag,vals])=>(
+            <div key={tag} className="card" style={{marginBottom:10}}>
+              <div className="fm" style={{fontSize:'.88rem',color:'#f59e0b',fontWeight:600,marginBottom:10}}>{tag}</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8}}>
+                {Object.entries(vals).filter(([,v])=>v!==''&&v!==null).map(([k,v])=>(
+                  <div key={k} style={{background:'var(--bg-deep)',borderRadius:6,padding:'8px 10px'}}>
+                    <div style={{fontSize:'.62rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:2,fontFamily:"'Exo 2',sans-serif"}}>{k.replace(/_/g,' ')}</div>
+                    <div className="fm" style={{fontSize:'1rem',color:'#10b981',fontWeight:600}}>{v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {record.equipmentAction && (record.equipmentAction.tag||record.equipmentAction.type) && (
+        <div className="card">
+          <h3 className="fd" style={{fontSize:'.75rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:12}}>Acción de Equipo</h3>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            {record.equipmentAction.tag && <II label="Tag" value={record.equipmentAction.tag} mono />}
+            {record.equipmentAction.type && <II label="Tipo" value={record.equipmentAction.type} />}
+            {record.equipmentAction.voltage && <II label="Tensión" value={record.equipmentAction.voltage} />}
+            {record.equipmentAction.batteryType && record.equipmentAction.batteryType!=='No aplica' && <II label="Batería" value={record.equipmentAction.batteryType} />}
+            {record.equipmentAction.notes && <II label="Notas" value={record.equipmentAction.notes} />}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🏭 DETALLE DE NODO
+// ═══════════════════════════════════════════════════
+function NodeDetail({ node, userProfile, onBack, toast }) {
+  const [tab,setTab]=useState('equipos');
+  const [equipment,setEquipment]=useState([]);
+  const [records,setRecords]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [subView,setSubView]=useState('main'); // main | newRecord | recordDetail
+  const [selRecord,setSelRecord]=useState(null);
+  const [qrOpen,setQrOpen]=useState(false);
+  const [filterType,setFilterType]=useState('all');
+
+  useEffect(()=>{
+    const u1=db.collection('energy_nodes').doc(node.id).collection('energy_equipment')
+      .onSnapshot(s=>{setEquipment(s.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);});
+    const u2=db.collection('energy_nodes').doc(node.id).collection('energy_records')
+      .orderBy('date','desc').onSnapshot(s=>{setRecords(s.docs.map(d=>({id:d.id,...d.data()})));});
+    return()=>{u1();u2();};
+  },[node.id]);
+
+  const exportPDF = () => {
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({orientation:'p',unit:'mm',format:'a4'});
+    const pw=doc.internal.pageSize.getWidth();
+    // Header
+    doc.setFillColor(7,16,31); doc.rect(0,0,210,297,'F');
+    doc.setFillColor(245,158,11); doc.rect(0,0,210,12,'F');
+    doc.setTextColor(0,0,0); doc.setFontSize(8); doc.setFont('helvetica','bold');
+    doc.text('AIRTEK ENERGÍA — REPORTE DE NODO', 15, 8);
+    doc.text(new Date().toLocaleDateString('es-VE'), pw-15, 8, {align:'right'});
+    let y=22;
+    doc.setTextColor(245,158,11); doc.setFontSize(14); doc.setFont('helvetica','bold');
+    doc.text(node.name, 15, y); y+=6;
+    doc.setTextColor(148,163,184); doc.setFontSize(9); doc.setFont('helvetica','normal');
+    doc.text(`Zona: ${node.zone||'—'} | Tipo: ${(NODE_TYPES[node.type]||{}).label||node.type}`, 15, y); y+=10;
+    // Equipos
+    const actEq=equipment.filter(e=>e.active!==false);
+    doc.setTextColor(16,185,129); doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.text('EQUIPOS ACTIVOS', 15, y); y+=6;
+    if(actEq.length===0){doc.setTextColor(71,85,105);doc.setFontSize(8);doc.setFont('helvetica','normal');doc.text('Sin equipos registrados.',18,y);y+=5;}
+    actEq.forEach(eq=>{
+      doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','normal');
+      const line=`• ${eq.tag} — ${eq.type}${eq.voltage?' '+eq.voltage:''}${eq.batteryType&&eq.batteryType!=='No aplica'?' ['+eq.batteryType+']':''}`;
+      doc.text(line,18,y); y+=5; if(y>270){doc.addPage();doc.setFillColor(7,16,31);doc.rect(0,0,210,297,'F');y=20;}
+    });
+    y+=5;
+    // Registros
+    doc.setTextColor(245,158,11); doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.text('HISTORIAL DE REGISTROS', 15, y); y+=6;
+    if(records.length===0){doc.setTextColor(71,85,105);doc.setFontSize(8);doc.setFont('helvetica','normal');doc.text('Sin registros.',18,y);y+=5;}
+    records.forEach(r=>{
+      const rt=REC_TYPES[r.type]||{label:r.type,icon:'·'};
+      doc.setTextColor(255,255,255); doc.setFontSize(9); doc.setFont('helvetica','bold');
+      doc.text(`${rt.label} — ${fmtDate(r.date)}`, 18, y); y+=4;
+      doc.setFont('helvetica','normal'); doc.setTextColor(148,163,184);
+      doc.text(`Técnico: ${r.technicianName} | Turno: ${r.shift==='dia'?'Día':'Noche'}`, 21, y); y+=4;
+      if(r.observations){
+        const lines=doc.splitTextToSize(`Obs: ${r.observations}`,165);
+        lines.forEach(l=>{doc.text(l,21,y);y+=4;if(y>270){doc.addPage();doc.setFillColor(7,16,31);doc.rect(0,0,210,297,'F');y=20;}});
+      }
+      if(r.measurements){
+        Object.entries(r.measurements).forEach(([tag,vals])=>{
+          doc.setTextColor(245,158,11); doc.setFontSize(8);
+          doc.text(tag, 21, y); y+=4;
+          const parts=Object.entries(vals).filter(([,v])=>v!==''&&v!==null).map(([k,v])=>`${k.replace(/_/g,' ')}: ${v}`).join('  |  ');
+          if(parts){const ls=doc.splitTextToSize(parts,160);doc.setTextColor(16,185,129);ls.forEach(l=>{doc.text(l,24,y);y+=4;if(y>270){doc.addPage();doc.setFillColor(7,16,31);doc.rect(0,0,210,297,'F');y=20;}});}
+        });
+      }
+      y+=3; if(y>270){doc.addPage();doc.setFillColor(7,16,31);doc.rect(0,0,210,297,'F');y=20;}
+    });
+    doc.save(`${slugify(node.name)}-historial.pdf`);
+    toast('PDF generado','success');
+  };
+
+  const exportXLSX = () => {
+    const recRows=records.map(r=>({
+      'Tipo': REC_TYPES[r.type]?.label||r.type,
+      'Fecha': fmtDate(r.date),
+      'Hora': r.date?.toDate?r.date.toDate().toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'}):'',
+      'Turno': r.shift==='dia'?'Día':'Noche',
+      'Técnico': r.technicianName||'',
+      'Equipos Medidos': Object.keys(r.measurements||{}).join(', ')||
+                         (r.equipmentAction?.tag||'—'),
+      'Observaciones': r.observations||'',
+    }));
+    const eqRows=equipment.map(e=>({
+      'Tag': e.tag, 'Tipo': e.type, 'Tensión': e.voltage||'',
+      'Panel Solar': e.hasSolar?'Sí':'No', 'Batería': e.batteryType||'',
+      'Estado': e.active!==false?'Activo':'Retirado',
+      'Instalado': fmtDate(e.installedAt), 'Instalado por': e.installedBy||'',
+      'Notas': e.notes||'',
+    }));
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recRows), 'Historial');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eqRows), 'Equipos');
+    XLSX.writeFile(wb, `${slugify(node.name)}-datos.xlsx`);
+    toast('Excel generado','success');
+  };
+
+  const tc=NODE_TYPES[node.type]||{label:'—',color:'#64748b'};
+  const filtered=filterType==='all'?records:records.filter(r=>r.type===filterType);
+  const canWrite=userProfile.role==='tecnico'||userProfile.role==='admin';
+
+  if(subView==='newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={()=>setSubView('main')} onCancel={()=>setSubView('main')} toast={toast} />;
+  if(subView==='recordDetail'&&selRecord) return <RecordDetail record={selRecord} onBack={()=>setSubView('main')} />;
+
+  return (
+    <div className="fin">
+      {qrOpen && <QRModal node={node} onClose={()=>setQrOpen(false)} />}
+
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16,gap:12}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <button onClick={onBack} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:22,flexShrink:0}}>←</button>
+          <div>
+            <h2 className="fd" style={{fontSize:'1.2rem',fontWeight:800,color:'var(--tx1)',lineHeight:1.2}}>{node.name}</h2>
+            <div style={{display:'flex',gap:8,marginTop:5,flexWrap:'wrap',alignItems:'center'}}>
+              <span className="badge" style={{background:tc.color+'22',color:tc.color}}>{tc.label}</span>
+              <span style={{color:'var(--tx3)',fontSize:'.8rem'}}>📍 {node.zone}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,flexShrink:0}}>
+          <button className="bs" style={{padding:'6px 12px',fontSize:'.78rem'}} onClick={()=>setQrOpen(true)}>QR</button>
+          {canWrite && <button className="bp" style={{padding:'7px 14px',fontSize:'.8rem'}} onClick={()=>setSubView('newRecord')}>+ Registro</button>}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}}>
+        {[
+          {label:'Equipos Activos', val:equipment.filter(e=>e.active!==false).length, c:'#10b981'},
+          {label:'Registros',        val:records.length, c:'#3b82f6'},
+          {label:'Última Visita',    val:records[0]?fmtDate(records[0].date):'—', c:'#f59e0b', sm:true},
+        ].map(s=>(
+          <div key={s.label} style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 13px'}}>
+            <div style={{fontSize:'.68rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:"'Exo 2',sans-serif",marginBottom:4}}>{s.label}</div>
+            <div className={s.sm?'':'fm'} style={{fontSize:s.sm?'.85rem':'1.4rem',fontWeight:700,color:s.c}}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex'}}>
+        {['equipos','historial','exportar'].map(t=>(
+          <button key={t} className={`tab ${tab===t?'on':''}`} onClick={()=>setTab(t)}>
+            {t==='equipos'?'Equipos':t==='historial'?'Historial':'Exportar'}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB EQUIPOS */}
+      {tab==='equipos' && (
+        <div>
+          {loading ? <div style={{color:'var(--tx3)',textAlign:'center',padding:50}}>Cargando equipos...</div>
+          : equipment.length===0 ? (
+            <div style={{textAlign:'center',padding:50}}>
+              <div style={{fontSize:38,marginBottom:10}}>⚡</div>
+              <p style={{color:'var(--tx3)',marginBottom:14}}>No hay equipos registrados en este nodo.</p>
+              {canWrite && <button className="bp" onClick={()=>setSubView('newRecord')}>Registrar Instalación</button>}
+            </div>
+          ) : ['active','retired'].map(status=>{
+            const eqs=equipment.filter(e=>status==='active'?e.active!==false:e.active===false);
+            if(!eqs.length) return null;
+            return (
+              <div key={status} style={{marginBottom:16}}>
+                <div style={{fontSize:'.72rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8,fontFamily:"'Exo 2',sans-serif"}}>
+                  {status==='active'?'✅ Activos':'❌ Retirados'}
+                </div>
+                {eqs.map(eq=>{
+                  const ti=EQ_TYPES[eq.type]||EQ_TYPES.OTR;
+                  return (
+                    <div key={eq.id} className="card" style={{marginBottom:8,borderLeft:`3px solid ${ti.color}`,opacity:status==='retired'?.5:1}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        <span className="badge" style={{background:ti.bg,color:ti.color}}>{eq.type}</span>
+                        <span className="fm" style={{fontSize:'.92rem',fontWeight:600,color:'var(--tx1)'}}>{eq.tag}</span>
+                        {eq.voltage && <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
+                        {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️ PV</span>}
+                        {eq.batteryType&&eq.batteryType!=='No aplica' && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
+                        <span style={{marginLeft:'auto',color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
+                      </div>
+                      {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* TAB HISTORIAL */}
+      {tab==='historial' && (
+        <div>
+          <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
+            {['all',...Object.keys(REC_TYPES)].map(k=>{
+              const rt=REC_TYPES[k];
+              const active=filterType===k;
+              return (
+                <button key={k} onClick={()=>setFilterType(k)}
+                  style={{padding:'4px 10px',borderRadius:5,border:'1px solid',fontSize:'.74rem',cursor:'pointer',fontFamily:"'Exo 2',sans-serif",fontWeight:600,transition:'all .15s',
+                    background:active?(k==='all'?'#1a2d47':(rt?.color||'#64748b')):'transparent',
+                    borderColor:k==='all'?'#243d5e':(rt?.color||'#64748b'),
+                    color:active?'#fff':(k==='all'?'#94a3b8':(rt?.color||'#64748b'))}}>
+                  {k==='all'?'Todos':`${rt.icon} ${rt.label}`}
+                </button>
+              );
+            })}
+          </div>
+          {filtered.length===0
+            ? <div style={{textAlign:'center',padding:40}}><p style={{color:'var(--tx3)'}}>No hay registros{filterType!=='all'?' de este tipo':''}.</p></div>
+            : filtered.map(r=>{
+                const rt=REC_TYPES[r.type]||{label:r.type,icon:'📋',color:'#64748b'};
+                return (
+                  <div key={r.id} className="card rrow" style={{marginBottom:8,borderLeft:`3px solid ${rt.color}`}}
+                    onClick={()=>{setSelRecord(r);setSubView('recordDetail');}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                      <div>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                          <span style={{fontSize:14}}>{rt.icon}</span>
+                          <span className="fd" style={{fontWeight:700,fontSize:'.9rem',color:'var(--tx1)'}}>{rt.label}</span>
+                          <span style={{color:'var(--tx3)',fontSize:'.75rem'}}>{r.shift==='dia'?'☀️':'🌙'}</span>
+                        </div>
+                        <div style={{fontSize:'.8rem',color:'var(--tx3)'}}>{r.technicianName} · {fmtDate(r.date)}</div>
+                        {r.observations && <div style={{fontSize:'.76rem',color:'var(--tx4)',marginTop:4,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:260}}>{r.observations}</div>}
+                      </div>
+                      <span style={{color:'var(--border-bright)',fontSize:20}}>›</span>
+                    </div>
+                  </div>
+                );
+              })
+          }
+        </div>
+      )}
+
+      {/* TAB EXPORTAR */}
+      {tab==='exportar' && (
+        <div>
+          <p style={{color:'var(--tx3)',fontSize:'.9rem',marginBottom:20}}>Exporta toda la información registrada de este nodo.</p>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+            {[
+              {icon:'📄',label:'PDF',desc:'Reporte completo con mediciones, equipos e historial',fn:exportPDF,cls:'bs'},
+              {icon:'📊',label:'Excel',desc:'Tablas separadas: registros y equipos para análisis',fn:exportXLSX,cls:'bs'},
+            ].map(x=>(
+              <div key={x.label} className="card" style={{textAlign:'center'}}>
+                <div style={{fontSize:38,marginBottom:8}}>{x.icon}</div>
+                <div className="fd" style={{fontWeight:700,color:'var(--tx1)',marginBottom:5}}>{x.label}</div>
+                <div style={{color:'var(--tx3)',fontSize:'.78rem',marginBottom:16}}>{x.desc}</div>
+                <button className={x.cls} style={{width:'100%'}} onClick={x.fn}>Descargar {x.label}</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🗺️  LISTA DE NODOS (DASHBOARD PRINCIPAL)
+// ═══════════════════════════════════════════════════
+function NodeList({ userProfile, toast }) {
+  const [nodes,setNodes]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [sel,setSel]=useState(null);
+  const [search,setSearch]=useState('');
+  const [fType,setFType]=useState('all');
+
+  useEffect(()=>{
+    const u=db.collection('energy_nodes').where('active','==',true).onSnapshot(s=>{
+      setNodes(s.docs.map(d=>({id:d.id,...d.data()})));
+      setLoading(false);
+    });
+    return u;
+  },[]);
+
+  // Deep link via ?node=id
+  useEffect(()=>{
+    const p=new URLSearchParams(window.location.search);
+    const nid=p.get('node');
+    if(nid&&nodes.length>0){const n=nodes.find(n=>n.id===nid);if(n)setSel(n);}
+  },[nodes]);
+
+  if(sel) return <NodeDetail node={sel} userProfile={userProfile} onBack={()=>setSel(null)} toast={toast} />;
+
+  const filtered=nodes.filter(n=>{
+    const ms=n.name.toLowerCase().includes(search.toLowerCase())||(n.zone||'').toLowerCase().includes(search.toLowerCase());
+    return ms&&(fType==='all'||n.type===fType);
+  });
+
+  return (
+    <div className="fin">
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20,flexWrap:'wrap',gap:12}}>
+        <div>
+          <h1 className="fd" style={{fontSize:'1.5rem',fontWeight:800,color:'var(--tx1)'}}>Nodos de Red</h1>
+          <p style={{color:'var(--tx3)',fontSize:'.85rem'}}>{nodes.length} nodos activos registrados</p>
+        </div>
+      </div>
+      {/* Filtros */}
+      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+        <input className="fi" style={{maxWidth:260,flex:1}} placeholder="Buscar nodo o zona..." value={search} onChange={e=>setSearch(e.target.value)} />
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          {['all',...Object.keys(NODE_TYPES)].map(t=>{
+            const nt=NODE_TYPES[t];
+            const on=fType===t;
+            return (
+              <button key={t} onClick={()=>setFType(t)}
+                style={{padding:'7px 13px',borderRadius:6,border:'1px solid',cursor:'pointer',fontFamily:"'Exo 2',sans-serif",fontSize:'.76rem',fontWeight:600,transition:'all .15s',
+                  background:on?(t==='all'?'#1a2d47':(nt?.color||'#64748b')):'transparent',
+                  borderColor:t==='all'?'#243d5e':(nt?.color||'#64748b'),
+                  color:on?'#fff':(t==='all'?'#94a3b8':(nt?.color||'#64748b'))}}>
+                {t==='all'?'Todos':nt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {loading ? <div style={{color:'var(--tx3)',textAlign:'center',padding:70}}>Cargando nodos...</div>
+      : filtered.length===0 ? <div style={{color:'var(--tx3)',textAlign:'center',padding:70}}>No se encontraron nodos.</div>
+      : (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(270px,1fr))',gap:12}}>
+          {filtered.map(n=>{
+            const tc=NODE_TYPES[n.type]||{label:'—',color:'#64748b'};
+            return (
+              <div key={n.id} className="card ncard" style={{cursor:'pointer',borderLeft:`3px solid ${tc.color}`}}
+                onClick={()=>setSel(n)}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+                  <span className="badge" style={{background:tc.color+'22',color:tc.color}}>{tc.label}</span>
+                  <span style={{color:'var(--border-bright)',fontSize:20}}>›</span>
+                </div>
+                <div className="fd" style={{fontSize:'1rem',fontWeight:700,color:'var(--tx1)',marginBottom:4,lineHeight:1.3}}>{n.name}</div>
+                <div style={{color:'var(--tx4)',fontSize:'.8rem'}}>📍 {n.zone}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🛡️  PANEL DE ADMINISTRACIÓN
+// ═══════════════════════════════════════════════════
+function AdminPanel({ userProfile, toast }) {
+  const [tab,setTab]=useState('usuarios');
+  const [users,setUsers]=useState([]);
+  const [nodes,setNodes]=useState([]);
+  const [ldU,setLdU]=useState(true);
+  const [ldN,setLdN]=useState(true);
+  const [newNode,setNN]=useState({name:'',zone:'',type:'fibra'});
+  const [seeding,setSeeding]=useState(false);
+
+  useEffect(()=>{
+    const u=db.collection('energy_users').onSnapshot(s=>{setUsers(s.docs.map(d=>({id:d.id,...d.data()})));setLdU(false);});
+    const n=db.collection('energy_nodes').onSnapshot(s=>{setNodes(s.docs.map(d=>({id:d.id,...d.data()})));setLdN(false);});
+    return()=>{u();n();};
+  },[]);
+
+  const approve=(uid,val,role)=>{
+    db.collection('energy_users').doc(uid).update({approved:val,role});
+    toast(val?'Usuario aprobado.':'Acceso revocado.','success');
+  };
+
+  const addNode=async()=>{
+    if(!newNode.name){toast('Ingresa el nombre del nodo.','error');return;}
+    await db.collection('energy_nodes').add({...newNode,active:true,createdAt:TS()});
+    setNN({name:'',zone:'',type:'fibra'});
+    toast('Nodo agregado.','success');
+  };
+
+  const toggleNode=async(n)=>{
+    await db.collection('energy_nodes').doc(n.id).update({active:!n.active});
+    toast(n.active?'Nodo desactivado.':'Nodo activado.','success');
+  };
+
+  const seedNodes=async()=>{
+    if(!window.confirm('¿Cargar los 23 nodos iniciales de Airtek Zulia?\nEsta acción es idempotente y se puede repetir sin duplicar.')) return;
+    setSeeding(true);
+    const batch=db.batch();
+    SEED_NODES.forEach(n=>{
+      const ref=db.collection('energy_nodes').doc(slugify(n.name));
+      batch.set(ref,{...n,active:true,createdAt:TS()},{merge:true});
+    });
+    await batch.commit();
+    toast('23 nodos cargados exitosamente.','success');
+    setSeeding(false);
+  };
+
+  const pending=users.filter(u=>!u.approved);
+
+  return (
+    <div className="fin">
+      <h2 className="fd" style={{fontSize:'1.3rem',fontWeight:800,color:'var(--tx1)',marginBottom:22}}>Panel de Administración</h2>
+      <div style={{borderBottom:'1px solid var(--border)',marginBottom:20,display:'flex'}}>
+        {['usuarios','nodos'].map(t=><button key={t} className={`tab ${tab===t?'on':''}`} onClick={()=>setTab(t)}>
+          {t==='usuarios'?`Usuarios${pending.length>0?` (${pending.length})`:''}` : 'Nodos'}
+        </button>)}
+      </div>
+
+      {/* USUARIOS */}
+      {tab==='usuarios' && (
+        <div>
+          {pending.length>0 && <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:8,padding:'10px 14px',marginBottom:16,color:'#fcd34d',fontSize:'.85rem'}}>
+            ⚠️ {pending.length} usuario(s) pendiente(s) de aprobación
+          </div>}
+          {ldU ? <div style={{color:'var(--tx3)',textAlign:'center',padding:40}}>Cargando...</div>
+          : users.map(u=>(
+            <div key={u.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
+              <div>
+                <div className="fd" style={{fontWeight:600,color:'var(--tx1)'}}>{u.name}</div>
+                <div style={{color:'var(--tx3)',fontSize:'.8rem'}}>{u.email}</div>
+                <div style={{display:'flex',gap:6,marginTop:5}}>
+                  <span className="badge" style={{background:u.approved?'rgba(16,185,129,.15)':'rgba(245,158,11,.15)',color:u.approved?'#10b981':'#f59e0b'}}>
+                    {u.approved?'Aprobado':'Pendiente'}
+                  </span>
+                  <span className="badge" style={{background:'rgba(59,130,246,.15)',color:'#3b82f6'}}>{u.role}</span>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                <select style={{background:'var(--bg-surface)',border:'1px solid var(--border)',color:'var(--tx2)',padding:'5px 9px',borderRadius:5,fontSize:'.8rem',cursor:'pointer'}}
+                  value={u.role} onChange={e=>db.collection('energy_users').doc(u.id).update({role:e.target.value}).then(()=>toast('Rol actualizado','success'))}>
+                  <option value="tecnico">Técnico</option>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="admin">Admin</option>
+                </select>
+                {!u.approved && <button className="bg" style={{padding:'6px 14px',fontSize:'.8rem'}} onClick={()=>approve(u.id,true,u.role)}>Aprobar</button>}
+                {u.approved && u.id!==userProfile.uid && <button className="bd" onClick={()=>approve(u.id,false,u.role)}>Revocar</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* NODOS */}
+      {tab==='nodos' && (
+        <div>
+          {/* Seed */}
+          <div style={{textAlign:'center',padding:'16px 20px',background:'rgba(245,158,11,.05)',borderRadius:8,border:'1px dashed rgba(245,158,11,.2)',marginBottom:18}}>
+            <p style={{color:'#94a3b8',fontSize:'.85rem',marginBottom:10}}>Carga masiva: los 23 nodos iniciales de Airtek Zulia (idempotente)</p>
+            <button className="bp" style={{fontSize:'.82rem'}} onClick={seedNodes} disabled={seeding}>{seeding?'Cargando...':'⚡ Cargar Nodos Iniciales'}</button>
+          </div>
+          {/* Add form */}
+          <div className="card" style={{marginBottom:16}}>
+            <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>Agregar Nodo</h3>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:10,alignItems:'end',flexWrap:'wrap'}}>
+              <div>
+                <label className="lbl">Nombre</label>
+                <input className="fi" value={newNode.name} onChange={e=>setNN({...newNode,name:e.target.value})} placeholder="Nodo Ejemplo" />
+              </div>
+              <div>
+                <label className="lbl">Zona / Municipio</label>
+                <input className="fi" value={newNode.zone} onChange={e=>setNN({...newNode,zone:e.target.value})} placeholder="Maracaibo" />
+              </div>
+              <div>
+                <label className="lbl">Tipo</label>
+                <select className="fi" value={newNode.type} onChange={e=>setNN({...newNode,type:e.target.value})}>
+                  {Object.entries(NODE_TYPES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <button className="bp" style={{marginTop:12,fontSize:'.85rem'}} onClick={addNode}>+ Agregar Nodo</button>
+          </div>
+          {/* List */}
+          {ldN ? <div style={{color:'var(--tx3)',textAlign:'center',padding:40}}>Cargando...</div>
+          : nodes.map(n=>{
+            const tc=NODE_TYPES[n.type]||{label:'—',color:'#64748b'};
+            return (
+              <div key={n.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10,opacity:n.active?1:.5}}>
+                <div>
+                  <span className="badge" style={{background:tc.color+'22',color:tc.color,marginRight:8}}>{tc.label}</span>
+                  <span className="fd" style={{fontWeight:600,color:'var(--tx1)'}}>{n.name}</span>
+                  <span style={{color:'var(--tx3)',fontSize:'.8rem',marginLeft:8}}>{n.zone}</span>
+                </div>
+                <button onClick={()=>toggleNode(n)} className={n.active?'bd':'bg'} style={{padding:'6px 14px',fontSize:'.78rem'}}>
+                  {n.active?'Desactivar':'Activar'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🔝 TOPBAR
+// ═══════════════════════════════════════════════════
+function Topbar({ userProfile, view, setView, onLogout }) {
+  const [menu,setMenu]=useState(false);
+  return (
+    <div className="topbar">
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <div style={{width:32,height:32,background:'#f59e0b',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,boxShadow:'0 0 16px rgba(245,158,11,.25)'}}>⚡</div>
+        <span className="fd" style={{fontWeight:800,fontSize:'1.05rem',color:'#f59e0b',letterSpacing:'.02em'}}>AIRTEK</span>
+        <span style={{color:'var(--border-bright)',fontSize:18}}>|</span>
+        <span className="fd" style={{fontSize:'.82rem',color:'var(--tx3)',fontWeight:600}}>Energía</span>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        {userProfile.role==='admin' && (
+          <button onClick={()=>setView(view==='admin'?'nodes':'admin')}
+            style={{background:view==='admin'?'rgba(245,158,11,.15)':'none',border:'1px solid',borderColor:view==='admin'?'rgba(245,158,11,.4)':'var(--border)',
+              color:view==='admin'?'#f59e0b':'var(--tx3)',padding:'4px 12px',borderRadius:6,cursor:'pointer',fontSize:'.78rem',fontFamily:"'Exo 2',sans-serif",fontWeight:600}}>
+            Admin
+          </button>
+        )}
+        <div style={{position:'relative'}}>
+          <button onClick={()=>setMenu(!menu)}
+            style={{display:'flex',alignItems:'center',gap:8,background:'none',border:'1px solid var(--border)',borderRadius:7,padding:'4px 10px',cursor:'pointer',color:'var(--tx2)'}}>
+            <span style={{width:24,height:24,borderRadius:'50%',background:'var(--bg-elevated)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#f59e0b'}}>
+              {userProfile.name?.[0]?.toUpperCase()||'?'}
+            </span>
+            <span style={{fontSize:'.8rem',fontFamily:"'Exo 2',sans-serif",maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{userProfile.name}</span>
+          </button>
+          {menu && (
+            <div style={{position:'absolute',right:0,top:'calc(100% + 8px)',background:'var(--bg-card)',border:'1px solid var(--border)',borderRadius:9,padding:8,minWidth:185,zIndex:200,boxShadow:'0 8px 32px rgba(0,0,0,.4)'}}>
+              <div style={{padding:'7px 10px',borderBottom:'1px solid var(--border)',marginBottom:4}}>
+                <div style={{fontSize:'.7rem',color:'var(--tx3)',textTransform:'uppercase',fontFamily:"'Exo 2',sans-serif",letterSpacing:'.05em',marginBottom:2}}>Rol</div>
+                <div style={{fontSize:'.85rem',color:'var(--tx2)'}}>{userProfile.role}</div>
+              </div>
+              <button onClick={()=>{onLogout();setMenu(false);}}
+                style={{width:'100%',background:'none',border:'none',color:'var(--red)',padding:'8px 10px',textAlign:'left',cursor:'pointer',borderRadius:5,fontSize:'.85rem',fontFamily:"'Exo 2',sans-serif",fontWeight:600}}>
+                Cerrar sesión
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🚀 APP ROOT
+// ═══════════════════════════════════════════════════
+function App() {
+  const [authState,setAuthState]=useState('loading');
+  const [userProfile,setUserProfile]=useState(null);
+  const [authView,setAuthView]=useState('login');
+  const [appView,setAppView]=useState('nodes');
+  const [toastData,setToastData]=useState(null);
+
+  const toast=useCallback((msg,type='info')=>setToastData({msg,type,key:Date.now()}),[]);
+
+  useEffect(()=>{
+    if(!auth){setAuthState('error');return;}
+    return auth.onAuthStateChanged(async user=>{
+      if(!user){setAuthState('unauthenticated');setUserProfile(null);return;}
+      try {
+        const doc=await db.collection('energy_users').doc(user.uid).get();
+        if(!doc.exists){await auth.signOut();setAuthState('unauthenticated');return;}
+        const p={uid:user.uid,...doc.data()};
+        setUserProfile(p);
+        setAuthState(p.approved?'authenticated':'pending');
+      } catch { setAuthState('unauthenticated'); }
+    });
+  },[]);
+
+  const logout=()=>auth.signOut();
+
+  // Loading
+  if(authState==='loading') return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{textAlign:'center'}}>
+        <div style={{width:50,height:50,background:'#f59e0b',borderRadius:11,display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,margin:'0 auto 12px',boxShadow:'0 0 28px rgba(245,158,11,.3)'}}>⚡</div>
+        <div className="fd" style={{color:'#f59e0b',fontWeight:800,fontSize:'1.2rem',letterSpacing:'.04em'}}>AIRTEK</div>
+        <div style={{color:'var(--tx4)',fontSize:'.78rem',marginTop:4}}>Inicializando sistema...</div>
+      </div>
+    </div>
+  );
+
+  if(authState==='error') return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div className="card" style={{maxWidth:400,textAlign:'center'}}>
+        <div style={{fontSize:40,marginBottom:14}}>⚠️</div>
+        <h2 className="fd" style={{color:'#f59e0b',marginBottom:8}}>Configuración requerida</h2>
+        <p style={{color:'#94a3b8',fontSize:'.9rem'}}>Reemplaza las credenciales de Firebase en el archivo HTML y recarga la página.</p>
+      </div>
+    </div>
+  );
+
+  if(authState==='unauthenticated') {
+    if(authView==='register') return <RegisterPage onBack={()=>setAuthView('login')} />;
+    return <LoginPage onRegister={()=>setAuthView('register')} />;
+  }
+
+  if(authState==='pending') return <PendingPage onLogout={logout} />;
+
+  return (
+    <div style={{minHeight:'100vh',background:'var(--bg-deep)'}}>
+      <Topbar userProfile={userProfile} view={appView} setView={setAppView} onLogout={logout} />
+      <div style={{maxWidth:980,margin:'0 auto',padding:'22px 16px'}}>
+        {appView==='nodes' && <NodeList userProfile={userProfile} toast={toast} />}
+        {appView==='admin' && userProfile.role==='admin' && <AdminPanel userProfile={userProfile} toast={toast} />}
+        {appView==='admin' && userProfile.role!=='admin' && <div style={{textAlign:'center',padding:60,color:'var(--tx3)'}}>Acceso restringido.</div>}
+      </div>
+      {toastData && <Toast key={toastData.key} msg={toastData.msg} type={toastData.type} onDone={()=>setToastData(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
