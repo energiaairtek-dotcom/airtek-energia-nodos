@@ -1501,6 +1501,218 @@ function Topbar({ userProfile, view, setView, onLogout, toast }) {
   );
 }
 
+
+// ═══════════════════════════════════════════════════
+// 🌐 VISTA PÚBLICA DE NODO (sin login, acceso por QR)
+// ═══════════════════════════════════════════════════
+function PublicNodeView({ nodeId }) {
+  const [node,setNode]=useState(null);
+  const [equipment,setEquipment]=useState([]);
+  const [records,setRecords]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [tab,setTab]=useState('equipos');
+  const [selRecord,setSelRecord]=useState(null);
+
+  useEffect(()=>{
+    const loadData = async () => {
+      try {
+        const nd = await db.collection('energy_nodes').doc(nodeId).get();
+        if(!nd.exists){setLoading(false);return;}
+        setNode({id:nd.id,...nd.data()});
+        const eq = await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').get();
+        setEquipment(eq.docs.map(d=>({id:d.id,...d.data()})));
+        const rc = await db.collection('energy_nodes').doc(nodeId).collection('energy_records').orderBy('date','desc').get();
+        setRecords(rc.docs.map(d=>({id:d.id,...d.data()})));
+      } catch(e){ console.error(e); }
+      setLoading(false);
+    };
+    loadData();
+  },[nodeId]);
+
+  if(loading) return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{textAlign:'center'}}>
+        <div style={{width:50,height:50,background:'#f59e0b',borderRadius:11,display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,margin:'0 auto 12px',boxShadow:'0 0 28px rgba(245,158,11,.3)'}}>⚡</div>
+        <div className="fd" style={{color:'#f59e0b',fontWeight:800,fontSize:'1.1rem'}}>Cargando nodo...</div>
+      </div>
+    </div>
+  );
+
+  if(!node) return (
+    <div className="gridbg" style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div className="card fin" style={{maxWidth:380,textAlign:'center'}}>
+        <div style={{fontSize:44,marginBottom:12}}>❌</div>
+        <h2 className="fd" style={{color:'#ef4444',marginBottom:8}}>Nodo no encontrado</h2>
+        <p style={{color:'#94a3b8',fontSize:'.88rem'}}>El QR escaneado no corresponde a ningún nodo activo.</p>
+      </div>
+    </div>
+  );
+
+  const tc = NODE_TYPES[node.type]||{label:'—',color:'#64748b'};
+  const activeEq = equipment.filter(e=>e.active!==false);
+
+  // Vista detalle de registro
+  if(selRecord) {
+    const rt = REC_TYPES[selRecord.type]||{label:selRecord.type,icon:'📋',color:'#64748b'};
+    return (
+      <div className="gridbg" style={{minHeight:'100vh'}}>
+        {/* Mini topbar público */}
+        <div className="topbar">
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <div style={{width:30,height:30,background:'#f59e0b',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,boxShadow:'0 0 12px rgba(245,158,11,.25)'}}>⚡</div>
+            <span className="fd" style={{fontWeight:800,fontSize:'1rem',color:'#f59e0b'}}>AIRTEK</span>
+            <span style={{color:'#243d5e',fontSize:16}}>|</span>
+            <span style={{fontSize:'.75rem',color:'#475569',fontFamily:"'Exo 2',sans-serif"}}>Vista Pública</span>
+          </div>
+          <span className="badge" style={{background:'rgba(16,185,129,.15)',color:'#10b981'}}>Solo lectura</span>
+        </div>
+        <div style={{maxWidth:780,margin:'0 auto',padding:'22px 16px'}} className="fin">
+          <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+            <button onClick={()=>setSelRecord(null)} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:22}}>←</button>
+            <div>
+              <h2 className="fd" style={{fontSize:'1.05rem',fontWeight:700,color:'var(--tx1)'}}>{rt.icon} {rt.label}</h2>
+              <p style={{color:'var(--tx3)',fontSize:'.78rem'}}>{node.name} · {fmtDateTime(selRecord.date)}</p>
+            </div>
+          </div>
+          <div className="card" style={{marginBottom:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              {[['Técnico',selRecord.technicianName],['Turno',selRecord.shift==='dia'?'☀️ Día':'🌙 Noche'],['Fecha',fmtDate(selRecord.date)]].map(([l,v])=>(
+                <div key={l}>
+                  <div style={{fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',fontFamily:"'Exo 2',sans-serif",marginBottom:2}}>{l}</div>
+                  <div style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:500}}>{v||'—'}</div>
+                </div>
+              ))}
+            </div>
+            {selRecord.observations && <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)'}}>
+              <div style={{fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',fontFamily:"'Exo 2',sans-serif",marginBottom:4}}>Observaciones</div>
+              <p style={{color:'#cbd5e1',fontSize:'.88rem'}}>{selRecord.observations}</p>
+            </div>}
+          </div>
+          {selRecord.measurements && Object.keys(selRecord.measurements).length>0 && (
+            <div>
+              <div style={{fontSize:'.7rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8,fontFamily:"'Exo 2',sans-serif"}}>Mediciones</div>
+              {Object.entries(selRecord.measurements).map(([tag,vals])=>(
+                <div key={tag} className="card" style={{marginBottom:10}}>
+                  <div className="fm" style={{fontSize:'.85rem',color:'#f59e0b',fontWeight:600,marginBottom:10}}>{tag}</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8}}>
+                    {Object.entries(vals).filter(([,v])=>v!==''&&v!==null).map(([k,v])=>(
+                      <div key={k} style={{background:'var(--bg-deep)',borderRadius:6,padding:'7px 10px'}}>
+                        <div style={{fontSize:'.6rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:2,fontFamily:"'Exo 2',sans-serif"}}>{k.replace(/_/g,' ')}</div>
+                        <div className="fm" style={{fontSize:'.95rem',color:'#10b981',fontWeight:600}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="gridbg" style={{minHeight:'100vh'}}>
+      {/* Mini topbar público */}
+      <div className="topbar">
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:30,height:30,background:'#f59e0b',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,boxShadow:'0 0 12px rgba(245,158,11,.25)'}}>⚡</div>
+          <span className="fd" style={{fontWeight:800,fontSize:'1rem',color:'#f59e0b'}}>AIRTEK</span>
+          <span style={{color:'#243d5e',fontSize:16}}>|</span>
+          <span style={{fontSize:'.75rem',color:'#475569',fontFamily:"'Exo 2',sans-serif"}}>Vista Pública</span>
+        </div>
+        <span className="badge" style={{background:'rgba(16,185,129,.15)',color:'#10b981'}}>Solo lectura</span>
+      </div>
+
+      <div style={{maxWidth:780,margin:'0 auto',padding:'22px 16px'}} className="fin">
+        {/* Header nodo */}
+        <div style={{marginBottom:18}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+            <span className="badge" style={{background:tc.color+'22',color:tc.color}}>{tc.label}</span>
+            <span style={{color:'var(--tx3)',fontSize:'.8rem'}}>📍 {node.zone}</span>
+          </div>
+          <h1 className="fd" style={{fontSize:'1.4rem',fontWeight:800,color:'var(--tx1)',lineHeight:1.2,marginBottom:10}}>{node.name}</h1>
+          {/* Stats */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+            {[
+              {label:'Equipos Activos', val:activeEq.length, c:'#10b981'},
+              {label:'Inspecciones',    val:records.length,  c:'#3b82f6'},
+              {label:'Última Visita',   val:records[0]?fmtDate(records[0].date):'—', c:'#f59e0b', sm:true},
+            ].map(s=>(
+              <div key={s.label} style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px'}}>
+                <div style={{fontSize:'.63rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:"'Exo 2',sans-serif",marginBottom:3}}>{s.label}</div>
+                <div className={s.sm?'':'fm'} style={{fontSize:s.sm?'.8rem':'1.3rem',fontWeight:700,color:s.c}}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex'}}>
+          {['equipos','historial'].map(t=>(
+            <button key={t} className={`tab ${tab===t?'on':''}`} onClick={()=>setTab(t)}>
+              {t==='equipos'?'Equipos':'Historial'}
+            </button>
+          ))}
+        </div>
+
+        {/* TAB EQUIPOS */}
+        {tab==='equipos' && (
+          activeEq.length===0
+            ? <div style={{textAlign:'center',padding:40,color:'var(--tx3)'}}>Sin equipos activos registrados.</div>
+            : activeEq.map(eq=>{
+                const ti=EQ_TYPES[eq.type]||EQ_TYPES.OTR;
+                return (
+                  <div key={eq.id} className="card" style={{marginBottom:8,borderLeft:`3px solid ${ti.color}`}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                      <span className="badge" style={{background:ti.bg,color:ti.color}}>{eq.type}</span>
+                      <span className="fm" style={{fontSize:'.9rem',fontWeight:600,color:'var(--tx1)'}}>{eq.tag}</span>
+                      {eq.voltage&&eq.type==='INV'&&<span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
+                      {eq.hasSolar&&<span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️ PV</span>}
+                      {eq.batteryType&&eq.batteryType!=='No aplica'&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
+                      <span style={{marginLeft:'auto',color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
+                    </div>
+                    {eq.notes&&<div style={{marginTop:5,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
+                  </div>
+                );
+              })
+        )}
+
+        {/* TAB HISTORIAL */}
+        {tab==='historial' && (
+          records.length===0
+            ? <div style={{textAlign:'center',padding:40,color:'var(--tx3)'}}>Sin registros de inspección.</div>
+            : records.map(r=>{
+                const rt=REC_TYPES[r.type]||{label:r.type,icon:'📋',color:'#64748b'};
+                return (
+                  <div key={r.id} className="card rrow" style={{marginBottom:8,borderLeft:`3px solid ${rt.color}`}}
+                    onClick={()=>setSelRecord(r)}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                      <div>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+                          <span style={{fontSize:13}}>{rt.icon}</span>
+                          <span className="fd" style={{fontWeight:700,fontSize:'.88rem',color:'var(--tx1)'}}>{rt.label}</span>
+                          <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>{r.shift==='dia'?'☀️':'🌙'}</span>
+                        </div>
+                        <div style={{fontSize:'.78rem',color:'var(--tx3)'}}>{r.technicianName} · {fmtDate(r.date)}</div>
+                        {r.observations&&<div style={{fontSize:'.74rem',color:'var(--tx4)',marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:240}}>{r.observations}</div>}
+                      </div>
+                      <span style={{color:'var(--border-bright)',fontSize:20}}>›</span>
+                    </div>
+                  </div>
+                );
+              })
+        )}
+
+        {/* Footer */}
+        <div style={{textAlign:'center',marginTop:30,paddingTop:16,borderTop:'1px solid var(--border)'}}>
+          <p style={{fontSize:'.72rem',color:'var(--tx4)'}}>Vista de solo lectura · Airtek Energía</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════
 // 🚀 APP ROOT
 // ═══════════════════════════════════════════════════
@@ -1512,6 +1724,10 @@ function App() {
   const [toastData,setToastData]=useState(null);
 
   const toast=useCallback((msg,type='info')=>setToastData({msg,type,key:Date.now()}),[]);
+
+  // Detectar QR público ANTES de requerir login
+  const publicNodeId = new URLSearchParams(window.location.search).get('node');
+  const isPublic = !!publicNodeId && authState!=='authenticated';
 
   useEffect(()=>{
     if(!auth){setAuthState('error');return;}
@@ -1538,6 +1754,9 @@ function App() {
   },[]);
 
   const logout=()=>auth.signOut();
+
+  // Vista pública por QR — sin login requerido
+  if(publicNodeId && authState!=='authenticated') return <PublicNodeView nodeId={publicNodeId} />;
 
   // Loading
   if(authState==='loading') return (
