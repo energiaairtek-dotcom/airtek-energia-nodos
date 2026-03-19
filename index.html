@@ -813,7 +813,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
 
   const tc=NODE_TYPES[node.type]||{label:'—',color:'#64748b'};
   const filtered=filterType==='all'?records:records.filter(r=>r.type===filterType);
-  const canWrite=userProfile.role==='tecnico'||userProfile.role==='admin';
+  const canWrite=userProfile.role==='tecnico'||userProfile.role==='admin'||userProfile.role==='supervisor';
 
   if(subView==='newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={()=>setSubView('main')} onCancel={()=>setSubView('main')} toast={toast} />;
   if(subView==='recordDetail'&&selRecord) return <RecordDetail record={selRecord} onBack={()=>setSubView('main')} />;
