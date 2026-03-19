@@ -943,6 +943,112 @@ function RecordDetail({ record, onBack }) {
   );
 }
 
+
+// ═══════════════════════════════════════════════════
+// ✏️  MODAL EDICIÓN DE EQUIPO
+// ═══════════════════════════════════════════════════
+function EditEqModal({ eq, onSave, onClose }) {
+  const [f,setF]=useState({
+    tag:       eq.tag||'',
+    type:      eq.type||'INV',
+    voltage:   eq.voltage||'220V',
+    hasAcIn:   !!eq.hasAcIn,
+    hasAcOut:  !!eq.hasAcOut,
+    hasDcOut:  !!eq.hasDcOut,
+    hasSolar:  !!eq.hasSolar,
+    batteryType: eq.batteryType||'No aplica',
+    batCapacity: eq.batCapacity||'',
+    batCount:    eq.batCount||'',
+    batCellType: eq.batCellType||'No aplica',
+    notes:     eq.notes||'',
+  });
+  const [saving,setSaving]=useState(false);
+
+  const save = async () => {
+    if(!f.tag.trim()){return;}
+    setSaving(true);
+    await onSave({...f, tag:f.tag.trim().toUpperCase()});
+    setSaving(false);
+  };
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card fin" style={{maxWidth:500,width:'100%',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
+          <h3 className="fd" style={{fontWeight:700,fontSize:'1rem',color:'var(--amber)'}}>✏️ Editar Equipo</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',color:'var(--tx3)',cursor:'pointer',fontSize:20}}>✕</button>
+        </div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="lbl">Tag</label>
+            <input className="fi fm" value={f.tag} onChange={e=>setF({...f,tag:e.target.value})} placeholder="INV00-PV-LFP00" />
+          </div>
+          <div>
+            <label className="lbl">Tipo</label>
+            <select className="fi" value={f.type} onChange={e=>setF({...f,type:e.target.value})}>
+              {Object.entries(EQ_TYPES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          {f.type==='INV' && (
+            <div>
+              <label className="lbl">Tensión</label>
+              <select className="fi" value={f.voltage} onChange={e=>setF({...f,voltage:e.target.value})}>
+                <option value="110V">110V</option>
+                <option value="220V">220V</option>
+              </select>
+            </div>
+          )}
+          {f.type==='INV' && (
+            <div style={{gridColumn:'1/-1',display:'flex',flexWrap:'wrap',gap:16,paddingTop:4}}>
+              {[['hasAcIn','🔌 Entrada AC'],['hasAcOut','⚡ Salida AC'],['hasDcOut','🔋 Salida DC'],['hasSolar','☀️ PV']].map(([k,lbl])=>(
+                <label key={k} style={{display:'flex',alignItems:'center',gap:6,color:'var(--tx2)',fontSize:'.84rem',cursor:'pointer'}}>
+                  <input type="checkbox" checked={!!f[k]} onChange={e=>setF({...f,[k]:e.target.checked})} />{lbl}
+                </label>
+              ))}
+            </div>
+          )}
+          {(f.type==='INV'||f.type==='ETP'||f.type==='BAT') && (
+            <div>
+              <label className="lbl">Tipo Batería</label>
+              <select className="fi" value={f.batteryType} onChange={e=>setF({...f,batteryType:e.target.value})}>
+                {BAT_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          )}
+          {f.type==='BAT' && <>
+            <div>
+              <label className="lbl">Capacidad (Ah)</label>
+              <input className="fi" type="number" step="any" value={f.batCapacity} onChange={e=>setF({...f,batCapacity:e.target.value})} placeholder="200" />
+            </div>
+            <div>
+              <label className="lbl">N° Baterías</label>
+              <input className="fi" type="number" step="1" value={f.batCount} onChange={e=>setF({...f,batCount:e.target.value})} placeholder="4" />
+            </div>
+            <div>
+              <label className="lbl">Tipo Celda</label>
+              <select className="fi" value={f.batCellType} onChange={e=>setF({...f,batCellType:e.target.value})}>
+                {BAT_CELL_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </>}
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="lbl">Notas</label>
+            <input className="fi" value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} placeholder="Modelo, serie, observaciones..." />
+          </div>
+        </div>
+
+        <div style={{display:'flex',gap:10,marginTop:18}}>
+          <button className="bp" style={{flex:1}} onClick={save} disabled={saving||!f.tag.trim()}>
+            {saving?'Guardando...':'💾 Guardar Cambios'}
+          </button>
+          <button className="bs" onClick={onClose} disabled={saving}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════
 // 🏭 DETALLE DE NODO
 // ═══════════════════════════════════════════════════
@@ -955,6 +1061,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   const [selRecord,setSelRecord]=useState(null);
   const [qrOpen,setQrOpen]=useState(false);
   const [filterType,setFilterType]=useState('all');
+  const [editEq,setEditEq]=useState(null); // equipo siendo editado
 
   useEffect(()=>{
     const u1=db.collection('energy_nodes').doc(node.id).collection('energy_equipment')
@@ -1051,9 +1158,18 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   if(subView==='newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={()=>setSubView('main')} onCancel={()=>setSubView('main')} toast={toast} />;
   if(subView==='recordDetail'&&selRecord) return <RecordDetail record={selRecord} onBack={()=>setSubView('main')} />;
 
+  const saveEditEq = async (data) => {
+    try {
+      await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(editEq.id).update(data);
+      toast('Equipo actualizado.','success');
+      setEditEq(null);
+    } catch(e) { toast('Error al guardar.','error'); }
+  };
+
   return (
     <div className="fin">
       {qrOpen && <QRModal node={node} onClose={()=>setQrOpen(false)} />}
+      {editEq && <EditEqModal eq={editEq} onSave={saveEditEq} onClose={()=>setEditEq(null)} />}
 
       {/* Header */}
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16,gap:12}}>
@@ -1130,7 +1246,13 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                         {eq.batCapacity && <span style={{color:'#8b5cf6',fontSize:'.73rem'}}>{eq.batCapacity}Ah</span>}
                         {eq.batCount && <span style={{color:'#8b5cf6',fontSize:'.73rem'}}>{eq.batCount} bat.</span>}
                         {eq.batCellType&&eq.batCellType!=='No aplica' && <span style={{color:'#64748b',fontSize:'.73rem'}}>{eq.batCellType}</span>}
-                        <span style={{marginLeft:'auto',color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
+                        <span style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:8}}>
+                          <span style={{color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
+                          {canWrite && <button onClick={()=>setEditEq(eq)}
+                            style={{background:'none',border:'1px solid var(--border)',color:'var(--tx3)',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
+                            ✏️ Editar
+                          </button>}
+                        </span>
                       </div>
                       {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
                     </div>
