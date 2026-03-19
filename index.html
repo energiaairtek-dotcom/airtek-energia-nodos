@@ -160,6 +160,14 @@ const EQ_TYPES = {
   OTR: { label:'Otro',                      color:'#64748b', bg:'rgba(100,116,139,.12)' },
 };
 
+// Orden canónico de tipos para mostrar equipos
+const EQ_ORDER = { INV:0, ETP:1, ATS:2, BAT:3, OTR:4 };
+const sortEquipment = eqs => [...eqs].sort((a,b) => {
+  const oa = EQ_ORDER[a.type]??5, ob = EQ_ORDER[b.type]??5;
+  if(oa!==ob) return oa-ob;
+  return (a.tag||'').localeCompare(b.tag||'', 'es', {numeric:true});
+});
+
 const REC_TYPES = {
   inspeccion: { label:'Inspección',          color:'#10b981', icon:'🔍' },
   instalacion:{ label:'Instalación',         color:'#3b82f6', icon:'⚡' },
@@ -569,11 +577,11 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [obs,setObs]=useState('');
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
-  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
+  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
   const [reportData,setReportData]=useState(null);
 
   const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
-  const active=equipment.filter(e=>e.active!==false);
+  const active=sortEquipment(equipment.filter(e=>e.active!==false));
 
   const save = async () => {
     if (!date){toast('Selecciona la fecha.','error');return;}
@@ -595,6 +603,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
       if (type==='instalacion' && eqAction.tag) {
         await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
           tag:eqAction.tag, type:eqAction.type, voltage:eqAction.voltage,
+          hasAcIn:!!eqAction.hasAcIn, hasAcOut:!!eqAction.hasAcOut, hasDcOut:!!eqAction.hasDcOut,
           hasSolar:eqAction.hasSolar, batteryType:eqAction.batteryType,
           batCapacity:eqAction.batCapacity||'', batCount:eqAction.batCount||'',
           batCellType:eqAction.batCellType||'No aplica',
@@ -652,28 +661,104 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         </div>
       </div>
 
-      {/* Mediciones */}
+      {/* Mediciones — agrupadas por banco */}
       {type==='inspeccion' && (
         active.length===0
           ? <div className="card" style={{textAlign:'center',marginBottom:14,padding:30}}>
               <p style={{color:'var(--tx3)',marginBottom:12}}>No hay equipos activos en este nodo.</p>
               <button className="bp" style={{fontSize:'.82rem'}} onClick={()=>setType('instalacion')}>Registrar Instalación</button>
             </div>
-          : active.map(eq=>{
-              const ti=EQ_TYPES[eq.type]||EQ_TYPES.OTR;
-              return (
-                <div key={eq.id} className="card" style={{marginBottom:12,borderLeft:`3px solid ${ti.color}`}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
-                    <span className="badge" style={{background:ti.bg,color:ti.color}}>{eq.type}</span>
-                    <span className="fm" style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:600}}>{eq.tag}</span>
-                    {eq.voltage && <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
-                    {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️PV</span>}
-                    {eq.batteryType && eq.batteryType!=='No aplica' && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
-                  </div>
-                  <EqMeasurements eq={eq} vals={meas[eq.tag]||{}} onChange={(k,v)=>updM(eq.tag,k,v)} />
+          : (() => {
+              // Extrae el identificador de banco del tag
+              // INV06-LFP00 → LFP00 | BAT00-LFP → LFP00 | BAT02-NMC → NMC02
+              const getBankSuffix = tag => {
+                const t = (tag||'').toUpperCase();
+                // Primero: patrón tipo+número al final → LFP00, NMC02, GEL01
+                const m1 = t.match(/(LFP|NMC|GEL|AGM|VRLA|NIMH|NICD)(\d+)$/);
+                if(m1) return m1[1]+m1[2];
+                // Segundo: BAT##-TIPO sin número → BAT00-LFP → LFP00
+                const m2 = t.match(/^BAT(\d+)[_-](LFP|NMC|GEL|AGM|VRLA)/);
+                if(m2) return m2[2]+m2[1];
+                return null;
+              };
+              // Separar BAT de no-BAT
+              const nonBat = active.filter(e=>e.type!=='BAT');
+              const bats    = active.filter(e=>e.type==='BAT');
+              // Construir grupos únicos por banco preservando orden de aparición
+              const groups = [];
+              const seen = new Set();
+              nonBat.forEach(eq => {
+                const bank = getBankSuffix(eq.tag);
+                if(!bank || seen.has(bank)) return;
+                seen.add(bank);
+                // Todos los no-BAT con este banco
+                const groupEqs = nonBat.filter(e=>getBankSuffix(e.tag)===bank);
+                // Banco BAT asociado
+                const batEq = bats.find(b=>getBankSuffix(b.tag)===bank);
+                groups.push({bank, eqs:groupEqs, bat:batEq});
+              });
+              // Equipos sin banco identificable (ATS, OTR, etc.)
+              const ungrouped = nonBat.filter(eq=>!getBankSuffix(eq.tag));
+              if(ungrouped.length) groups.push({bank:null, eqs:ungrouped, bat:null});
+              // Bancos huérfanos sin equipo asociado
+              const orphanBats = bats.filter(b=>!nonBat.some(e=>getBankSuffix(e.tag)===getBankSuffix(b.tag)));
+              if(orphanBats.length) groups.push({bank:'_orphan', eqs:[], bat:null, orphanBats});
+
+              return groups.map(({bank, eqs, bat, orphanBats}) => (
+                <div key={bank||'_ung'} style={{marginBottom:20}}>
+                  {/* Equipos del grupo */}
+                  {eqs.map(eq=>{
+                    const ti=EQ_TYPES[eq.type]||EQ_TYPES.OTR;
+                    return (
+                      <div key={eq.id} className="card" style={{marginBottom:8,borderLeft:`3px solid ${ti.color}`}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+                          <span className="badge" style={{background:ti.bg,color:ti.color}}>{eq.type}</span>
+                          <span className="fm" style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:600}}>{eq.tag}</span>
+                          {eq.voltage && <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
+                          {eq.hasAcIn  && <span style={{color:'#3b82f6',fontSize:'.74rem'}}>AC/IN</span>}
+                          {eq.hasAcOut && <span style={{color:'#10b981',fontSize:'.74rem'}}>AC/OUT</span>}
+                          {eq.hasDcOut && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>DC/OUT</span>}
+                          {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️PV</span>}
+                          {eq.batteryType&&eq.batteryType!=='No aplica'&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
+                        </div>
+                        <EqMeasurements eq={eq} vals={meas[eq.tag]||{}} onChange={(k,v)=>updM(eq.tag,k,v)} />
+                      </div>
+                    );
+                  })}
+                  {/* Banco asociado al final del grupo */}
+                  {bat && (()=>{
+                    const ti=EQ_TYPES.BAT;
+                    return (
+                      <div key={bat.id} className="card" style={{marginBottom:8,borderLeft:`3px solid ${ti.color}`,background:'rgba(139,92,246,.04)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+                          <span className="badge" style={{background:ti.bg,color:ti.color}}>BAT</span>
+                          <span className="fm" style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:600}}>{bat.tag}</span>
+                          {bat.batteryType&&bat.batteryType!=='No aplica'&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{bat.batteryType}</span>}
+                          {bat.batCapacity&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{bat.batCapacity}Ah</span>}
+                          {bat.batCount&&<span style={{color:'#64748b',fontSize:'.74rem'}}>{bat.batCount} bat.</span>}
+                        </div>
+                        <EqMeasurements eq={bat} vals={meas[bat.tag]||{}} onChange={(k,v)=>updM(bat.tag,k,v)} />
+                      </div>
+                    );
+                  })()}
+                  {/* Bancos huérfanos */}
+                  {orphanBats && orphanBats.map(bat=>{
+                    const ti=EQ_TYPES.BAT;
+                    return (
+                      <div key={bat.id} className="card" style={{marginBottom:8,borderLeft:`3px solid ${ti.color}`,background:'rgba(139,92,246,.04)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+                          <span className="badge" style={{background:ti.bg,color:ti.color}}>BAT</span>
+                          <span className="fm" style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:600}}>{bat.tag}</span>
+                          {bat.batteryType&&bat.batteryType!=='No aplica'&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{bat.batteryType}</span>}
+                          {bat.batCapacity&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{bat.batCapacity}Ah</span>}
+                        </div>
+                        <EqMeasurements eq={bat} vals={meas[bat.tag]||{}} onChange={(k,v)=>updM(bat.tag,k,v)} />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })
+              ));
+            })()
       )}
 
       {/* Instalación */}
@@ -699,9 +784,19 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
                   <option value="220V">220V (2 Líneas)</option>
                 </select>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
-                <input type="checkbox" checked={eqAction.hasSolar} onChange={e=>setEqA({...eqAction,hasSolar:e.target.checked})} id="pv" />
-                <label htmlFor="pv" style={{color:'var(--tx2)',fontSize:'.88rem',cursor:'pointer'}}>☀️ Tiene paneles solares (PV)</label>
+              <div style={{display:'flex',flexDirection:'column',gap:8,paddingTop:4}}>
+                <label className="lbl" style={{marginBottom:0}}>Conexiones</label>
+                {[
+                  ['hasAcIn',  '🔌 Entrada AC (cargador/bypass)'],
+                  ['hasAcOut', '⚡ Salida AC'],
+                  ['hasDcOut', '🔋 Salida DC'],
+                  ['hasSolar', '☀️ Entrada PV (paneles solares)'],
+                ].map(([k,lbl])=>(
+                  <label key={k} style={{display:'flex',alignItems:'center',gap:8,color:'var(--tx2)',fontSize:'.85rem',cursor:'pointer'}}>
+                    <input type="checkbox" checked={!!eqAction[k]} onChange={e=>setEqA({...eqAction,[k]:e.target.checked})} />
+                    {lbl}
+                  </label>
+                ))}
               </div>
             </>}
             {(eqAction.type==='INV'||eqAction.type==='BAT'||eqAction.type==='ETP') && (
@@ -885,7 +980,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
     doc.setTextColor(148,163,184); doc.setFontSize(9); doc.setFont('helvetica','normal');
     doc.text(`Zona: ${node.zone||'—'} | Tipo: ${(NODE_TYPES[node.type]||{}).label||node.type}`, 15, y); y+=10;
     // Equipos
-    const actEq=equipment.filter(e=>e.active!==false);
+    const actEq=sortEquipment(equipment.filter(e=>e.active!==false));
     doc.setTextColor(16,185,129); doc.setFontSize(10); doc.setFont('helvetica','bold');
     doc.text('EQUIPOS ACTIVOS', 15, y); y+=6;
     if(actEq.length===0){doc.setTextColor(71,85,105);doc.setFontSize(8);doc.setFont('helvetica','normal');doc.text('Sin equipos registrados.',18,y);y+=5;}
@@ -1012,7 +1107,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
               {canWrite && <button className="bp" onClick={()=>setSubView('newRecord')}>Registrar Instalación</button>}
             </div>
           ) : ['active','retired'].map(status=>{
-            const eqs=equipment.filter(e=>status==='active'?e.active!==false:e.active===false);
+            const eqs=sortEquipment(equipment.filter(e=>status==='active'?e.active!==false:e.active===false));
             if(!eqs.length) return null;
             return (
               <div key={status} style={{marginBottom:16}}>
@@ -1027,11 +1122,14 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                         <span className="badge" style={{background:ti.bg,color:ti.color}}>{eq.type}</span>
                         <span className="fm" style={{fontSize:'.92rem',fontWeight:600,color:'var(--tx1)'}}>{eq.tag}</span>
                         {eq.voltage && <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
-                        {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️ PV</span>}
-                        {eq.batteryType&&eq.batteryType!=='No aplica' && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
-                        {eq.batCapacity && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{eq.batCapacity}Ah</span>}
-                        {eq.batCount && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{eq.batCount} bat.</span>}
-                        {eq.batCellType&&eq.batCellType!=='No aplica' && <span style={{color:'#64748b',fontSize:'.74rem'}}>{eq.batCellType}</span>}
+                        {eq.hasAcIn  && <span style={{color:'#3b82f6',fontSize:'.73rem'}}>AC/IN</span>}
+                        {eq.hasAcOut && <span style={{color:'#10b981',fontSize:'.73rem'}}>AC/OUT</span>}
+                        {eq.hasDcOut && <span style={{color:'#8b5cf6',fontSize:'.73rem'}}>DC/OUT</span>}
+                        {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.73rem'}}>☀️ PV</span>}
+                        {eq.batteryType&&eq.batteryType!=='No aplica' && <span style={{color:'#8b5cf6',fontSize:'.73rem'}}>🔋{eq.batteryType}</span>}
+                        {eq.batCapacity && <span style={{color:'#8b5cf6',fontSize:'.73rem'}}>{eq.batCapacity}Ah</span>}
+                        {eq.batCount && <span style={{color:'#8b5cf6',fontSize:'.73rem'}}>{eq.batCount} bat.</span>}
+                        {eq.batCellType&&eq.batCellType!=='No aplica' && <span style={{color:'#64748b',fontSize:'.73rem'}}>{eq.batCellType}</span>}
                         <span style={{marginLeft:'auto',color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
                       </div>
                       {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
@@ -1706,7 +1804,7 @@ function PublicNodeView({ nodeId }) {
   );
 
   const tc = NODE_TYPES[node.type]||{label:'—',color:'#64748b'};
-  const activeEq = equipment.filter(e=>e.active!==false);
+  const activeEq = sortEquipment(equipment.filter(e=>e.active!==false));
 
   // Vista detalle de registro
   if(selRecord) {
