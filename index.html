@@ -174,7 +174,8 @@ const NODE_TYPES = {
   otro:       { label:'Otro',       color:'#64748b' },
 };
 
-const BAT_TYPES = ['LFP','GEL','AGM','VRLA','No aplica'];
+const BAT_TYPES = ['LFP','GEL','AGM','VRLA','NMC','No aplica'];
+const BAT_CELL_TYPES = ['Prismática','Cilíndrica','Pouch','No aplica'];
 
 // Nodos iniciales Airtek Zulia
 const SEED_NODES = [
@@ -568,7 +569,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [obs,setObs]=useState('');
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
-  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasSolar:false,batteryType:'LFP',notes:''});
+  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
   const [reportData,setReportData]=useState(null);
 
   const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
@@ -595,6 +596,8 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
           tag:eqAction.tag, type:eqAction.type, voltage:eqAction.voltage,
           hasSolar:eqAction.hasSolar, batteryType:eqAction.batteryType,
+          batCapacity:eqAction.batCapacity||'', batCount:eqAction.batCount||'',
+          batCellType:eqAction.batCellType||'No aplica',
           active:true, installedAt:new Date(date), installedBy:userProfile.name, notes:eqAction.notes
         });
       }
@@ -701,7 +704,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
                 <label htmlFor="pv" style={{color:'var(--tx2)',fontSize:'.88rem',cursor:'pointer'}}>☀️ Tiene paneles solares (PV)</label>
               </div>
             </>}
-            {(eqAction.type==='INV'||eqAction.type==='BAT') && (
+            {(eqAction.type==='INV'||eqAction.type==='BAT'||eqAction.type==='ETP') && (
               <div>
                 <label className="lbl">Tipo de Batería</label>
                 <select className="fi" value={eqAction.batteryType} onChange={e=>setEqA({...eqAction,batteryType:e.target.value})}>
@@ -709,6 +712,22 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
                 </select>
               </div>
             )}
+            {eqAction.type==='BAT' && <>
+              <div>
+                <label className="lbl">Capacidad del Banco (Ah)</label>
+                <input className="fi" type="number" step="any" value={eqAction.batCapacity} onChange={e=>setEqA({...eqAction,batCapacity:e.target.value})} placeholder="Ej: 200" />
+              </div>
+              <div>
+                <label className="lbl">Número de Baterías</label>
+                <input className="fi" type="number" step="1" value={eqAction.batCount} onChange={e=>setEqA({...eqAction,batCount:e.target.value})} placeholder="Ej: 4" />
+              </div>
+              <div>
+                <label className="lbl">Tipo de Celda</label>
+                <select className="fi" value={eqAction.batCellType} onChange={e=>setEqA({...eqAction,batCellType:e.target.value})}>
+                  {BAT_CELL_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </>}
             <div style={{gridColumn:'1/-1'}}>
               <label className="lbl">Notas del Equipo (opcional)</label>
               <input className="fi" value={eqAction.notes} onChange={e=>setEqA({...eqAction,notes:e.target.value})} placeholder="Modelo, serie, notas adicionales..." />
@@ -918,6 +937,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
     const eqRows=equipment.map(e=>({
       'Tag': e.tag, 'Tipo': e.type, 'Tensión': e.voltage||'',
       'Panel Solar': e.hasSolar?'Sí':'No', 'Batería': e.batteryType||'',
+      'Capacidad (Ah)': e.batCapacity||'', 'N° Baterías': e.batCount||'', 'Tipo Celda': e.batCellType||'',
       'Estado': e.active!==false?'Activo':'Retirado',
       'Instalado': fmtDate(e.installedAt), 'Instalado por': e.installedBy||'',
       'Notas': e.notes||'',
@@ -1009,6 +1029,9 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                         {eq.voltage && <span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
                         {eq.hasSolar && <span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️ PV</span>}
                         {eq.batteryType&&eq.batteryType!=='No aplica' && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
+                        {eq.batCapacity && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{eq.batCapacity}Ah</span>}
+                        {eq.batCount && <span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{eq.batCount} bat.</span>}
+                        {eq.batCellType&&eq.batCellType!=='No aplica' && <span style={{color:'#64748b',fontSize:'.74rem'}}>{eq.batCellType}</span>}
                         <span style={{marginLeft:'auto',color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
                       </div>
                       {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
@@ -1286,8 +1309,13 @@ function AdminPanel({ userProfile, toast }) {
       const batRaw = (parts[3]||'').toUpperCase();
       const batteryType = BAT_TYPES.find(b=>b.toUpperCase()===batRaw)||'No aplica';
       const hasSolar = ['SI','SÍ','YES','S','1','TRUE'].includes((parts[4]||'').toUpperCase().trim());
-      const notes = parts[5]||'';
-      return { tag, type, voltage, batteryType, hasSolar, notes, valid:!!tag, _line:i+1 };
+      // notes handled below with bank fields
+      const batCapacity = parts[5]||'';
+      const batCount = parts[6]||'';
+      const batCellRaw = (parts[7]||'').trim();
+      const batCellType = ['Prismática','Cilíndrica','Pouch'].find(c=>c.toLowerCase()===batCellRaw.toLowerCase())||'No aplica';
+      const notes = parts[8]||parts[5]||''; // fallback for old 6-col format
+      return { tag, type, voltage, batteryType, hasSolar, batCapacity, batCount, batCellType, notes, valid:!!tag, _line:i+1 };
     });
     setBulkParsed(parsed);
   };
@@ -1302,7 +1330,7 @@ function AdminPanel({ userProfile, toast }) {
       valid.forEach(eq => {
         const ref = db.collection('energy_nodes').doc(selNodeId).collection('energy_equipment').doc();
         const {_line, valid:_v, ...data} = eq;
-        batch.set(ref,{...data,active:true,installedAt:new Date(),installedBy:userProfile.name,createdAt:TS()});
+        batch.set(ref,{...data,active:true,installedAt:new Date(),installedBy:userProfile.name,createdAt:TS()},{merge:true});
       });
       await batch.commit();
       toast(valid.length+' equipos importados.','success');
@@ -1390,19 +1418,30 @@ function AdminPanel({ userProfile, toast }) {
         <div>
           <div className="card" style={{marginBottom:16,background:'rgba(16,185,129,.04)',borderColor:'rgba(16,185,129,.2)'}}>
             <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#10b981',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>📋 Formato de Entrada</h3>
-            <div style={{background:'var(--bg-deep)',borderRadius:6,padding:'10px 14px',fontFamily:"'JetBrains Mono',monospace",fontSize:'.75rem',color:'#64748b',lineHeight:1.8}}>
+            <div style={{background:'var(--bg-deep)',borderRadius:6,padding:'10px 14px',fontFamily:"'JetBrains Mono',monospace",fontSize:'.72rem',color:'#64748b',lineHeight:1.9,overflowX:'auto'}}>
               <div style={{color:'#475569',marginBottom:4}}># Una línea por equipo — columnas separadas por |</div>
-              <div><span style={{color:'#f59e0b'}}>TAG</span> | <span style={{color:'#10b981'}}>TIPO</span> | <span style={{color:'#3b82f6'}}>TENSIÓN</span> | <span style={{color:'#8b5cf6'}}>BATERÍA</span> | <span style={{color:'#f59e0b'}}>SOLAR</span> | <span style={{color:'#64748b'}}>NOTAS</span></div>
-              <div style={{marginTop:6,color:'#334155'}}>INV00-PV-LFP00 | INV | 220V | LFP | si | Inversor principal</div>
-              <div style={{color:'#334155'}}>ETP00-AC-LFP01 | ETP | | LFP | no | PSU Huawei</div>
-              <div style={{color:'#334155'}}>ATS-DATOS | ATS | | No aplica | no |</div>
-              <div style={{color:'#334155'}}>BAT-BANCO-01 | BAT | | GEL | no | 4 baterías 200Ah</div>
+              <div style={{whiteSpace:'nowrap'}}>
+                <span style={{color:'#f59e0b'}}>TAG</span>{' | '}
+                <span style={{color:'#10b981'}}>TIPO</span>{' | '}
+                <span style={{color:'#3b82f6'}}>TENSIÓN</span>{' | '}
+                <span style={{color:'#8b5cf6'}}>BATERÍA</span>{' | '}
+                <span style={{color:'#f59e0b'}}>SOLAR</span>{' | '}
+                <span style={{color:'#8b5cf6'}}>Ah</span>{' | '}
+                <span style={{color:'#8b5cf6'}}>N°BAT</span>{' | '}
+                <span style={{color:'#64748b'}}>CELDA</span>{' | '}
+                <span style={{color:'#475569'}}>NOTAS</span>
+              </div>
+              <div style={{marginTop:6,color:'#334155',whiteSpace:'nowrap'}}>INV00-PV-LFP00 | INV | 220V | LFP | si | | | | Inversor principal</div>
+              <div style={{color:'#334155',whiteSpace:'nowrap'}}>ETP00-AC-LFP01 | ETP | | LFP | no | | | | PSU Huawei</div>
+              <div style={{color:'#334155',whiteSpace:'nowrap'}}>ATS-DATOS | ATS | | No aplica | no | | | |</div>
+              <div style={{color:'#334155',whiteSpace:'nowrap'}}>BAT-LFP00 | BAT | | LFP | no | 200 | 4 | Prismática | Banco principal</div>
+              <div style={{color:'#334155',whiteSpace:'nowrap'}}>BAT-NMC02 | BAT | | NMC | no | 40 | 8 | Prismática | Nissan Leaf</div>
             </div>
-            <div style={{marginTop:10,display:'flex',gap:16,flexWrap:'wrap',fontSize:'.75rem',color:'#475569'}}>
+            <div style={{marginTop:8,display:'flex',gap:10,flexWrap:'wrap',fontSize:'.72rem',color:'#475569'}}>
               <span><b style={{color:'#10b981'}}>TIPO:</b> INV, ETP, ATS, BAT, OTR</span>
-              <span><b style={{color:'#3b82f6'}}>TENSIÓN:</b> 110V, 220V</span>
-              <span><b style={{color:'#8b5cf6'}}>BATERÍA:</b> LFP, GEL, AGM, VRLA, No aplica</span>
-              <span><b style={{color:'#f59e0b'}}>SOLAR:</b> si / no</span>
+              <span><b style={{color:'#8b5cf6'}}>BATERÍA:</b> LFP, GEL, AGM, VRLA, NMC</span>
+              <span><b style={{color:'#f59e0b'}}>SOLAR:</b> si/no</span>
+              <span><b style={{color:'#64748b'}}>CELDA:</b> Prismática, Cilíndrica, Pouch</span>
             </div>
           </div>
 
@@ -1788,6 +1827,9 @@ function PublicNodeView({ nodeId }) {
                       {eq.voltage&&eq.type==='INV'&&<span style={{color:'var(--tx3)',fontSize:'.74rem'}}>⚡{eq.voltage}</span>}
                       {eq.hasSolar&&<span style={{color:'#f59e0b',fontSize:'.74rem'}}>☀️ PV</span>}
                       {eq.batteryType&&eq.batteryType!=='No aplica'&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>🔋{eq.batteryType}</span>}
+                      {eq.batCapacity&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{eq.batCapacity}Ah</span>}
+                      {eq.batCount&&<span style={{color:'#8b5cf6',fontSize:'.74rem'}}>{eq.batCount} bat.</span>}
+                      {eq.batCellType&&eq.batCellType!=='No aplica'&&<span style={{color:'#64748b',fontSize:'.74rem'}}>{eq.batCellType}</span>}
                       <span style={{marginLeft:'auto',color:'var(--tx4)',fontSize:'.72rem'}}>{fmtDate(eq.installedAt)}</span>
                     </div>
                     {eq.notes&&<div style={{marginTop:5,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
