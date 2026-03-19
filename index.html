@@ -449,6 +449,115 @@ function EqMeasurements({ eq, vals, onChange }) {
   );
 }
 
+
+// ═══════════════════════════════════════════════════
+// 📋 GENERADOR DE REPORTE DE INSPECCIÓN
+// ═══════════════════════════════════════════════════
+const DIAS_ES = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MESES_ES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+const FIELD_LABELS = {
+  L1_carga:'L1', L1_pot:'L1', L2_carga:'L2', L2_pot:'L2',
+  V_ac_out:'Vout', load_kw:'Load', V_panel:'Vpaneles', P_panel:'Ppaneles',
+  I_bat:'Ibateria', V_dc_out:'V DC OUT',
+  DC_load:'DC Load', AC_load:'AC Load',
+  L1:'L1', L2:'L2', N:'N',
+  V_banco:'V Banco', I_banco:'I Banco',
+  libre:'Notas'
+};
+const FIELD_UNITS = {
+  L1_carga:'%', L1_pot:'kW', L2_carga:'%', L2_pot:'kW',
+  V_ac_out:'Vac', load_kw:'kW', V_panel:'V', P_panel:'kW',
+  I_bat:'Adc', V_dc_out:'VDC',
+  DC_load:'kW', AC_load:'kW', I_bat:'Acc',
+  L1:'A', L2:'A', N:'A',
+  V_banco:'VDC', I_banco:'A',
+};
+
+function generateReportText({nodeName, date, shift, technicianName, measurements, observations, equipment}) {
+  const d = date instanceof Date ? date : new Date(date);
+  const dia = DIAS_ES[d.getDay()];
+  const diaNum = String(d.getDate()).padStart(2,'0');
+  const mes = String(d.getMonth()+1).padStart(2,'0');
+  const anio = d.getFullYear();
+  const fechaStr = `${diaNum}/${mes}/${anio}`;
+  const diaCap = dia.charAt(0).toUpperCase()+dia.slice(1);
+
+  let lines = [];
+  lines.push(`${diaCap} ${fechaStr} se realizó el mantenimiento preventivo en el cuarto de energía del ${nodeName}.`);
+  lines.push('');
+
+  // Mediciones por equipo — orden basado en el tag
+  const tags = Object.keys(measurements).sort();
+  tags.forEach(tag => {
+    const vals = measurements[tag];
+    const eq = equipment.find(e=>e.tag===tag)||{};
+    lines.push(tag);
+    Object.entries(vals).forEach(([k,v]) => {
+      if(v===''||v===null||v===undefined) return;
+      const lbl = FIELD_LABELS[k]||k.replace(/_/g,' ');
+      const unit = FIELD_UNITS[k]||'';
+      // Formato especial para campos en pares (carga% y kW en misma linea agrupados)
+      lines.push(`${lbl}: ${v}${unit?' '+unit:''}`);
+    });
+    lines.push('');
+  });
+
+  if(observations && observations.trim()) {
+    lines.push('Observaciones:');
+    observations.trim().split('\n').forEach(l=>{
+      lines.push(l.startsWith('-')?l:'- '+l);
+    });
+    lines.push('');
+  }
+
+  lines.push(`Para la realización de esta actividad se contó con el apoyo del personal:`);
+  lines.push(`        - ${technicianName}`);
+
+  return lines.join('\n');
+}
+
+function ReportModal({ data, onClose }) {
+  const [text,setText]=useState(()=>generateReportText(data));
+  const [copied,setCopied]=useState(false);
+
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2200);});
+  };
+
+  return (
+    <div className="fin">
+      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:18}}>
+        <div style={{width:36,height:36,background:'rgba(16,185,129,.15)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>📋</div>
+        <div>
+          <h2 className="fd" style={{fontSize:'1.05rem',fontWeight:700,color:'var(--tx1)'}}>Reporte Generado</h2>
+          <p style={{color:'var(--tx3)',fontSize:'.78rem'}}>Puedes editar el texto antes de copiarlo</p>
+        </div>
+      </div>
+
+      <div className="card" style={{marginBottom:14,background:'var(--bg-deep)',borderColor:'rgba(16,185,129,.2)'}}>
+        <textarea
+          value={text}
+          onChange={e=>setText(e.target.value)}
+          style={{width:'100%',background:'transparent',border:'none',color:'#cbd5e1',fontFamily:"'JetBrains Mono',monospace",fontSize:'.82rem',lineHeight:1.7,resize:'vertical',outline:'none',minHeight:340}}
+        />
+      </div>
+
+      <div style={{display:'flex',gap:10}}>
+        <button className="bg" style={{flex:1}} onClick={copy}>
+          {copied?'✅ Copiado!':'📋 Copiar texto'}
+        </button>
+        <button className="bp" style={{flex:1}} onClick={onClose}>
+          ✓ Finalizar
+        </button>
+      </div>
+      <p style={{textAlign:'center',color:'var(--tx4)',fontSize:'.74rem',marginTop:10}}>
+        Puedes editar el reporte antes de copiarlo para compartirlo por WhatsApp o correo.
+      </p>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════
 // 📝 FORMULARIO DE REGISTRO
 // ═══════════════════════════════════════════════════
@@ -460,6 +569,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
   const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasSolar:false,batteryType:'LFP',notes:''});
+  const [reportData,setReportData]=useState(null);
 
   const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
   const active=equipment.filter(e=>e.active!==false);
@@ -473,13 +583,14 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         const filled=Object.fromEntries(Object.entries(fields).filter(([,v])=>v!==''&&v!==null&&v!==undefined));
         if(Object.keys(filled).length>0) cleanMeas[tag]=filled;
       });
-      await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add({
+      const record = {
         type, date:new Date(date), shift, observations:obs,
         technicianId:userProfile.uid, technicianName:userProfile.name,
         measurements: type==='inspeccion' ? cleanMeas : {},
         equipmentAction: type!=='inspeccion' ? eqAction : null,
         createdAt:TS()
-      });
+      };
+      await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add(record);
       if (type==='instalacion' && eqAction.tag) {
         await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
           tag:eqAction.tag, type:eqAction.type, voltage:eqAction.voltage,
@@ -492,10 +603,17 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         if(eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({active:false,retiredAt:new Date(date)});
       }
       toast('Registro guardado exitosamente.','success');
-      onSave();
+      // Solo mostrar reporte si es inspección con mediciones
+      if(type==='inspeccion' && Object.keys(cleanMeas).length>0) {
+        setReportData({nodeName, date:new Date(date), shift, technicianName:userProfile.name, measurements:cleanMeas, observations:obs, equipment:active});
+      } else {
+        onSave();
+      }
     } catch(e) { console.error(e); toast('Error al guardar. Intenta de nuevo.','error'); }
     setSaving(false);
   };
+
+  if(reportData) return <ReportModal data={reportData} onClose={onSave} />;
 
   return (
     <div className="fin">
@@ -1706,7 +1824,13 @@ function PublicNodeView({ nodeId }) {
 
         {/* Footer */}
         <div style={{textAlign:'center',marginTop:30,paddingTop:16,borderTop:'1px solid var(--border)'}}>
-          <p style={{fontSize:'.72rem',color:'var(--tx4)'}}>Vista de solo lectura · Airtek Energía</p>
+          <p style={{fontSize:'.72rem',color:'var(--tx4)',marginBottom:12}}>Vista de solo lectura · Airtek Energía</p>
+          <a href={window.location.origin+window.location.pathname}
+            style={{display:'inline-block',background:'var(--bg-elevated)',border:'1px solid var(--border-bright)',color:'var(--tx2)',padding:'8px 20px',borderRadius:7,fontSize:'.8rem',fontFamily:"'Exo 2',sans-serif",fontWeight:600,textDecoration:'none',transition:'all .18s'}}
+            onMouseOver={e=>e.target.style.borderColor='#f59e0b'}
+            onMouseOut={e=>e.target.style.borderColor='var(--border-bright)'}>
+            🔐 Iniciar sesión
+          </a>
         </div>
       </div>
     </div>
