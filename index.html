@@ -1054,6 +1054,88 @@ function NodeList({ userProfile, toast }) {
 }
 
 // ═══════════════════════════════════════════════════
+// ➕ AGREGAR USUARIO EXISTENTE
+// ═══════════════════════════════════════════════════
+function AddExistingUser({ toast, userProfile }) {
+  const [open,setOpen]=useState(false);
+  return (
+    <div className="card" style={{marginBottom:16,borderColor:'rgba(59,130,246,.25)',background:'rgba(59,130,246,.04)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer'}} onClick={()=>setOpen(!open)}>
+        <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#3b82f6',textTransform:'uppercase',letterSpacing:'.1em'}}>
+          ➕ Agregar Usuario Existente de Firebase
+        </h3>
+        <span style={{color:'#3b82f6',fontSize:18}}>{open?'▲':'▼'}</span>
+      </div>
+      {open && (
+        <div style={{marginTop:14}}>
+          <div style={{background:'rgba(59,130,246,.08)',borderRadius:6,padding:'10px 14px',marginBottom:14,fontSize:'.82rem',color:'#94a3b8',lineHeight:1.6}}>
+            Para usuarios que ya tienen cuenta en otras apps del mismo proyecto Firebase.<br/>
+            <b style={{color:'#3b82f6'}}>Cómo obtener el UID:</b> Firebase Console → Authentication → Users → copia el User UID del usuario.
+          </div>
+          <UID_AddForm toast={toast} userProfile={userProfile} onDone={()=>setOpen(false)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UID_AddForm({ toast, userProfile, onDone }) {
+  const [uid,setUid]=useState('');
+  const [name,setName]=useState('');
+  const [email,setEmail]=useState('');
+  const [role,setRole]=useState('tecnico');
+  const [loading,setLoading]=useState(false);
+
+  const save = async () => {
+    if(!uid.trim()||!name.trim()){toast('UID y nombre son requeridos.','error');return;}
+    setLoading(true);
+    try {
+      const docRef = db.collection('energy_users').doc(uid.trim());
+      const existing = await docRef.get();
+      if(existing.exists){toast('Este UID ya tiene documento en energy_users.','warn');setLoading(false);return;}
+      await docRef.set({
+        name:name.trim(), email:email.trim().toLowerCase(),
+        role, approved:true, createdAt:TS()
+      });
+      toast('Usuario agregado exitosamente. Ya puede ingresar con su contraseña existente.','success');
+      setUid('');setName('');setEmail('');setRole('tecnico');
+      onDone();
+    } catch(e){console.error(e);toast('Error: '+e.message,'error');}
+    setLoading(false);
+  };
+
+  return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+      <div style={{gridColumn:'1/-1'}}>
+        <label className="lbl">UID de Firebase Auth</label>
+        <input className="fi fm" value={uid} onChange={e=>setUid(e.target.value)} placeholder="Ej: HxhK9DQ8EcYpQu4q4itjDo7vlxI2" />
+      </div>
+      <div>
+        <label className="lbl">Nombre completo</label>
+        <input className="fi" value={name} onChange={e=>setName(e.target.value)} placeholder="Juan Pérez" />
+      </div>
+      <div>
+        <label className="lbl">Correo (referencia)</label>
+        <input className="fi" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="correo@airtek.com" />
+      </div>
+      <div>
+        <label className="lbl">Rol</label>
+        <select className="fi" value={role} onChange={e=>setRole(e.target.value)}>
+          <option value="tecnico">Técnico</option>
+          <option value="supervisor">Supervisor</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div style={{gridColumn:'1/-1'}}>
+        <button className="bi" style={{width:'100%',padding:'10px'}} onClick={save} disabled={loading}>
+          {loading?'Guardando...':'✅ Agregar Usuario'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
 // 🛡️  PANEL DE ADMINISTRACIÓN
 // ═══════════════════════════════════════════════════
 function AdminPanel({ userProfile, toast }) {
@@ -1156,6 +1238,7 @@ function AdminPanel({ userProfile, toast }) {
           {pending.length>0 && <div style={{background:'rgba(245,158,11,.1)',border:'1px solid rgba(245,158,11,.3)',borderRadius:8,padding:'10px 14px',marginBottom:16,color:'#fcd34d',fontSize:'.85rem'}}>
             ⚠️ {pending.length} usuario(s) pendiente(s) de aprobación
           </div>}
+          <AddExistingUser nodes={nodes} toast={toast} userProfile={userProfile} />
           {ldU ? <div style={{color:'var(--tx3)',textAlign:'center',padding:40}}>Cargando...</div>
           : users.map(u=>(
             <div key={u.id} className="card" style={{marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:10}}>
@@ -1426,7 +1509,7 @@ function App() {
       <div style={{maxWidth:980,margin:'0 auto',padding:'22px 16px'}}>
         {appView==='nodes' && <NodeList userProfile={userProfile} toast={toast} />}
         {appView==='admin' && userProfile.role==='admin' && <AdminPanel userProfile={userProfile} toast={toast} />}
-        {appView==='admin' && userProfile.role!=='admin' && <div style={{textAlign:'center',padding:60,color:'var(--tx3)'}}>Acceso restringido.</div>}
+        {appView==='admin' && userProfile.role!=='admin' && <NodeList userProfile={userProfile} toast={toast} />}
       </div>
       {toastData && <Toast key={toastData.key} msg={toastData.msg} type={toastData.type} onDone={()=>setToastData(null)} />}
     </div>
