@@ -162,6 +162,89 @@ const EQ_TYPES = {
 
 // Orden canónico de tipos para mostrar equipos
 const EQ_ORDER = { INV:0, ETP:1, ATS:2, BAT:3, OTR:4 };
+
+// Extrae identificador de banco del tag
+// INV06-LFP00→LFP00 | BAT00-LFP→LFP00 | ETP02-AC-PV-NMC02→NMC02
+const getBankId = tag => {
+  const t = (tag||'').toUpperCase();
+  const m1 = t.match(/(LFP|NMC|GEL|AGM|VRLA)(\d+)$/);
+  if(m1) return m1[1]+m1[2];
+  const m2 = t.match(/^BAT(\d+)[_-](LFP|NMC|GEL|AGM|VRLA)/);
+  if(m2) return m2[2]+m2[1];
+  return null;
+};
+
+// Agrupa equipos: no-BAT por banco → BAT al final del grupo → ATS/OTR al final
+const groupByBank = (eqs) => {
+  const nonBat = eqs.filter(e=>e.type!=='BAT'&&e.type!=='ATS'&&e.type!=='OTR');
+  const bats    = eqs.filter(e=>e.type==='BAT');
+  const atsotr  = eqs.filter(e=>e.type==='ATS'||e.type==='OTR');
+  const groups = [];
+  const seen = new Set();
+  nonBat.forEach(eq=>{
+    const bank = getBankId(eq.tag);
+    if(!bank||seen.has(bank)) return;
+    seen.add(bank);
+    groups.push({
+      bank,
+      eqs: nonBat.filter(e=>getBankId(e.tag)===bank),
+      bat: bats.find(b=>getBankId(b.tag)===bank)||null
+    });
+  });
+  const ungrouped = nonBat.filter(e=>!getBankId(e.tag));
+  if(ungrouped.length) groups.push({bank:null,eqs:ungrouped,bat:null});
+  const orphanBats = bats.filter(b=>!nonBat.some(e=>getBankId(e.tag)===getBankId(b.tag)));
+  if(orphanBats.length) groups.push({bank:'_orphan',eqs:[],bat:null,orphanBats});
+  if(atsotr.length) groups.push({bank:'_ats',eqs:atsotr,bat:null});
+  return groups;
+};
+
+// Calcula carga kW de un equipo dada sus mediciones
+const calcLoad = (eqType, vals) => {
+  if(!vals) return 0;
+  if(eqType==='INV'){
+    if(vals.load_kw) return parseFloat(vals.load_kw)||0;
+    const l1=(parseFloat(vals.L1_pot)||0), l2=(parseFloat(vals.L2_pot)||0);
+    return l1+l2;
+  }
+  if(eqType==='ETP'){
+    return (parseFloat(vals.AC_load)||0)+(parseFloat(vals.DC_load)||0);
+  }
+  return 0;
+};
+
+// Voltaje nominal por tipo de batería (V)
+const BAT_VN = { LFP:48, GEL:48, AGM:48, VRLA:48, NMC:52.5 };
+// Valores por defecto para autonomía según tipo
+const BAT_DEFAULTS = {
+  LFP:  {DoD:0.8, SoH:1.0, ebanco:0.98, eTemp:1.0, ereg:0.85},
+  NMC:  {DoD:0.8, SoH:0.45, ebanco:0.95, eTemp:1.0, ereg:0.85},
+  GEL:  {DoD:0.6, SoH:0.25, ebanco:0.95, eTemp:1.0, ereg:0.85},
+  AGM:  {DoD:0.6, SoH:0.25, ebanco:0.95, eTemp:1.0, ereg:0.85},
+  VRLA: {DoD:0.6, SoH:0.25, ebanco:0.95, eTemp:1.0, ereg:0.85},
+};
+// t = (Vn × Cap × SoH × DoD × ebanco × eTemp) / (Carga_W / ereg)
+const calcAutonomy = (batEq, loadKW) => {
+  if(!batEq||!loadKW||loadKW<=0) return null;
+  const cap  = parseFloat(batEq.batCapacity)||0;
+  const type = batEq.batteryType||'LFP';
+  if(!cap) return null;
+  const Vn = BAT_VN[type]||48;
+  const def = BAT_DEFAULTS[type]||BAT_DEFAULTS.LFP;
+  const DoD   = parseFloat(batEq.batDoD)  || def.DoD;
+  const SoH   = parseFloat(batEq.batSoH)  || def.SoH;
+  const eb    = parseFloat(batEq.batEbanco)|| def.ebanco;
+  const eT    = parseFloat(batEq.batETemp) || def.eTemp;
+  const ereg  = def.ereg;
+  const loadW = loadKW * 1000;
+  const tHours = (Vn * cap * SoH * DoD * eb * eT) / (loadW / ereg);
+  return tHours;
+};
+const fmtHours = h => {
+  if(!h||h<=0) return '—';
+  const hh=Math.floor(h), mm=Math.round((h-hh)*60);
+  return `${hh}h ${mm.toString().padStart(2,'0')}min`;
+};
 const sortEquipment = eqs => [...eqs].sort((a,b) => {
   const oa = EQ_ORDER[a.type]??5, ob = EQ_ORDER[b.type]??5;
   if(oa!==ob) return oa-ob;
@@ -492,24 +575,48 @@ function generateReportText({nodeName, date, shift, technicianName, measurements
   const fechaStr = `${diaNum}/${mes}/${anio}`;
   const diaCap = dia.charAt(0).toUpperCase()+dia.slice(1);
 
+  const fmtVal = (k,v) => {
+    if(v===''||v===null||v===undefined) return null;
+    const lbl = FIELD_LABELS[k]||k.replace(/_/g,' ');
+    const unit = FIELD_UNITS[k]||'';
+    return `${lbl}: ${v}${unit?' '+unit:''}`;
+  };
+
+  const printEq = (tag, lines) => {
+    const vals = measurements[tag];
+    if(!vals) return;
+    lines.push(tag);
+    Object.entries(vals).forEach(([k,v])=>{
+      const s = fmtVal(k,v); if(s) lines.push(s);
+    });
+  };
+
   let lines = [];
   lines.push(`${diaCap} ${fechaStr} se realizó el mantenimiento preventivo en el cuarto de energía del ${nodeName}.`);
   lines.push('');
 
-  // Mediciones por equipo — orden basado en el tag
-  const tags = Object.keys(measurements).sort();
-  tags.forEach(tag => {
-    const vals = measurements[tag];
-    const eq = equipment.find(e=>e.tag===tag)||{};
-    lines.push(tag);
-    Object.entries(vals).forEach(([k,v]) => {
-      if(v===''||v===null||v===undefined) return;
-      const lbl = FIELD_LABELS[k]||k.replace(/_/g,' ');
-      const unit = FIELD_UNITS[k]||'';
-      // Formato especial para campos en pares (carga% y kW en misma linea agrupados)
-      lines.push(`${lbl}: ${v}${unit?' '+unit:''}`);
-    });
+  // Equipos medidos — ordenados y agrupados por banco
+  const measuredEqs = sortEquipment(
+    equipment.filter(e=>measurements[e.tag]&&Object.keys(measurements[e.tag]).some(k=>measurements[e.tag][k]!==''))
+  );
+  const groups = groupByBank(measuredEqs);
+
+  groups.forEach(({bank, eqs, bat, orphanBats}) => {
+    if(bank==='_ats') {
+      // ATS va al final con su sección
+      eqs.forEach(eq => { printEq(eq.tag, lines); lines.push(''); });
+      return;
+    }
+    // Equipos del grupo
+    eqs.forEach(eq => { printEq(eq.tag, lines); });
+    // Voltaje del banco al final del grupo
+    if(bat && measurements[bat.tag]) {
+      const vb = measurements[bat.tag].V_banco;
+      if(vb) lines.push(`V Banco ${bank}: ${vb} Vdc`);
+    }
     lines.push('');
+    // Bancos huérfanos
+    if(orphanBats) orphanBats.forEach(eq => { printEq(eq.tag, lines); lines.push(''); });
   });
 
   if(observations && observations.trim()) {
@@ -669,40 +776,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
               <button className="bp" style={{fontSize:'.82rem'}} onClick={()=>setType('instalacion')}>Registrar Instalación</button>
             </div>
           : (() => {
-              // Extrae el identificador de banco del tag
-              // INV06-LFP00 → LFP00 | BAT00-LFP → LFP00 | BAT02-NMC → NMC02
-              const getBankSuffix = tag => {
-                const t = (tag||'').toUpperCase();
-                // Primero: patrón tipo+número al final → LFP00, NMC02, GEL01
-                const m1 = t.match(/(LFP|NMC|GEL|AGM|VRLA|NIMH|NICD)(\d+)$/);
-                if(m1) return m1[1]+m1[2];
-                // Segundo: BAT##-TIPO sin número → BAT00-LFP → LFP00
-                const m2 = t.match(/^BAT(\d+)[_-](LFP|NMC|GEL|AGM|VRLA)/);
-                if(m2) return m2[2]+m2[1];
-                return null;
-              };
-              // Separar BAT de no-BAT
-              const nonBat = active.filter(e=>e.type!=='BAT');
-              const bats    = active.filter(e=>e.type==='BAT');
-              // Construir grupos únicos por banco preservando orden de aparición
-              const groups = [];
-              const seen = new Set();
-              nonBat.forEach(eq => {
-                const bank = getBankSuffix(eq.tag);
-                if(!bank || seen.has(bank)) return;
-                seen.add(bank);
-                // Todos los no-BAT con este banco
-                const groupEqs = nonBat.filter(e=>getBankSuffix(e.tag)===bank);
-                // Banco BAT asociado
-                const batEq = bats.find(b=>getBankSuffix(b.tag)===bank);
-                groups.push({bank, eqs:groupEqs, bat:batEq});
-              });
-              // Equipos sin banco identificable (ATS, OTR, etc.)
-              const ungrouped = nonBat.filter(eq=>!getBankSuffix(eq.tag));
-              if(ungrouped.length) groups.push({bank:null, eqs:ungrouped, bat:null});
-              // Bancos huérfanos sin equipo asociado
-              const orphanBats = bats.filter(b=>!nonBat.some(e=>getBankSuffix(e.tag)===getBankSuffix(b.tag)));
-              if(orphanBats.length) groups.push({bank:'_orphan', eqs:[], bat:null, orphanBats});
+              const groups = groupByBank(active);
 
               return groups.map(({bank, eqs, bat, orphanBats}) => (
                 <div key={bank||'_ung'} style={{marginBottom:20}}>
@@ -880,8 +954,28 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
 // ═══════════════════════════════════════════════════
 // 🔎 DETALLE DE REGISTRO
 // ═══════════════════════════════════════════════════
-function RecordDetail({ record, onBack }) {
+function RecordDetail({ record, onBack, nodeId }) {
   const rt = REC_TYPES[record.type]||{label:record.type,icon:'📋',color:'#64748b'};
+  const [editMeas,setEditMeas]=React.useState(false);
+  const [measEdit,setMeasEdit]=React.useState(null); // snapshot editable
+  const [saving,setSaving]=React.useState(false);
+
+  const openEdit = () => {
+    // Deep clone measurements
+    setMeasEdit(JSON.parse(JSON.stringify(record.measurements||{})));
+    setEditMeas(true);
+  };
+  const saveEdit = async () => {
+    if(!nodeId||!record.id) return;
+    setSaving(true);
+    try {
+      await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).update({measurements:measEdit});
+      // Update local record object so view reflects changes
+      Object.assign(record.measurements, measEdit);
+      setEditMeas(false);
+    } catch(e){console.error(e);}
+    setSaving(false);
+  };
   const II = ({label,value,mono}) => (
     <div>
       <div style={{fontSize:'.68rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2,fontFamily:"'Exo 2',sans-serif"}}>{label}</div>
@@ -890,12 +984,47 @@ function RecordDetail({ record, onBack }) {
   );
   return (
     <div className="fin">
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:22}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:22}}>←</button>
-        <div>
-          <h2 className="fd" style={{fontSize:'1.1rem',fontWeight:700,color:'var(--tx1)'}}>{rt.icon} {rt.label}</h2>
-          <p style={{color:'var(--tx3)',fontSize:'.8rem'}}>{fmtDateTime(record.date)}</p>
+      {editMeas && (
+        <div className="overlay" onClick={()=>setEditMeas(false)}>
+          <div className="card fin" style={{maxWidth:560,width:'100%',maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+              <h3 className="fd" style={{fontWeight:700,color:'var(--amber)',fontSize:'1rem'}}>✏️ Editar Mediciones</h3>
+              <button onClick={()=>setEditMeas(false)} style={{background:'none',border:'none',color:'var(--tx3)',cursor:'pointer',fontSize:20}}>✕</button>
+            </div>
+            {Object.entries(measEdit).map(([tag,vals])=>(
+              <div key={tag} className="card" style={{marginBottom:10,borderLeft:'3px solid var(--amber)'}}>
+                <div className="fm" style={{fontSize:'.85rem',color:'var(--amber)',fontWeight:700,marginBottom:10}}>{tag}</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  {Object.entries(vals).map(([k,v])=>(
+                    <div key={k}>
+                      <label style={{display:'block',fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:3,fontFamily:"'Exo 2',sans-serif"}}>
+                        {FIELD_LABELS[k]||k} <span style={{color:'var(--amber)'}}>{FIELD_UNITS[k]||''}</span>
+                      </label>
+                      <input className="mi" type="number" step="any" value={measEdit[tag][k]??''}
+                        onChange={e=>setMeasEdit(prev=>{const n=JSON.parse(JSON.stringify(prev));n[tag][k]=e.target.value;return n;})}/>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{display:'flex',gap:10,marginTop:14}}>
+              <button className="bp" style={{flex:1}} onClick={saveEdit} disabled={saving}>{saving?'Guardando...':'💾 Guardar Cambios'}</button>
+              <button className="bs" onClick={()=>setEditMeas(false)} disabled={saving}>Cancelar</button>
+            </div>
+          </div>
         </div>
+      )}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:22}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <button onClick={onBack} style={{background:'none',border:'none',color:'#94a3b8',cursor:'pointer',fontSize:22}}>←</button>
+          <div>
+            <h2 className="fd" style={{fontSize:'1.1rem',fontWeight:700,color:'var(--tx1)'}}>{rt.icon} {rt.label}</h2>
+            <p style={{color:'var(--tx3)',fontSize:'.8rem'}}>{fmtDateTime(record.date)}</p>
+          </div>
+        </div>
+        {record.type==='inspeccion'&&record.measurements&&Object.keys(record.measurements).length>0&&(
+          <button onClick={openEdit} className="bs" style={{padding:'6px 14px',fontSize:'.78rem'}}>✏️ Editar valores</button>
+        )}
       </div>
       <div className="card" style={{marginBottom:14}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
@@ -909,24 +1038,74 @@ function RecordDetail({ record, onBack }) {
           <p style={{color:'#cbd5e1',fontSize:'.9rem'}}>{record.observations}</p>
         </div>}
       </div>
-      {record.measurements && Object.keys(record.measurements).length>0 && (
-        <div>
-          <h3 className="fd" style={{fontSize:'.75rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>Mediciones Registradas</h3>
-          {Object.entries(record.measurements).map(([tag,vals])=>(
-            <div key={tag} className="card" style={{marginBottom:10}}>
-              <div className="fm" style={{fontSize:'.88rem',color:'#f59e0b',fontWeight:600,marginBottom:10}}>{tag}</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8}}>
+      {record.measurements && Object.keys(record.measurements).length>0 && (()=>{
+        // Reconstruir lista de equipos medidos para agrupar por banco
+        const meas = record.measurements;
+        const measTags = Object.keys(meas);
+        // Crear objetos de equipo ficticios desde los tags medidos
+        const fakeEqs = sortEquipment(measTags.map(tag=>{
+          const t=tag.toUpperCase();
+          const type = t.startsWith('INV')?'INV':t.startsWith('ETP')?'ETP':t.startsWith('ATS')?'ATS':t.startsWith('BAT')?'BAT':'OTR';
+          return {id:tag,tag,type,active:true};
+        }));
+        const groups = groupByBank(fakeEqs);
+        // Calcular carga total del nodo
+        const totalLoad = measTags.reduce((sum,tag)=>{
+          const type=tag.toUpperCase().startsWith('INV')?'INV':tag.toUpperCase().startsWith('ETP')?'ETP':'OTR';
+          return sum+calcLoad(type,meas[tag]);
+        },0);
+
+        const MeasCard = ({tag,highlight}) => {
+          const vals=meas[tag]||{};
+          const type=tag.toUpperCase().startsWith('INV')?'INV':tag.toUpperCase().startsWith('ETP')?'ETP':tag.toUpperCase().startsWith('ATS')?'ATS':tag.toUpperCase().startsWith('BAT')?'BAT':'OTR';
+          const ti=EQ_TYPES[type]||EQ_TYPES.OTR;
+          const load=calcLoad(type,vals);
+          return (
+            <div style={{background:highlight?'rgba(139,92,246,.06)':'var(--bg-surface)',borderRadius:7,padding:'10px 12px',marginBottom:6,border:`1px solid ${highlight?'rgba(139,92,246,.2)':'var(--border)'}`}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,flexWrap:'wrap',gap:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                  <span className="badge" style={{background:ti.bg,color:ti.color,fontSize:'.62rem'}}>{type}</span>
+                  <span className="fm" style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:600}}>{tag}</span>
+                </div>
+                {load>0&&<span className="fm" style={{fontSize:'.8rem',color:'#10b981',fontWeight:700}}>{load.toFixed(2)} kW</span>}
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:6}}>
                 {Object.entries(vals).filter(([,v])=>v!==''&&v!==null).map(([k,v])=>(
-                  <div key={k} style={{background:'var(--bg-deep)',borderRadius:6,padding:'8px 10px'}}>
-                    <div style={{fontSize:'.62rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:2,fontFamily:"'Exo 2',sans-serif"}}>{k.replace(/_/g,' ')}</div>
-                    <div className="fm" style={{fontSize:'1rem',color:'#10b981',fontWeight:600}}>{v}</div>
+                  <div key={k} style={{background:'var(--bg-deep)',borderRadius:5,padding:'6px 8px'}}>
+                    <div style={{fontSize:'.6rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:1,fontFamily:"'Exo 2',sans-serif"}}>{(FIELD_LABELS[k]||k.replace(/_/g,' '))} <span style={{color:'var(--amber)',fontWeight:600}}>{FIELD_UNITS[k]||''}</span></div>
+                    <div className="fm" style={{fontSize:'.95rem',color:'#10b981',fontWeight:600}}>{v}</div>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        };
+
+        return (
+          <div>
+            {/* Carga total del nodo */}
+            {totalLoad>0&&<div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.2)',borderRadius:8,padding:'10px 14px',marginBottom:14,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em'}}>Carga Total del Nodo</span>
+              <span className="fm" style={{fontSize:'1.3rem',fontWeight:800,color:'#10b981'}}>{totalLoad.toFixed(2)} <span style={{fontSize:'.8rem'}}>kW</span></span>
+            </div>}
+            <h3 className="fd" style={{fontSize:'.75rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>Mediciones Registradas</h3>
+            {groups.map(({bank,eqs,bat,orphanBats})=>{
+              const bankLoad = eqs.reduce((s,e)=>s+calcLoad(e.type,meas[e.tag]),0);
+              return (
+                <div key={bank||'_ung'} style={{marginBottom:16}}>
+                  {bank&&bank!=='_ats'&&bank!=='_orphan'&&<div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+                    <span style={{fontSize:'.68rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:"'Exo 2',sans-serif"}}>Banco {bank}</span>
+                    {bankLoad>0&&<span className="fm" style={{fontSize:'.8rem',color:'#f59e0b',fontWeight:700}}>Σ {bankLoad.toFixed(2)} kW</span>}
+                  </div>}
+                  {eqs.map(e=><MeasCard key={e.tag} tag={e.tag} highlight={false}/>)}
+                  {bat&&meas[bat.tag]&&<MeasCard key={bat.tag} tag={bat.tag} highlight={true}/>}
+                  {orphanBats&&orphanBats.map(e=><MeasCard key={e.tag} tag={e.tag} highlight={true}/>)}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
       {record.equipmentAction && (record.equipmentAction.tag||record.equipmentAction.type) && (
         <div className="card">
           <h3 className="fd" style={{fontSize:'.75rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:12}}>Acción de Equipo</h3>
@@ -943,6 +1122,209 @@ function RecordDetail({ record, onBack }) {
   );
 }
 
+
+
+// ═══════════════════════════════════════════════════
+// 📊 GRÁFICO HISTÓRICO DE CARGAS POR BANCO
+// ═══════════════════════════════════════════════════
+function LoadChart({ records, equipment }) {
+  const [selBank,setSelBank]=React.useState('_total');
+
+  // Solo inspecciones con mediciones
+  const inspRecords = records
+    .filter(r=>r.type==='inspeccion'&&r.measurements&&Object.keys(r.measurements).length>0)
+    .slice().reverse(); // cronológico
+
+  if(inspRecords.length===0) return (
+    <div style={{textAlign:'center',padding:50,color:'var(--tx3)'}}>
+      <div style={{fontSize:36,marginBottom:10}}>📊</div>
+      <p>Aún no hay inspecciones con mediciones registradas.</p>
+    </div>
+  );
+
+  // Obtener todos los bancos presentes en el historial
+  const allBanks = new Set();
+  inspRecords.forEach(r=>{
+    Object.keys(r.measurements).forEach(tag=>{
+      const b=getBankId(tag); if(b) allBanks.add(b);
+    });
+  });
+  const bankList = ['_total',...Array.from(allBanks).sort()];
+
+  // Calcular series de datos
+  const series = inspRecords.map(r=>{
+    const d=r.date?.toDate?r.date.toDate():new Date(r.date);
+    const label=d.toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit'});
+    let total=0;
+    const bankLoads={};
+    Object.entries(r.measurements).forEach(([tag,vals])=>{
+      const type=tag.toUpperCase().startsWith('INV')?'INV':tag.toUpperCase().startsWith('ETP')?'ETP':'OTR';
+      const load=calcLoad(type,vals);
+      total+=load;
+      const bank=getBankId(tag);
+      if(bank) bankLoads[bank]=(bankLoads[bank]||0)+load;
+    });
+    return {label, date:d, total:parseFloat(total.toFixed(2)), ...bankLoads};
+  });
+
+  const dataKey = selBank==='_total'?'total':selBank;
+  const dataColor = selBank==='_total'?'#10b981':'#f59e0b';
+  const maxVal = Math.max(...series.map(s=>parseFloat(s[dataKey])||0), 0.1);
+
+  // Simple canvas-free SVG bar chart
+  const W=100, barW=Math.max(4, Math.min(18, W/series.length-2));
+  const H=120;
+
+  return (
+    <div className="fin">
+      {/* Banco selector */}
+      <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+        {bankList.map(b=>(
+          <button key={b} onClick={()=>setSelBank(b)}
+            style={{padding:'4px 11px',borderRadius:5,border:'1px solid',fontSize:'.74rem',cursor:'pointer',
+              fontFamily:"'Exo 2',sans-serif",fontWeight:600,transition:'all .15s',
+              background:selBank===b?(b==='_total'?'#10b981':'#f59e0b'):'transparent',
+              borderColor:b==='_total'?'#10b981':'#f59e0b',
+              color:selBank===b?'#000':(b==='_total'?'#10b981':'#f59e0b')}}>
+            {b==='_total'?'Total Nodo':'Banco '+b}
+          </button>
+        ))}
+      </div>
+
+      {/* Resumen última inspección */}
+      {(()=>{
+        const last=series[series.length-1];
+        const prev=series[series.length-2];
+        const cur=parseFloat(last[dataKey])||0;
+        const pre=prev?parseFloat(prev[dataKey])||0:null;
+        const diff=pre!==null?cur-pre:null;
+        return (
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:18}}>
+            {[
+              {lbl:'Última inspección', val:cur.toFixed(2)+' kW', c:'#10b981'},
+              {lbl:'Anterior', val:pre!==null?pre.toFixed(2)+' kW':'—', c:'#3b82f6'},
+              {lbl:'Variación', val:diff!==null?(diff>0?'+':'')+diff.toFixed(2)+' kW':'—', c:diff===null?'#64748b':diff>0.5?'#ef4444':diff<-0.5?'#10b981':'#64748b'},
+            ].map(s=>(
+              <div key={s.lbl} style={{background:'var(--bg-surface)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px'}}>
+                <div style={{fontSize:'.63rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:"'Exo 2',sans-serif",marginBottom:3}}>{s.lbl}</div>
+                <div className="fm" style={{fontSize:'1.1rem',fontWeight:800,color:s.c}}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Gráfico SVG */}
+      <div className="card" style={{padding:'14px 10px 8px',overflowX:'auto'}}>
+        <div style={{fontSize:'.7rem',color:'var(--tx3)',fontFamily:"'Exo 2',sans-serif",textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10,paddingLeft:4}}>
+          Historial — {selBank==='_total'?'Carga Total del Nodo':'Banco '+selBank}
+        </div>
+        <svg viewBox={`0 0 ${Math.max(series.length*14+20,200)} ${H+30}`} style={{width:'100%',minWidth:series.length*14+20,height:'auto'}}>
+          {/* Grid lines */}
+          {[0,0.25,0.5,0.75,1].map(p=>(
+            <line key={p} x1="18" y1={H-H*p} x2={series.length*14+18} y2={H-H*p}
+              stroke="rgba(26,45,71,.6)" strokeWidth="0.5" strokeDasharray={p>0?"3,3":""} />
+          ))}
+          {/* Y labels */}
+          {[0,0.5,1].map(p=>(
+            <text key={p} x="2" y={H-H*p+4} fill="#475569" fontSize="5" fontFamily="JetBrains Mono">
+              {(maxVal*p).toFixed(1)}
+            </text>
+          ))}
+          {/* Bars */}
+          {series.map((s,i)=>{
+            const val=parseFloat(s[dataKey])||0;
+            const bh=Math.max(2,(val/maxVal)*H);
+            const x=i*14+20;
+            return (
+              <g key={i}>
+                <rect x={x} y={H-bh} width={barW} height={bh} fill={dataColor} rx="2" opacity="0.85"/>
+                <text x={x+barW/2} y={H-bh-3} fill={dataColor} fontSize="4.5" textAnchor="middle" fontFamily="JetBrains Mono">
+                  {val>0?val.toFixed(1):''}
+                </text>
+                <text x={x+barW/2} y={H+10} fill="#334155" fontSize="4.5" textAnchor="middle" transform={`rotate(-35,${x+barW/2},${H+10})`}>
+                  {s.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Autonomía por banco */}
+      {selBank!=='_total' && (()=>{
+        const lastRec = inspRecords[inspRecords.length-1];
+        if(!lastRec) return null;
+        const bankLoad = Object.entries(lastRec.measurements||{}).reduce((sum,[tag,vals])=>{
+          if(getBankId(tag)!==selBank) return sum;
+          const type=tag.toUpperCase().startsWith('INV')?'INV':tag.toUpperCase().startsWith('ETP')?'ETP':'OTR';
+          return sum+calcLoad(type,vals);
+        },0);
+        const batEq = equipment.find(e=>e.type==='BAT'&&getBankId(e.tag)===selBank);
+        const aut = batEq ? calcAutonomy(batEq, bankLoad) : null;
+        const cap = batEq?.batCapacity||'—';
+        const type = batEq?.batteryType||'—';
+        const Vn = BAT_VN[type]||48;
+        return (
+          <div className="card" style={{marginTop:14,borderColor:'rgba(139,92,246,.25)',background:'rgba(139,92,246,.05)'}}>
+            <div style={{fontSize:'.72rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:"'Exo 2',sans-serif",marginBottom:12}}>
+              🔋 Autonomía Estimada — Banco {selBank}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10,marginBottom:12}}>
+              {[
+                {lbl:'Capacidad',  val:cap?cap+' Ah':'—',     c:'#8b5cf6'},
+                {lbl:'Tipo',       val:type,                   c:'#8b5cf6'},
+                {lbl:'Vn Banco',   val:Vn+' V',               c:'#3b82f6'},
+                {lbl:'Carga Banco',val:bankLoad>0?bankLoad.toFixed(2)+' kW':'—', c:'#f59e0b'},
+                {lbl:'Autonomía',  val:fmtHours(aut),          c:aut&&aut>2?'#10b981':aut?'#f59e0b':'#64748b', big:true},
+              ].map(s=>(
+                <div key={s.lbl} style={{background:'var(--bg-surface)',borderRadius:7,padding:'9px 11px'}}>
+                  <div style={{fontSize:'.62rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',fontFamily:"'Exo 2',sans-serif",marginBottom:3}}>{s.lbl}</div>
+                  <div className="fm" style={{fontSize:s.big?'1.1rem':'.9rem',fontWeight:800,color:s.c}}>{s.val}</div>
+                </div>
+              ))}
+            </div>
+            {batEq&&<div style={{fontSize:'.72rem',color:'var(--tx4)',borderTop:'1px solid var(--border)',paddingTop:8}}>
+              Fórmula: t = (Vn × Cap × SoH × DoD × ηbanco × ηTemp) / (Carga / ηreg) &nbsp;·&nbsp;
+              DoD={BAT_DEFAULTS[type]?.DoD||0.8} · SoH={parseFloat(batEq.batSoH)||BAT_DEFAULTS[type]?.SoH||1} · η={BAT_DEFAULTS[type]?.ebanco||0.95}
+            </div>}
+            {!batEq&&<p style={{fontSize:'.78rem',color:'var(--tx3)'}}>Agrega el banco BAT de este grupo para calcular la autonomía.</p>}
+          </div>
+        );
+      })()}
+
+      {/* Tabla de histórico */}
+      <div style={{marginTop:14,overflowX:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:'.78rem'}}>
+          <thead>
+            <tr style={{borderBottom:'1px solid var(--border)'}}>
+              <th style={{textAlign:'left',padding:'6px 10px',color:'var(--tx3)',fontFamily:"'Exo 2',sans-serif",fontSize:'.68rem',textTransform:'uppercase',letterSpacing:'.05em'}}>Fecha</th>
+              <th style={{textAlign:'right',padding:'6px 10px',color:'var(--tx3)',fontFamily:"'Exo 2',sans-serif",fontSize:'.68rem',textTransform:'uppercase',letterSpacing:'.05em'}}>Carga (kW)</th>
+              <th style={{textAlign:'right',padding:'6px 10px',color:'var(--tx3)',fontFamily:"'Exo 2',sans-serif",fontSize:'.68rem',textTransform:'uppercase',letterSpacing:'.05em'}}>Variación</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...series].reverse().map((s,i,arr)=>{
+              const cur=parseFloat(s[dataKey])||0;
+              const prev=arr[i+1]?parseFloat(arr[i+1][dataKey])||0:null;
+              const diff=prev!==null?cur-prev:null;
+              return (
+                <tr key={i} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'var(--bg-surface)':'transparent'}}>
+                  <td style={{padding:'7px 10px',color:'var(--tx2)',fontFamily:"'JetBrains Mono',monospace"}}>{s.label}</td>
+                  <td style={{padding:'7px 10px',color:'#10b981',fontFamily:"'JetBrains Mono',monospace",textAlign:'right',fontWeight:700}}>{cur.toFixed(2)}</td>
+                  <td style={{padding:'7px 10px',textAlign:'right',fontFamily:"'JetBrains Mono',monospace",
+                    color:diff===null?'var(--tx4)':diff>0.5?'#ef4444':diff<-0.5?'#10b981':'var(--tx3)'}}>
+                    {diff!==null?(diff>0?'+':'')+diff.toFixed(2):'—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 // ═══════════════════════════════════════════════════
 // ✏️  MODAL EDICIÓN DE EQUIPO
@@ -1126,6 +1508,18 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   };
 
   const exportXLSX = () => {
+    // Hoja 1: Una fila por medición de equipo (valores detallados)
+    const measRows=[];
+    records.filter(r=>r.type==='inspeccion'&&r.measurements).forEach(r=>{
+      const fecha=fmtDate(r.date);
+      const hora=r.date?.toDate?r.date.toDate().toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'}):'';
+      Object.entries(r.measurements||{}).forEach(([tag,vals])=>{
+        const row={'Fecha':fecha,'Hora':hora,'Turno':r.shift==='dia'?'Día':'Noche','Técnico':r.technicianName||'','Equipo':tag};
+        Object.entries(vals).forEach(([k,v])=>{row[(FIELD_LABELS[k]||k)+' ('+(FIELD_UNITS[k]||'-')+')'] = v;});
+        measRows.push(row);
+      });
+    });
+    // Hoja 2: Resumen por inspección
     const recRows=records.map(r=>({
       'Tipo': REC_TYPES[r.type]?.label||r.type,
       'Fecha': fmtDate(r.date),
@@ -1145,6 +1539,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       'Notas': e.notes||'',
     }));
     const wb=XLSX.utils.book_new();
+    if(measRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(measRows), 'Mediciones');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recRows), 'Historial');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eqRows), 'Equipos');
     XLSX.writeFile(wb, `${slugify(node.name)}-datos.xlsx`);
@@ -1156,7 +1551,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   const canWrite=userProfile.role==='tecnico'||userProfile.role==='admin'||userProfile.role==='supervisor';
 
   if(subView==='newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={()=>setSubView('main')} onCancel={()=>setSubView('main')} toast={toast} />;
-  if(subView==='recordDetail'&&selRecord) return <RecordDetail record={selRecord} onBack={()=>setSubView('main')} />;
+  if(subView==='recordDetail'&&selRecord) return <RecordDetail record={selRecord} nodeId={node.id} onBack={()=>setSubView('main')} />;
 
   const saveEditEq = async (data) => {
     try {
@@ -1204,11 +1599,9 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       </div>
 
       {/* Tabs */}
-      <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex'}}>
-        {['equipos','historial','exportar'].map(t=>(
-          <button key={t} className={`tab ${tab===t?'on':''}`} onClick={()=>setTab(t)}>
-            {t==='equipos'?'Equipos':t==='historial'?'Historial':'Exportar'}
-          </button>
+      <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex',overflowX:'auto'}}>
+        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['exportar','Exportar']].map(([k,lbl])=>(
+          <button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)} style={{whiteSpace:'nowrap'}}>{lbl}</button>
         ))}
       </div>
 
@@ -1263,6 +1656,9 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
           })}
         </div>
       )}
+
+      {/* TAB CARGAS */}
+      {tab==='cargas' && <LoadChart records={records} equipment={equipment} />}
 
       {/* TAB HISTORIAL */}
       {tab==='historial' && (
