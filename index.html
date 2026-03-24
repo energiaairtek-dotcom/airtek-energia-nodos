@@ -15,6 +15,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     :root {
       --bg-deep: #07101f;
@@ -306,6 +307,46 @@ try {
 } catch(e) { console.error('Firebase error:', e); }
 
 // ═══════════════════════════════════════════════════
+// 📧 EMAILJS CONFIG — configura con tus credenciales
+// ═══════════════════════════════════════════════════
+const EMAILJS_SERVICE_ID  = 'TU_SERVICE_ID';   // ej: 'service_abc123'
+const EMAILJS_TEMPLATE_ID = 'TU_TEMPLATE_ID';  // ej: 'template_xyz789'
+const EMAILJS_PUBLIC_KEY  = 'TU_PUBLIC_KEY';   // ej: 'aBcDeFgH...'
+const ALERT_EMAIL         = 'supervisor@airtek.com'; // email destino de alarmas
+
+// ═══════════════════════════════════════════════════
+// ⚡ TABLA DE AMPACIDAD POR CALIBRE AWG (A máx en cobre, 75°C)
+// ═══════════════════════════════════════════════════
+const AWG_AMPACITY = {
+  '14 AWG':15, '12 AWG':20, '10 AWG':30, '8 AWG':50,
+  '6 AWG':65,  '4 AWG':85,  '3 AWG':100,'2 AWG':115,
+  '1 AWG':130, '1/0 AWG':150,'2/0 AWG':175,'3/0 AWG':200,
+  '4/0 AWG':230,'250 kcmil':255,'300 kcmil':285,'350 kcmil':310,
+  '400 kcmil':335,'500 kcmil':380,'600 kcmil':420,'750 kcmil':475,
+};
+const AWG_OPTIONS = Object.keys(AWG_AMPACITY);
+
+// Chequea si algún ATS supera la ampacidad de su cable
+const checkAtsAlarms = (measurements, equipment) => {
+  const alarms = [];
+  Object.entries(measurements).forEach(([tag, vals]) => {
+    if(!tag.toUpperCase().startsWith('ATS')) return;
+    const eq = equipment.find(e=>e.tag===tag)||{};
+    const calibre = eq.conductorGauge;
+    if(!calibre) return;
+    const maxA = AWG_AMPACITY[calibre];
+    if(!maxA) return;
+    ['L1','L2','L3','N'].forEach(line=>{
+      const a = parseFloat(vals[line]);
+      if(!isNaN(a) && a > maxA) {
+        alarms.push({tag, line, measured:a, maxA, calibre});
+      }
+    });
+  });
+  return alarms;
+};
+
+// ═══════════════════════════════════════════════════
 // 🛠️  HELPERS
 // ═══════════════════════════════════════════════════
 const fmtDateTime = d => {
@@ -520,13 +561,38 @@ function EqMeasurements({ eq, vals, onChange }) {
       <MF label="I Bat" unit="Acc" vals={vals} k="I_bat" onChange={onChange} />
     </div>
   );
-  if (eq.type==='ATS') return (
-    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
-      <MF label="L1" unit="A" vals={vals} k="L1" onChange={onChange} />
-      <MF label="L2" unit="A" vals={vals} k="L2" onChange={onChange} />
-      <MF label="N" unit="A" vals={vals} k="N" onChange={onChange} />
-    </div>
-  );
+  if (eq.type==='ATS') {
+    const maxA = eq.conductorGauge ? AWG_AMPACITY[eq.conductorGauge] : null;
+    const alarm = (line) => {
+      if(!maxA) return false;
+      const v=parseFloat(vals[line]);
+      return !isNaN(v) && v > maxA;
+    };
+    return (
+      <div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:8}}>
+          {['L1','L2','L3','N'].map(line=>(
+            <div key={line}>
+              <label style={{display:'block',fontSize:'.68rem',marginBottom:3,fontFamily:"'Exo 2',sans-serif",textTransform:'uppercase',letterSpacing:'.05em',
+                color:alarm(line)?'#ef4444':'#475569'}}>
+                {line} <span style={{color:alarm(line)?'#ef4444':'#f59e0b'}}>A{alarm(line)?' ⚠️':''}</span>
+              </label>
+              <input className="mi" type="number" step="any" value={vals[line]??''} onChange={e=>onChange(line,e.target.value)}
+                placeholder="—" style={{borderColor:alarm(line)?'#ef4444':undefined}} />
+            </div>
+          ))}
+        </div>
+        {eq.conductorGauge && (
+          <div style={{fontSize:'.72rem',color:maxA?'#64748b':'#475569',background:'rgba(0,0,0,.15)',borderRadius:5,padding:'4px 8px'}}>
+            Cable: <span style={{color:'#3b82f6',fontWeight:600}}>{eq.conductorGauge}</span> → máx <span style={{color:'#3b82f6',fontWeight:600}}>{maxA}A</span>
+            {maxA && ['L1','L2','L3'].some(l=>alarm(l)) && (
+              <span style={{color:'#ef4444',fontWeight:700,marginLeft:8}}>⚠️ ¡Amperaje fuera de rango!</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
   if (eq.type==='BAT') return (
     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
       <MF label="V Banco" unit="VDC" vals={vals} k="V_banco" onChange={onChange} />
@@ -722,7 +788,26 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         if(eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({active:false,retiredAt:new Date(date)});
       }
       toast('Registro guardado exitosamente.','success');
-      // Solo mostrar reporte si es inspección con mediciones
+      // Verificar alarmas de conductores ATS
+      if(type==='inspeccion') {
+        const alarms = checkAtsAlarms(cleanMeas, active);
+        if(alarms.length>0) {
+          const msg = alarms.map(a=>`${a.tag} - ${a.line}: ${a.measured}A > ${a.maxA}A (Cable ${a.calibre})`).join('\n');
+          toast('⚠️ Amperaje fuera de rango en '+alarms.map(a=>a.tag).join(', '), 'error');
+          // Enviar email de alarma via EmailJS
+          if(window.emailjs && EMAILJS_SERVICE_ID!=='TU_SERVICE_ID') {
+            window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+              to_email:    ALERT_EMAIL,
+              nodo:        nodeName,
+              tecnico:     userProfile.name,
+              fecha:       new Date(date).toLocaleDateString('es-VE'),
+              alarmas:     msg,
+              observaciones: obs||'Sin observaciones',
+            }, EMAILJS_PUBLIC_KEY).catch(e=>console.warn('EmailJS error:',e));
+          }
+        }
+      }
+      // Mostrar reporte si es inspección con mediciones
       if(type==='inspeccion' && Object.keys(cleanMeas).length>0) {
         setReportData({nodeName, date:new Date(date), shift, technicianName:userProfile.name, measurements:cleanMeas, observations:obs, equipment:active});
       } else {
@@ -1314,10 +1399,11 @@ function EditEqModal({ eq, onSave, onClose }) {
     hasAcOut:  !!eq.hasAcOut,
     hasDcOut:  !!eq.hasDcOut,
     hasSolar:  !!eq.hasSolar,
-    batteryType: eq.batteryType||'No aplica',
-    batCapacity: eq.batCapacity||'',
-    batCount:    eq.batCount||'',
-    batCellType: eq.batCellType||'No aplica',
+    batteryType:   eq.batteryType||'No aplica',
+    batCapacity:   eq.batCapacity||'',
+    batCount:      eq.batCount||'',
+    batCellType:   eq.batCellType||'No aplica',
+    conductorGauge:eq.conductorGauge||'',
     notes:     eq.notes||'',
   });
   const [saving,setSaving]=useState(false);
@@ -1390,6 +1476,15 @@ function EditEqModal({ eq, onSave, onClose }) {
               </select>
             </div>
           </>}
+          {f.type==='ATS' && (
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Calibre del Conductor (opcional)</label>
+              <select className="fi" value={f.conductorGauge} onChange={e=>setF({...f,conductorGauge:e.target.value})}>
+                <option value="">-- Sin calibre definido --</option>
+                {AWG_OPTIONS.map(o=><option key={o} value={o}>{o} — máx {AWG_AMPACITY[o]}A</option>)}
+              </select>
+            </div>
+          )}
           <div style={{gridColumn:'1/-1'}}>
             <label className="lbl">Notas</label>
             <input className="fi" value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} placeholder="Modelo, serie, observaciones..." />
@@ -2507,6 +2602,125 @@ function PublicNodeView({ nodeId }) {
 }
 
 
+
+// ═══════════════════════════════════════════════════
+// 🔋 CALCULADORA DE AUTONOMÍA STANDALONE
+// ═══════════════════════════════════════════════════
+function AutonomiaCalc() {
+  const [bancos, setBancos] = useState([
+    { id:1, tipo:'LFP', capacidad:'', Vn:'48', SoH:'1.0', DoD:'0.8', ebanco:'0.98', eTemp:'1.0', carga:'', resultado:null }
+  ]);
+
+  const addBanco = () => setBancos(prev=>[...prev,{
+    id:Date.now(), tipo:'LFP', capacidad:'', Vn:'48', SoH:'1.0', DoD:'0.8', ebanco:'0.98', eTemp:'1.0', carga:'', resultado:null
+  }]);
+
+  const removeBanco = id => setBancos(prev=>prev.filter(b=>b.id!==id));
+
+  const updateBanco = (id, key, val) => setBancos(prev=>prev.map(b=>{
+    if(b.id!==id) return b;
+    const nb = {...b, [key]:val};
+    // Auto-fill defaults when type changes
+    if(key==='tipo') {
+      const def = BAT_DEFAULTS[val]||BAT_DEFAULTS.LFP;
+      const Vn = BAT_VN[val]||48;
+      nb.Vn = String(Vn);
+      nb.DoD = String(def.DoD);
+      nb.SoH = String(def.SoH);
+      nb.ebanco = String(def.ebanco);
+    }
+    // Recalculate autonomy
+    const cap=parseFloat(nb.capacidad)||0;
+    const load=parseFloat(nb.carga)||0;
+    if(cap>0 && load>0) {
+      const Vn=parseFloat(nb.Vn)||48;
+      const SoH=parseFloat(nb.SoH)||1;
+      const DoD=parseFloat(nb.DoD)||0.8;
+      const eb=parseFloat(nb.ebanco)||0.95;
+      const eT=parseFloat(nb.eTemp)||1;
+      const ereg=(BAT_DEFAULTS[nb.tipo]||BAT_DEFAULTS.LFP).ereg;
+      nb.resultado = (Vn*cap*SoH*DoD*eb*eT)/(load*1000/ereg);
+    } else {
+      nb.resultado = null;
+    }
+    return nb;
+  }));
+
+  const FN = ({label, val, onChange, unit, small}) => (
+    <div>
+      <label style={{display:'block',fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:3,fontFamily:"'Exo 2',sans-serif"}}>
+        {label}{unit&&<span style={{color:'var(--amber)',marginLeft:3}}>{unit}</span>}
+      </label>
+      <input className="mi" type="number" step="any" value={val} onChange={e=>onChange(e.target.value)}
+        style={{fontSize:small?'.8rem':'.88rem'}} placeholder="0" />
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div>
+          <div className="fd" style={{fontSize:'.85rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.06em'}}>Calculadora de Autonomía</div>
+          <div style={{fontSize:'.74rem',color:'var(--tx4)',marginTop:2}}>t = (Vn × Cap × SoH × DoD × η) / (Carga_kW × 1000 / ηreg)</div>
+        </div>
+        <button className="bg" style={{fontSize:'.8rem',padding:'7px 14px'}} onClick={addBanco}>+ Banco</button>
+      </div>
+
+      {bancos.map((b,idx)=>{
+        const autColor = !b.resultado?'#64748b':b.resultado>4?'#10b981':b.resultado>2?'#f59e0b':'#ef4444';
+        return (
+          <div key={b.id} className="card" style={{marginBottom:12,borderLeft:`3px solid ${autColor}`}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <span className="fd" style={{fontWeight:700,color:'var(--tx1)',fontSize:'.9rem'}}>Banco {idx+1}</span>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                {b.resultado && (
+                  <div style={{textAlign:'right'}}>
+                    <div className="fm" style={{fontSize:'1.5rem',fontWeight:800,color:autColor,lineHeight:1}}>{fmtHours(b.resultado)}</div>
+                    <div style={{fontSize:'.65rem',color:'var(--tx3)'}}>autonomía estimada</div>
+                  </div>
+                )}
+                {bancos.length>1&&<button onClick={()=>removeBanco(b.id)} className="bd" style={{padding:'4px 10px',fontSize:'.72rem'}}>✕</button>}
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10}}>
+              <div>
+                <label className="lbl">Tipo de Batería</label>
+                <select className="fi" value={b.tipo} onChange={e=>updateBanco(b.id,'tipo',e.target.value)}>
+                  {['LFP','NMC','GEL','AGM','VRLA'].map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <FN label="Capacidad" unit="Ah" val={b.capacidad} onChange={v=>updateBanco(b.id,'capacidad',v)} />
+              <FN label="Carga del Banco" unit="kW" val={b.carga} onChange={v=>updateBanco(b.id,'carga',v)} />
+              <FN label="Vn Banco" unit="V" val={b.Vn} onChange={v=>updateBanco(b.id,'Vn',v)} small />
+              <FN label="SoH (0-1)" unit="" val={b.SoH} onChange={v=>updateBanco(b.id,'SoH',v)} small />
+              <FN label="DoD (0-1)" unit="" val={b.DoD} onChange={v=>updateBanco(b.id,'DoD',v)} small />
+              <FN label="η Banco" unit="" val={b.ebanco} onChange={v=>updateBanco(b.id,'ebanco',v)} small />
+              <FN label="η Temp" unit="" val={b.eTemp} onChange={v=>updateBanco(b.id,'eTemp',v)} small />
+            </div>
+
+            {!b.resultado&&b.capacidad&&b.carga&&(
+              <div style={{marginTop:8,fontSize:'.75rem',color:'#f59e0b'}}>⚠ Completa capacidad y carga para calcular.</div>
+            )}
+          </div>
+        );
+      })}
+
+      {bancos.some(b=>b.resultado) && (
+        <div style={{background:'rgba(16,185,129,.08)',border:'1px solid rgba(16,185,129,.2)',borderRadius:8,padding:'12px 16px',marginTop:4}}>
+          <div className="fd" style={{fontSize:'.72rem',fontWeight:700,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>Resumen</div>
+          {bancos.filter(b=>b.resultado).map((b,i)=>(
+            <div key={b.id} style={{display:'flex',justifyContent:'space-between',padding:'5px 0',borderBottom:'1px solid var(--border)'}}>
+              <span style={{color:'var(--tx2)',fontSize:'.85rem'}}>Banco {i+1} — {b.tipo} {b.capacidad}Ah</span>
+              <span className="fm" style={{fontWeight:700,color:b.resultado>4?'#10b981':b.resultado>2?'#f59e0b':'#ef4444'}}>{fmtHours(b.resultado)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════
 // 🧮 CALCULADORA DE MATERIALES
 // ═══════════════════════════════════════════════════
@@ -2660,8 +2874,8 @@ function MaterialesCalc() {
       </div>
 
       {/* Tabs */}
-      <div style={{borderBottom:'1px solid var(--border)',marginBottom:18,display:'flex'}}>
-        {[['fuentes','⚡ Fuentes ETP'],['rack','🔋 Rack + Baterías'],['escalerillas','🏗️ Escalerillas']].map(([k,lbl])=>(
+      <div style={{borderBottom:'1px solid var(--border)',marginBottom:18,display:'flex',overflowX:'auto'}}>
+        {[['fuentes','⚡ Fuentes ETP'],['rack','🔋 Rack + Baterías'],['escalerillas','🏗️ Escalerillas'],['autonomia','🔋 Autonomía']].map(([k,lbl])=>(
           <button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)} style={{whiteSpace:'nowrap'}}>{lbl}</button>
         ))}
       </div>
@@ -2706,6 +2920,9 @@ function MaterialesCalc() {
           <ResultTable items={resRack} onCopy={()=>copy(resRack,'rack')} onExport={()=>exportXls(resRack,'rack')} />
         </div>
       )}
+
+      {/* TAB AUTONOMÍA */}
+      {tab==='autonomia' && <AutonomiaCalc />}
 
       {/* TAB ESCALERILLAS */}
       {tab==='escalerillas' && (
