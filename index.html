@@ -260,7 +260,7 @@ const REC_TYPES = {
 };
 
 const NODE_TYPES = {
-  fibra:      { label:'Fibra',      color:'#10b981' },
+  fibra:      { label:'Nodo',       color:'#10b981' },
   datacenter: { label:'Datacenter', color:'#3b82f6' },
   headend:    { label:'Headend',    color:'#8b5cf6' },
   otro:       { label:'Otro',       color:'#64748b' },
@@ -309,10 +309,10 @@ try {
 // ═══════════════════════════════════════════════════
 // 📧 EMAILJS CONFIG — configura con tus credenciales
 // ═══════════════════════════════════════════════════
-const EMAILJS_SERVICE_ID  = 'TU_SERVICE_ID';   // ej: 'service_abc123'
-const EMAILJS_TEMPLATE_ID = 'TU_TEMPLATE_ID';  // ej: 'template_xyz789'
-const EMAILJS_PUBLIC_KEY  = 'TU_PUBLIC_KEY';   // ej: 'aBcDeFgH...'
-const ALERT_EMAIL         = 'supervisor@airtek.com'; // email destino de alarmas
+const EMAILJS_SERVICE_ID  = 'service_5h5jm6b';
+const EMAILJS_TEMPLATE_ID = 'template_44sb0ou';
+const EMAILJS_PUBLIC_KEY  = '8l66LkMpqKzhPJ4cq';
+const ALERT_EMAIL         = ''; // Dejar vacío — el destinatario se configura en el template de EmailJS
 
 // ═══════════════════════════════════════════════════
 // ⚡ TABLA DE AMPACIDAD POR CALIBRE AWG (A máx en cobre, 75°C)
@@ -748,6 +748,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [date,setDate]=useState(new Date().toISOString().slice(0,16));
   const [shift,setShift]=useState('dia');
   const [obs,setObs]=useState('');
+  const [participants,setParticipants]=useState('');
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
   const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
@@ -768,6 +769,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
       const record = {
         type, date:new Date(date), shift, observations:obs,
         technicianId:userProfile.uid, technicianName:userProfile.name,
+        participants: participants.trim(),
         measurements: type==='inspeccion' ? cleanMeas : {},
         equipmentAction: type!=='inspeccion' ? eqAction : null,
         createdAt:TS()
@@ -797,8 +799,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
           // Enviar email de alarma via EmailJS
           if(window.emailjs && EMAILJS_SERVICE_ID!=='TU_SERVICE_ID') {
             window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-              to_email:    ALERT_EMAIL,
-              nodo:        nodeName,
+                    nodo:        nodeName,
               tecnico:     userProfile.name,
               fecha:       new Date(date).toLocaleDateString('es-VE'),
               alarmas:     msg,
@@ -849,6 +850,12 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
           <div style={{gridColumn:'1/-1'}}>
             <label className="lbl">Fecha y Hora</label>
             <input className="fi" type="datetime-local" value={date} onChange={e=>setDate(e.target.value)} />
+          </div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label className="lbl">Personal que realizó la inspección</label>
+            <input className="fi" value={participants} onChange={e=>setParticipants(e.target.value)}
+              placeholder="Ej: Juan Pérez, Carlos Rodríguez, María González" />
+            <div style={{fontSize:'.7rem',color:'var(--tx4)',marginTop:3}}>Nombres y apellidos separados por coma</div>
           </div>
         </div>
       </div>
@@ -1113,10 +1120,14 @@ function RecordDetail({ record, onBack, nodeId }) {
       </div>
       <div className="card" style={{marginBottom:14}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-          <II label="Técnico" value={record.technicianName} />
+          <II label="Registrado por" value={record.technicianName} />
           <II label="Turno" value={record.shift==='dia'?'☀️ Día':'🌙 Noche'} />
           <II label="Fecha" value={fmtDate(record.date)} />
           <II label="Hora" value={record.date?.toDate?record.date.toDate().toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'}):'—'} />
+          {record.participants&&<div style={{gridColumn:'1/-1'}}>
+            <div style={{fontSize:'.68rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:2,fontFamily:"'Exo 2',sans-serif"}}>Personal Involucrado</div>
+            <div style={{fontSize:'.88rem',color:'var(--tx1)',fontWeight:500}}>{record.participants}</div>
+          </div>}
         </div>
         {record.observations && <div style={{marginTop:12,paddingTop:12,borderTop:'1px solid var(--border)'}}>
           <div style={{fontSize:'.7rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4,fontFamily:"'Exo 2',sans-serif"}}>Observaciones</div>
@@ -1383,6 +1394,338 @@ function LoadChart({ records, equipment }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+
+
+// ═══════════════════════════════════════════════════
+// 📋 HISTORIAL DE EVENTOS / EVENTUALIDADES DEL NODO
+// ═══════════════════════════════════════════════════
+function NodeEvents({ nodeId, nodeName, userProfile, toast }) {
+  const [events,setEvents] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [showForm,setShowForm] = useState(false);
+  const [equipment,setEquipment] = useState([]);
+  const [form,setForm] = useState({date:new Date().toISOString().slice(0,16), equipo:'', description:'', notify:false});
+  const [saving,setSaving] = useState(false);
+  const canWrite = userProfile.role==='tecnico'||userProfile.role==='admin'||userProfile.role==='supervisor';
+
+  useEffect(()=>{
+    const u1 = db.collection('energy_nodes').doc(nodeId).collection('node_events')
+      .orderBy('date','desc').onSnapshot(s=>{setEvents(s.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);});
+    const u2 = db.collection('energy_nodes').doc(nodeId).collection('energy_equipment')
+      .where('active','==',true).onSnapshot(s=>setEquipment(s.docs.map(d=>({id:d.id,...d.data()}))));
+    return()=>{u1();u2();};
+  },[nodeId]);
+
+  const save = async () => {
+    if(!form.description.trim()){toast('Escribe la descripción del evento.','error');return;}
+    setSaving(true);
+    try {
+      await db.collection('energy_nodes').doc(nodeId).collection('node_events').add({
+        date:      new Date(form.date),
+        equipo:    form.equipo||null,
+        description: form.description.trim(),
+        author:    userProfile.name,
+        authorId:  userProfile.uid,
+        createdAt: TS(),
+      });
+      if(form.notify && window.emailjs && EMAILJS_SERVICE_ID!=='TU_SERVICE_ID') {
+        window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+          nodo:          nodeName,
+          tecnico:       userProfile.name,
+          fecha:         new Date(form.date).toLocaleDateString('es-VE'),
+          alarmas:       `EVENTO: ${form.equipo?'['+form.equipo+'] ':''}${form.description}`,
+          observaciones: 'Evento registrado desde el sistema.',
+        }, EMAILJS_PUBLIC_KEY).catch(e=>console.warn(e));
+      }
+      toast('Evento registrado.','success');
+      setForm({date:new Date().toISOString().slice(0,16),equipo:'',description:'',notify:false});
+      setShowForm(false);
+    } catch(e){console.error(e);toast('Error al guardar.','error');}
+    setSaving(false);
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div>
+          <div className="fd" style={{fontWeight:800,fontSize:'1rem',color:'var(--tx1)'}}>📋 Historial de Eventos</div>
+          <div style={{color:'var(--tx3)',fontSize:'.78rem'}}>Eventualidades registradas por el personal de monitoreo</div>
+        </div>
+        {canWrite && <button className="bp" style={{fontSize:'.82rem'}} onClick={()=>setShowForm(!showForm)}>
+          {showForm?'Cancelar':'+ Nuevo Evento'}
+        </button>}
+      </div>
+
+      {/* Formulario */}
+      {showForm && (
+        <div className="card fin" style={{marginBottom:14,borderColor:'rgba(59,130,246,.3)'}}>
+          <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#3b82f6',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:14}}>Registrar Evento</h3>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Fecha y Hora del Evento</label>
+              <input className="fi" type="datetime-local" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} />
+            </div>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Equipo Afectado <span style={{color:'var(--tx4)',fontWeight:400,textTransform:'none'}}>(opcional)</span></label>
+              <select className="fi" value={form.equipo} onChange={e=>setForm({...form,equipo:e.target.value})}>
+                <option value="">— Sin equipo específico —</option>
+                {sortEquipment(equipment).map(eq=>(
+                  <option key={eq.id} value={eq.tag}>{eq.tag} ({eq.type})</option>
+                ))}
+                <option value="PLANTA">Planta Eléctrica</option>
+                <option value="ATS">ATS</option>
+                <option value="RED_PUBLICA">Red Pública</option>
+                <option value="GENERAL">General / Nodo Completo</option>
+              </select>
+            </div>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Descripción del Evento</label>
+              <textarea className="fi" rows={4} value={form.description}
+                onChange={e=>setForm({...form,description:e.target.value})}
+                placeholder="Describe qué ocurrió, a qué hora, condiciones observadas, acciones tomadas..."
+                style={{resize:'vertical'}} />
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <input type="checkbox" id="evnotif" checked={form.notify} onChange={e=>setForm({...form,notify:e.target.checked})} />
+              <label htmlFor="evnotif" style={{color:'var(--tx2)',fontSize:'.85rem',cursor:'pointer'}}>📧 Notificar por correo</label>
+            </div>
+          </div>
+          <button className="bp" style={{marginTop:14,width:'100%'}} onClick={save} disabled={saving}>
+            {saving?'Guardando...':'📋 Registrar Evento'}
+          </button>
+        </div>
+      )}
+
+      {loading && <div style={{textAlign:'center',padding:30,color:'var(--tx3)'}}>Cargando eventos...</div>}
+      {!loading && events.length===0 && !showForm && (
+        <div style={{textAlign:'center',padding:40}}>
+          <div style={{fontSize:36,marginBottom:10}}>📋</div>
+          <p style={{color:'var(--tx3)'}}>No hay eventos registrados en este nodo.</p>
+        </div>
+      )}
+
+      {events.map(ev=>{
+        const d = ev.date?.toDate?ev.date.toDate():new Date(ev.date);
+        return (
+          <div key={ev.id} className="card" style={{marginBottom:8,borderLeft:'3px solid #3b82f6'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6,flexWrap:'wrap',gap:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span className="fm" style={{fontSize:'.8rem',color:'#3b82f6',fontWeight:700}}>
+                  {d.toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit',year:'numeric'})} {d.toLocaleTimeString('es-VE',{hour:'2-digit',minute:'2-digit'})}
+                </span>
+                {ev.equipo && <span className="badge" style={{background:'rgba(59,130,246,.12)',color:'#3b82f6'}}>{ev.equipo}</span>}
+              </div>
+              <span style={{color:'var(--tx4)',fontSize:'.72rem'}}>{ev.author}</span>
+            </div>
+            <p style={{color:'#cbd5e1',fontSize:'.88rem',lineHeight:1.6}}>{ev.description}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════
+// 🔔 ALERTAS / COMENTARIOS IMPORTANTES DEL NODO
+// ═══════════════════════════════════════════════════
+const ALERT_PRIORITIES = {
+  critica:  { label:'Crítica',   color:'#ef4444', bg:'rgba(239,68,68,.12)',   icon:'🔴' },
+  alta:     { label:'Alta',      color:'#f59e0b', bg:'rgba(245,158,11,.12)',  icon:'🟡' },
+  media:    { label:'Media',     color:'#3b82f6', bg:'rgba(59,130,246,.12)',  icon:'🔵' },
+  info:     { label:'Info',      color:'#10b981', bg:'rgba(16,185,129,.12)',  icon:'🟢' },
+};
+
+function NodeAlerts({ nodeId, nodeName, userProfile, toast }) {
+  const [section,setSection] = useState('alertas'); // alertas | eventos
+  const [alerts,setAlerts] = useState([]);
+  const [loading,setLoading] = useState(true);
+  const [showForm,setShowForm] = useState(false);
+  const [form,setForm] = useState({title:'',body:'',priority:'alta',notify:true});
+  const [saving,setSaving] = useState(false);
+  const canWrite = userProfile.role==='tecnico'||userProfile.role==='admin'||userProfile.role==='supervisor';
+
+  useEffect(()=>{
+    const u = db.collection('energy_nodes').doc(nodeId).collection('node_alerts')
+      .orderBy('createdAt','desc')
+      .onSnapshot(s=>{
+        setAlerts(s.docs.map(d=>({id:d.id,...d.data()})));
+        setLoading(false);
+      });
+    return u;
+  },[nodeId]);
+
+  const sendEmail = async (alertData) => {
+    if(!window.emailjs || EMAILJS_SERVICE_ID==='TU_SERVICE_ID') return;
+    try {
+      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        nodo:          nodeName,
+        tecnico:       userProfile.name,
+        fecha:         new Date().toLocaleDateString('es-VE'),
+        alarmas:       `[${alertData.priority.toUpperCase()}] ${alertData.title}
+
+${alertData.body}`,
+        observaciones: 'Alerta manual registrada en la app.',
+      }, EMAILJS_PUBLIC_KEY);
+    } catch(e){ console.warn('EmailJS:', e); }
+  };
+
+  const save = async () => {
+    if(!form.title.trim()||!form.body.trim()){toast('Completa título y descripción.','error');return;}
+    setSaving(true);
+    try {
+      await db.collection('energy_nodes').doc(nodeId).collection('node_alerts').add({
+        title:    form.title.trim(),
+        body:     form.body.trim(),
+        priority: form.priority,
+        status:   'activa',
+        author:   userProfile.name,
+        authorId: userProfile.uid,
+        createdAt:TS(),
+      });
+      if(form.notify) await sendEmail(form);
+      toast('Alerta registrada'+(form.notify?' y notificada por correo.':'.'), 'success');
+      setForm({title:'',body:'',priority:'alta',notify:true});
+      setShowForm(false);
+    } catch(e){ console.error(e); toast('Error al guardar.','error'); }
+    setSaving(false);
+  };
+
+  const resolve = async (id) => {
+    await db.collection('energy_nodes').doc(nodeId).collection('node_alerts').doc(id)
+      .update({status:'resuelta', resolvedAt:TS(), resolvedBy:userProfile.name});
+    toast('Alerta marcada como resuelta.','success');
+  };
+
+  const activas  = alerts.filter(a=>a.status!=='resuelta');
+  const resueltas= alerts.filter(a=>a.status==='resuelta');
+
+  return (
+    <div className="fin">
+      {/* Sub-sección selector */}
+      <div style={{display:'flex',gap:8,marginBottom:18}}>
+        {[['alertas','🔔 Alertas','#ef4444'],['eventos','📋 Eventos','#3b82f6']].map(([k,lbl,c])=>(
+          <button key={k} onClick={()=>{setSection(k);setShowForm(false);}}
+            style={{flex:1,padding:'10px',borderRadius:8,border:`1px solid ${c}44`,cursor:'pointer',
+              fontFamily:"'Exo 2',sans-serif",fontWeight:700,fontSize:'.82rem',transition:'all .15s',
+              background:section===k?c:'transparent',color:section===k?'#fff':c}}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {section==='eventos' && <NodeEvents nodeId={nodeId} nodeName={nodeName} userProfile={userProfile} toast={toast} equipment={[]} />}
+      {section==='alertas' && <>
+
+      {/* Header */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+        <div>
+          <div className="fd" style={{fontWeight:800,fontSize:'1rem',color:'var(--tx1)'}}>
+            🔔 Alertas del Nodo
+            {activas.length>0&&<span style={{marginLeft:8,background:'#ef4444',color:'#fff',borderRadius:'50%',width:20,height:20,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:'.7rem',fontWeight:700}}>{activas.length}</span>}
+          </div>
+          <div style={{color:'var(--tx3)',fontSize:'.78rem'}}>Comentarios importantes y condiciones a vigilar</div>
+        </div>
+        {canWrite && <button className="bp" style={{fontSize:'.82rem'}} onClick={()=>setShowForm(!showForm)}>
+          {showForm?'Cancelar':'+ Nueva Alerta'}
+        </button>}
+      </div>
+
+      {/* Formulario nueva alerta */}
+      {showForm && (
+        <div className="card fin" style={{marginBottom:16,borderColor:'rgba(245,158,11,.3)'}}>
+          <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--amber)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:14}}>Nueva Alerta</h3>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Título</label>
+              <input className="fi" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}
+                placeholder="Ej: Banco LFP02 con temperatura elevada" />
+            </div>
+            <div>
+              <label className="lbl">Prioridad</label>
+              <select className="fi" value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}>
+                {Object.entries(ALERT_PRIORITIES).map(([k,v])=>(
+                  <option key={k} value={k}>{v.icon} {v.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:8,paddingTop:22}}>
+              <input type="checkbox" id="notif" checked={form.notify} onChange={e=>setForm({...form,notify:e.target.checked})} />
+              <label htmlFor="notif" style={{color:'var(--tx2)',fontSize:'.85rem',cursor:'pointer'}}>
+                📧 Notificar por correo
+              </label>
+            </div>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Descripción</label>
+              <textarea className="fi" rows={4} value={form.body} onChange={e=>setForm({...form,body:e.target.value})}
+                placeholder="Describe la situación, qué se observó y qué se recomienda..." style={{resize:'vertical'}} />
+            </div>
+          </div>
+          <button className="bp" style={{marginTop:14,width:'100%'}} onClick={save} disabled={saving}>
+            {saving?'Guardando...':'🔔 Registrar Alerta'}
+          </button>
+        </div>
+      )}
+
+      {loading && <div style={{textAlign:'center',padding:40,color:'var(--tx3)'}}>Cargando alertas...</div>}
+
+      {/* Alertas activas */}
+      {!loading && activas.length===0 && !showForm && (
+        <div style={{textAlign:'center',padding:40}}>
+          <div style={{fontSize:36,marginBottom:10}}>✅</div>
+          <p style={{color:'var(--tx3)'}}>No hay alertas activas en este nodo.</p>
+        </div>
+      )}
+
+      {activas.map(a=>{
+        const p=ALERT_PRIORITIES[a.priority]||ALERT_PRIORITIES.info;
+        return (
+          <div key={a.id} className="card" style={{marginBottom:10,borderLeft:`4px solid ${p.color}`,background:p.bg}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:8}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <span style={{fontSize:16}}>{p.icon}</span>
+                <span className="fd" style={{fontWeight:700,fontSize:'.95rem',color:'var(--tx1)'}}>{a.title}</span>
+                <span className="badge" style={{background:p.bg,color:p.color,border:`1px solid ${p.color}44`}}>{p.label}</span>
+              </div>
+              {canWrite && <button className="bg" style={{padding:'4px 12px',fontSize:'.74rem',flexShrink:0}} onClick={()=>resolve(a.id)}>
+                ✓ Resolver
+              </button>}
+            </div>
+            <p style={{color:'#cbd5e1',fontSize:'.88rem',lineHeight:1.6,marginBottom:8}}>{a.body}</p>
+            <div style={{fontSize:'.72rem',color:'var(--tx4)'}}>
+              Por {a.author} · {a.createdAt?.toDate?a.createdAt.toDate().toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Alertas resueltas */}
+      {resueltas.length>0 && (
+        <div style={{marginTop:20}}>
+          <div style={{fontSize:'.7rem',color:'var(--tx4)',textTransform:'uppercase',letterSpacing:'.08em',fontFamily:"'Exo 2',sans-serif",marginBottom:8}}>
+            ✅ Resueltas ({resueltas.length})
+          </div>
+          {resueltas.map(a=>{
+            const p=ALERT_PRIORITIES[a.priority]||ALERT_PRIORITIES.info;
+            return (
+              <div key={a.id} style={{background:'var(--bg-surface)',borderRadius:7,padding:'10px 12px',marginBottom:6,opacity:.55,borderLeft:`3px solid ${p.color}`}}>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <span>{p.icon}</span>
+                  <span style={{color:'var(--tx2)',fontSize:'.85rem',fontWeight:600,textDecoration:'line-through'}}>{a.title}</span>
+                </div>
+                <div style={{fontSize:'.7rem',color:'var(--tx4)',marginTop:3}}>
+                  Resuelto por {a.resolvedBy||'—'} · {a.resolvedAt?.toDate?a.resolvedAt.toDate().toLocaleDateString('es-VE',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>}
     </div>
   );
 }
@@ -1699,7 +2042,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
 
       {/* Tabs */}
       <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex',overflowX:'auto'}}>
-        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['exportar','Exportar']].map(([k,lbl])=>(
+        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['alertas','🔔 Alertas'],['exportar','Exportar']].map(([k,lbl])=>(
           <button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)} style={{whiteSpace:'nowrap'}}>{lbl}</button>
         ))}
       </div>
@@ -1802,6 +2145,9 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
           }
         </div>
       )}
+
+      {/* TAB ALERTAS */}
+      {tab==='alertas' && <NodeAlerts nodeId={node.id} nodeName={node.name} userProfile={userProfile} toast={toast} />}
 
       {/* TAB EXPORTAR */}
       {tab==='exportar' && (
@@ -2630,14 +2976,15 @@ function AutonomiaCalc() {
       nb.ebanco = String(def.ebanco);
     }
     // Recalculate autonomy
-    const cap=parseFloat(nb.capacidad)||0;
-    const load=parseFloat(nb.carga)||0;
+    const toNum = s => parseFloat((s||'').toString().replace(',','.'));
+    const cap=toNum(nb.capacidad)||0;
+    const load=toNum(nb.carga)||0;
     if(cap>0 && load>0) {
-      const Vn=parseFloat(nb.Vn)||48;
-      const SoH=parseFloat(nb.SoH)||1;
-      const DoD=parseFloat(nb.DoD)||0.8;
-      const eb=parseFloat(nb.ebanco)||0.95;
-      const eT=parseFloat(nb.eTemp)||1;
+      const Vn=toNum(nb.Vn)||48;
+      const SoH=toNum(nb.SoH)||1;
+      const DoD=toNum(nb.DoD)||0.8;
+      const eb=toNum(nb.ebanco)||0.95;
+      const eT=toNum(nb.eTemp)||1;
       const ereg=(BAT_DEFAULTS[nb.tipo]||BAT_DEFAULTS.LFP).ereg;
       nb.resultado = (Vn*cap*SoH*DoD*eb*eT)/(load*1000/ereg);
     } else {
@@ -2651,7 +2998,7 @@ function AutonomiaCalc() {
       <label style={{display:'block',fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:3,fontFamily:"'Exo 2',sans-serif"}}>
         {label}{unit&&<span style={{color:'var(--amber)',marginLeft:3}}>{unit}</span>}
       </label>
-      <input className="mi" type="number" step="any" value={val} onChange={e=>onChange(e.target.value)}
+      <input className="mi" type="text" inputMode="decimal" value={val} onChange={e=>onChange(e.target.value)}
         style={{fontSize:small?'.8rem':'.88rem'}} placeholder="0" />
     </div>
   );
@@ -2891,8 +3238,8 @@ function MaterialesCalc() {
                 <label className="lbl">Calibre de alimentación AC</label>
                 <select className="fi" value={fF.calibre} onChange={e=>setFF({...fF,calibre:e.target.value})}>
                   <option value="">-- Selecciona --</option>
-                  {['6 AWG','4 AWG','2 AWG','1/0 AWG','2/0 AWG','3/0 AWG','4/0 AWG'].map(c=>(
-                    <option key={c} value={c}>{c}</option>
+                  {['14 AWG','12 AWG','10 AWG','8 AWG','6 AWG','4 AWG','3 AWG','2 AWG','1 AWG','1/0 AWG','2/0 AWG','3/0 AWG','4/0 AWG','250 kcmil','300 kcmil','350 kcmil','400 kcmil','500 kcmil'].map(c=>(
+                    <option key={c} value={c}>{c} — máx {AWG_AMPACITY[c]||'—'}A</option>
                   ))}
                 </select>
               </div>
