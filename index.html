@@ -559,6 +559,7 @@ function EqMeasurements({ eq, vals, onChange }) {
       <MF label="DC Load" unit="kW" vals={vals} k="DC_load" onChange={onChange} />
       <MF label="AC Load" unit="kW" vals={vals} k="AC_load" onChange={onChange} />
       <MF label="I Bat" unit="Acc" vals={vals} k="I_bat" onChange={onChange} />
+      {eq.hasSolar && <><MF label="V Paneles" unit="V" vals={vals} k="V_panel" onChange={onChange} /><MF label="I Paneles" unit="A" vals={vals} k="I_panel" onChange={onChange} /></>}
     </div>
   );
   if (eq.type==='ATS') {
@@ -618,7 +619,7 @@ const FIELD_LABELS = {
   L1_carga:'L1', L1_pot:'L1', L2_carga:'L2', L2_pot:'L2',
   V_ac_out:'Vout', load_kw:'Load', V_panel:'Vpaneles', P_panel:'Ppaneles',
   I_bat:'Ibateria', V_dc_out:'V DC OUT',
-  DC_load:'DC Load', AC_load:'AC Load',
+  DC_load:'DC Load', AC_load:'AC Load', I_panel:'Ipaneles',
   L1:'L1', L2:'L2', N:'N',
   V_banco:'V Banco', I_banco:'I Banco',
   libre:'Notas'
@@ -627,7 +628,7 @@ const FIELD_UNITS = {
   L1_carga:'%', L1_pot:'kW', L2_carga:'%', L2_pot:'kW',
   V_ac_out:'Vac', load_kw:'kW', V_panel:'V', P_panel:'kW',
   I_bat:'Adc', V_dc_out:'VDC',
-  DC_load:'kW', AC_load:'kW', I_bat:'Acc',
+  DC_load:'kW', AC_load:'kW', I_bat:'Acc', I_panel:'A',
   L1:'A', L2:'A', N:'A',
   V_banco:'VDC', I_banco:'A',
 };
@@ -751,7 +752,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [participants,setParticipants]=useState('');
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
-  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
+  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',serial:'',notes:''});
   const [reportData,setReportData]=useState(null);
 
   const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
@@ -781,7 +782,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
           hasAcIn:!!eqAction.hasAcIn, hasAcOut:!!eqAction.hasAcOut, hasDcOut:!!eqAction.hasDcOut,
           hasSolar:eqAction.hasSolar, batteryType:eqAction.batteryType,
           batCapacity:eqAction.batCapacity||'', batCount:eqAction.batCount||'',
-          batCellType:eqAction.batCellType||'No aplica',
+          batCellType:eqAction.batCellType||'No aplica', serial:eqAction.serial||'',
           active:true, installedAt:new Date(date), installedBy:userProfile.name, notes:eqAction.notes
         });
       }
@@ -932,9 +933,13 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         <div className="card" style={{marginBottom:14}}>
           <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>⚡ Equipo a Instalar</h3>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div style={{gridColumn:'1/-1'}}>
+            <div>
               <label className="lbl">Tag / Identificador del Equipo</label>
               <input className="fi fm" value={eqAction.tag} onChange={e=>setEqA({...eqAction,tag:e.target.value})} placeholder="Ej: INV00-PV-LFP00" />
+            </div>
+            <div>
+              <label className="lbl">Serial del Equipo <span style={{color:'var(--tx4)',fontWeight:400,textTransform:'none'}}>(opcional)</span></label>
+              <input className="fi fm" value={eqAction.serial||''} onChange={e=>setEqA({...eqAction,serial:e.target.value})} placeholder="Ej: P02362013757" />
             </div>
             <div>
               <label className="lbl">Tipo</label>
@@ -1747,6 +1752,7 @@ function EditEqModal({ eq, onSave, onClose }) {
     batCount:      eq.batCount||'',
     batCellType:   eq.batCellType||'No aplica',
     conductorGauge:eq.conductorGauge||'',
+    serial:    eq.serial||'',
     notes:     eq.notes||'',
   });
   const [saving,setSaving]=useState(false);
@@ -1828,6 +1834,12 @@ function EditEqModal({ eq, onSave, onClose }) {
               </select>
             </div>
           )}
+          {(f.type==='INV'||f.type==='ETP'||f.type==='BAT') && (
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Serial del Equipo</label>
+              <input className="fi fm" value={f.serial} onChange={e=>setF({...f,serial:e.target.value})} placeholder="Ej: P02362013757" />
+            </div>
+          )}
           <div style={{gridColumn:'1/-1'}}>
             <label className="lbl">Notas</label>
             <input className="fi" value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} placeholder="Modelo, serie, observaciones..." />
@@ -1858,7 +1870,6 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   const [qrOpen,setQrOpen]=useState(false);
   const [filterType,setFilterType]=useState('all');
   const [editEq,setEditEq]=useState(null); // equipo siendo editado
-  const [confirmDel,setConfirmDel]=useState(null); // equipo a eliminar
 
   useEffect(()=>{
     const u1=db.collection('energy_nodes').doc(node.id).collection('energy_equipment')
@@ -1974,7 +1985,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       'Observaciones':r.observations||'',
     }));
     const eqRows=equipment.map(e=>({
-      'Tag': e.tag, 'Tipo': e.type, 'Tensión': e.voltage||'',
+      'Tag': e.tag, 'Serial': e.serial||'', 'Tipo': e.type, 'Tensión': e.voltage||'',
       'Panel Solar': e.hasSolar?'Sí':'No', 'Batería': e.batteryType||'',
       'Capacidad (Ah)': e.batCapacity||'', 'N° Baterías': e.batCount||'', 'Tipo Celda': e.batCellType||'',
       'Estado': e.active!==false?'Activo':'Retirado',
@@ -2005,10 +2016,11 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   };
 
   const deleteEq = async (eq) => {
+    if(!window.confirm(`¿Eliminar permanentemente el equipo ${eq.tag}?
+Esta acción no se puede deshacer.`)) return;
     try {
       await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(eq.id).delete();
       toast('Equipo eliminado.','success');
-      setConfirmDel(null);
     } catch(e) { toast('Error al eliminar.','error'); }
   };
 
@@ -2016,18 +2028,6 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
     <div className="fin">
       {qrOpen && <QRModal node={node} onClose={()=>setQrOpen(false)} />}
       {editEq && <EditEqModal eq={editEq} onSave={saveEditEq} onClose={()=>setEditEq(null)} />}
-      {confirmDel && (
-        <div className="fin" style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:9999}} onClick={()=>setConfirmDel(null)}>
-          <div className="card" style={{maxWidth:360,width:'100%',padding:24}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontWeight:700,fontSize:'1rem',color:'var(--tx1)',marginBottom:8}}>⚠️ Eliminar equipo</div>
-            <div style={{fontSize:'.85rem',color:'var(--tx3)',marginBottom:20}}>¿Seguro que deseas eliminar <strong>{confirmDel.eqId||confirmDel.id}</strong>? Esta acción no se puede deshacer.</div>
-            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-              <button className="bs" onClick={()=>setConfirmDel(null)}>Cancelar</button>
-              <button onClick={()=>deleteEq(confirmDel)} style={{background:'#ef4444',color:'#fff',border:'none',borderRadius:6,padding:'8px 18px',cursor:'pointer',fontWeight:700,fontFamily:"'Exo 2',sans-serif"}}>Eliminar</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Header */}
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16,gap:12}}>
@@ -2108,13 +2108,14 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                             style={{background:'none',border:'1px solid var(--border)',color:'var(--tx3)',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
                             ✏️ Editar
                           </button>}
-                          {canWrite && <button onClick={()=>setConfirmDel(eq)}
-                            style={{background:'none',border:'1px solid #ef4444',color:'#ef4444',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
+                          {userProfile.role==='admin' && <button onClick={()=>deleteEq(eq)}
+                            style={{background:'none',border:'1px solid rgba(239,68,68,.3)',color:'#ef4444',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
                             🗑️
                           </button>}
                         </span>
                       </div>
-                      {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
+                      {eq.serial && <div style={{marginTop:4,fontSize:'.72rem',color:'var(--tx4)',fontFamily:"'JetBrains Mono',monospace"}}>S/N: {eq.serial}</div>}
+                      {eq.notes && <div style={{marginTop:4,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
                     </div>
                   );
                 })}
@@ -2977,13 +2978,15 @@ function PublicNodeView({ nodeId }) {
 // ═══════════════════════════════════════════════════
 // 🔋 CALCULADORA DE AUTONOMÍA STANDALONE
 // ═══════════════════════════════════════════════════
-function FN({label, val, onChange, unit, small}) {
+// Standalone input para autonomía — FUERA del componente para evitar pérdida de foco
+function AutonomiaInput({label, val, onChange, unit, small}) {
   return (
     <div>
       <label style={{display:'block',fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:3,fontFamily:"'Exo 2',sans-serif"}}>
         {label}{unit&&<span style={{color:'var(--amber)',marginLeft:3}}>{unit}</span>}
       </label>
-      <input className="mi" type="text" inputMode="decimal" value={val} onChange={e=>onChange(e.target.value)}
+      <input className="mi" type="text" inputMode="decimal" value={val}
+        onChange={e=>onChange(e.target.value)}
         style={{fontSize:small?'.8rem':'.88rem'}} placeholder="0" />
     </div>
   );
@@ -3012,28 +3015,23 @@ function AutonomiaCalc() {
       nb.SoH = String(def.SoH);
       nb.ebanco = String(def.ebanco);
     }
-    // Recalculate autonomy — skip if value is still being typed (ends in . or ,)
-    const toNum = s => { const n=parseFloat((s||'').toString().replace(',','.')); return isNaN(n)?0:n; };
-    const isTyping = s => /[.,]$/.test((s||'').toString()) || (s||'').toString()==='' || (s||'').toString()==='-';
-    if(!isTyping(nb.capacidad) && !isTyping(nb.carga)) {
-      const cap=toNum(nb.capacidad);
-      const load=toNum(nb.carga);
-      if(cap>0 && load>0) {
-        const Vn=toNum(nb.Vn)||48;
-        const SoH=toNum(nb.SoH)||1;
-        const DoD=toNum(nb.DoD)||0.8;
-        const eb=toNum(nb.ebanco)||0.95;
-        const eT=toNum(nb.eTemp)||1;
-        const ereg=(BAT_DEFAULTS[nb.tipo]||BAT_DEFAULTS.LFP).ereg;
-        nb.resultado = (Vn*cap*SoH*DoD*eb*eT)/(load*1000/ereg);
-      } else {
-        nb.resultado = null;
-      }
+    // Recalculate autonomy
+    const toNum = s => parseFloat((s||'').toString().replace(',','.'));
+    const cap=toNum(nb.capacidad)||0;
+    const load=toNum(nb.carga)||0;
+    if(cap>0 && load>0) {
+      const Vn=toNum(nb.Vn)||48;
+      const SoH=toNum(nb.SoH)||1;
+      const DoD=toNum(nb.DoD)||0.8;
+      const eb=toNum(nb.ebanco)||0.95;
+      const eT=toNum(nb.eTemp)||1;
+      const ereg=(BAT_DEFAULTS[nb.tipo]||BAT_DEFAULTS.LFP).ereg;
+      nb.resultado = (Vn*cap*SoH*DoD*eb*eT)/(load*1000/ereg);
+    } else {
+      nb.resultado = null;
     }
     return nb;
   }));
-
-
 
   return (
     <div>
@@ -3069,13 +3067,13 @@ function AutonomiaCalc() {
                   {['LFP','NMC','GEL','AGM','VRLA'].map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <FN label="Capacidad" unit="Ah" val={b.capacidad} onChange={v=>updateBanco(b.id,'capacidad',v)} />
-              <FN label="Carga del Banco" unit="kW" val={b.carga} onChange={v=>updateBanco(b.id,'carga',v)} />
-              <FN label="Vn Banco" unit="V" val={b.Vn} onChange={v=>updateBanco(b.id,'Vn',v)} small />
-              <FN label="SoH (0-1)" unit="" val={b.SoH} onChange={v=>updateBanco(b.id,'SoH',v)} small />
-              <FN label="DoD (0-1)" unit="" val={b.DoD} onChange={v=>updateBanco(b.id,'DoD',v)} small />
-              <FN label="η Banco" unit="" val={b.ebanco} onChange={v=>updateBanco(b.id,'ebanco',v)} small />
-              <FN label="η Temp" unit="" val={b.eTemp} onChange={v=>updateBanco(b.id,'eTemp',v)} small />
+              <AutonomiaInput label="Capacidad" unit="Ah" val={b.capacidad} onChange={v=>updateBanco(b.id,'capacidad',v)} />
+              <AutonomiaInput label="Carga del Banco" unit="kW" val={b.carga} onChange={v=>updateBanco(b.id,'carga',v)} />
+              <AutonomiaInput label="Vn Banco" unit="V" val={b.Vn} onChange={v=>updateBanco(b.id,'Vn',v)} small />
+              <AutonomiaInput label="SoH (0-1)" unit="" val={b.SoH} onChange={v=>updateBanco(b.id,'SoH',v)} small />
+              <AutonomiaInput label="DoD (0-1)" unit="" val={b.DoD} onChange={v=>updateBanco(b.id,'DoD',v)} small />
+              <AutonomiaInput label="η Banco" unit="" val={b.ebanco} onChange={v=>updateBanco(b.id,'ebanco',v)} small />
+              <AutonomiaInput label="η Temp" unit="" val={b.eTemp} onChange={v=>updateBanco(b.id,'eTemp',v)} small />
             </div>
 
             {!b.resultado&&b.capacidad&&b.carga&&(
