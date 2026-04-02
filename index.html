@@ -674,13 +674,14 @@ function generateReportText({nodeName, date, shift, technicianName, measurements
       eqs.forEach(eq => { printEq(eq.tag, lines); lines.push(''); });
       return;
     }
-    // Equipos del grupo — cada equipo separado por línea en blanco
-    eqs.forEach(eq => { printEq(eq.tag, lines); lines.push(''); });
+    // Equipos del grupo
+    eqs.forEach(eq => { printEq(eq.tag, lines); });
     // Voltaje del banco al final del grupo
     if(bat && measurements[bat.tag]) {
       const vb = measurements[bat.tag].V_banco;
-      if(vb) { lines.push(`V Banco ${bank}: ${vb} Vdc`); lines.push(''); }
+      if(vb) lines.push(`V Banco ${bank}: ${vb} Vdc`);
     }
+    lines.push('');
     // Bancos huérfanos
     if(orphanBats) orphanBats.forEach(eq => { printEq(eq.tag, lines); lines.push(''); });
   });
@@ -751,7 +752,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [participants,setParticipants]=useState('');
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
-  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
+  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',serial:'',notes:''});
   const [reportData,setReportData]=useState(null);
 
   const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
@@ -781,7 +782,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
           hasAcIn:!!eqAction.hasAcIn, hasAcOut:!!eqAction.hasAcOut, hasDcOut:!!eqAction.hasDcOut,
           hasSolar:eqAction.hasSolar, batteryType:eqAction.batteryType,
           batCapacity:eqAction.batCapacity||'', batCount:eqAction.batCount||'',
-          batCellType:eqAction.batCellType||'No aplica',
+          batCellType:eqAction.batCellType||'No aplica', serial:eqAction.serial||'',
           active:true, installedAt:new Date(date), installedBy:userProfile.name, notes:eqAction.notes
         });
       }
@@ -932,9 +933,13 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         <div className="card" style={{marginBottom:14}}>
           <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>⚡ Equipo a Instalar</h3>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div style={{gridColumn:'1/-1'}}>
+            <div>
               <label className="lbl">Tag / Identificador del Equipo</label>
               <input className="fi fm" value={eqAction.tag} onChange={e=>setEqA({...eqAction,tag:e.target.value})} placeholder="Ej: INV00-PV-LFP00" />
+            </div>
+            <div>
+              <label className="lbl">Serial del Equipo <span style={{color:'var(--tx4)',fontWeight:400,textTransform:'none'}}>(opcional)</span></label>
+              <input className="fi fm" value={eqAction.serial||''} onChange={e=>setEqA({...eqAction,serial:e.target.value})} placeholder="Ej: P02362013757" />
             </div>
             <div>
               <label className="lbl">Tipo</label>
@@ -1083,13 +1088,7 @@ function RecordDetail({ record, onBack, nodeId }) {
               <h3 className="fd" style={{fontWeight:700,color:'var(--amber)',fontSize:'1rem'}}>✏️ Editar Mediciones</h3>
               <button onClick={()=>setEditMeas(false)} style={{background:'none',border:'none',color:'var(--tx3)',cursor:'pointer',fontSize:20}}>✕</button>
             </div>
-            {Object.entries(measEdit)
-              .sort(([a],[b])=>{
-                const typeOf=t=>{const u=t.toUpperCase();return u.startsWith('INV')?0:u.startsWith('ETP')?1:u.startsWith('ATS')?2:u.startsWith('BAT')?3:4;};
-                const ta=typeOf(a),tb=typeOf(b);
-                return ta!==tb?ta-tb:a.localeCompare(b,'es',{numeric:true});
-              })
-              .map(([tag,vals])=>(
+            {Object.entries(measEdit).map(([tag,vals])=>(
               <div key={tag} className="card" style={{marginBottom:10,borderLeft:'3px solid var(--amber)'}}>
                 <div className="fm" style={{fontSize:'.85rem',color:'var(--amber)',fontWeight:700,marginBottom:10}}>{tag}</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
@@ -1753,6 +1752,7 @@ function EditEqModal({ eq, onSave, onClose }) {
     batCount:      eq.batCount||'',
     batCellType:   eq.batCellType||'No aplica',
     conductorGauge:eq.conductorGauge||'',
+    serial:    eq.serial||'',
     notes:     eq.notes||'',
   });
   const [saving,setSaving]=useState(false);
@@ -1834,6 +1834,12 @@ function EditEqModal({ eq, onSave, onClose }) {
               </select>
             </div>
           )}
+          {(f.type==='INV'||f.type==='ETP'||f.type==='BAT') && (
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Serial del Equipo</label>
+              <input className="fi fm" value={f.serial} onChange={e=>setF({...f,serial:e.target.value})} placeholder="Ej: P02362013757" />
+            </div>
+          )}
           <div style={{gridColumn:'1/-1'}}>
             <label className="lbl">Notas</label>
             <input className="fi" value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} placeholder="Modelo, serie, observaciones..." />
@@ -1847,146 +1853,6 @@ function EditEqModal({ eq, onSave, onClose }) {
           <button className="bs" onClick={onClose} disabled={saving}>Cancelar</button>
         </div>
       </div>
-    </div>
-  );
-}
-
-
-// ═══════════════════════════════════════════════════
-// 📁 DOCUMENTOS DEL NODO (diagramas y manuales)
-// ═══════════════════════════════════════════════════
-function NodeDocs({ nodeId, userProfile, toast }) {
-  const [docs,setDocs]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [showForm,setShowForm]=useState(false);
-  const [form,setForm]=useState({title:'',url:'',type:'diagrama',notes:''});
-  const [saving,setSaving]=useState(false);
-  const canManage = userProfile.role==='admin'||userProfile.role==='supervisor';
-
-  useEffect(()=>{
-    const u=db.collection('energy_nodes').doc(nodeId).collection('node_docs')
-      .orderBy('createdAt','desc')
-      .onSnapshot(s=>{setDocs(s.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);});
-    return u;
-  },[nodeId]);
-
-  const save = async () => {
-    if(!form.title.trim()||!form.url.trim()){toast('Completa título y enlace/URL.','error');return;}
-    // Validate URL
-    let url = form.url.trim();
-    if(!url.startsWith('http')) url='https://'+url;
-    setSaving(true);
-    try {
-      await db.collection('energy_nodes').doc(nodeId).collection('node_docs').add({
-        title: form.title.trim(),
-        url,
-        type: form.type,
-        notes: form.notes.trim(),
-        author: userProfile.name,
-        createdAt: TS(),
-      });
-      toast('Documento agregado.','success');
-      setForm({title:'',url:'',type:'diagrama',notes:''});
-      setShowForm(false);
-    } catch(e){toast('Error al guardar.','error');}
-    setSaving(false);
-  };
-
-  const deleteDoc = async (id) => {
-    if(!window.confirm('¿Eliminar este documento?')) return;
-    await db.collection('energy_nodes').doc(nodeId).collection('node_docs').doc(id).delete();
-    toast('Documento eliminado.','success');
-  };
-
-  const DOC_TYPES = {
-    diagrama: { label:'Diagrama', color:'#3b82f6', icon:'📐' },
-    manual:   { label:'Manual técnico', color:'#10b981', icon:'📖' },
-    plano:    { label:'Plano eléctrico', color:'#f59e0b', icon:'⚡' },
-    otro:     { label:'Otro', color:'#64748b', icon:'📄' },
-  };
-
-  const byType = {};
-  docs.forEach(d=>{ if(!byType[d.type]) byType[d.type]=[]; byType[d.type].push(d); });
-
-  return (
-    <div className="fin">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
-        <div>
-          <div className="fd" style={{fontWeight:800,fontSize:'1rem',color:'var(--tx1)'}}>📁 Documentos del Nodo</div>
-          <div style={{color:'var(--tx3)',fontSize:'.78rem'}}>Diagramas de conexión, manuales técnicos y planos — solo usuarios registrados</div>
-        </div>
-        {canManage && <button className="bp" style={{fontSize:'.82rem'}} onClick={()=>setShowForm(!showForm)}>
-          {showForm?'Cancelar':'+ Agregar'}
-        </button>}
-      </div>
-
-      {showForm && (
-        <div className="card fin" style={{marginBottom:14,borderColor:'rgba(59,130,246,.3)'}}>
-          <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#3b82f6',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:14}}>Nuevo Documento</h3>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div style={{gridColumn:'1/-1'}}>
-              <label className="lbl">Título</label>
-              <input className="fi" value={form.title} onChange={e=>setForm({...form,title:e.target.value})}
-                placeholder="Ej: Diagrama de conexión inversor LFP00" />
-            </div>
-            <div style={{gridColumn:'1/-1'}}>
-              <label className="lbl">Enlace / URL</label>
-              <input className="fi" type="url" value={form.url} onChange={e=>setForm({...form,url:e.target.value})}
-                placeholder="https://drive.google.com/... o link al PDF" />
-            </div>
-            <div>
-              <label className="lbl">Tipo de documento</label>
-              <select className="fi" value={form.type} onChange={e=>setForm({...form,type:e.target.value})}>
-                {Object.entries(DOC_TYPES).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="lbl">Notas (opcional)</label>
-              <input className="fi" value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}
-                placeholder="Versión, fecha, referencia..." />
-            </div>
-          </div>
-          <button className="bp" style={{marginTop:12,width:'100%'}} onClick={save} disabled={saving}>
-            {saving?'Guardando...':'💾 Guardar Documento'}
-          </button>
-        </div>
-      )}
-
-      {loading && <div style={{color:'var(--tx3)',textAlign:'center',padding:40}}>Cargando...</div>}
-
-      {!loading && docs.length===0 && !showForm && (
-        <div style={{textAlign:'center',padding:50}}>
-          <div style={{fontSize:36,marginBottom:10}}>📁</div>
-          <p style={{color:'var(--tx3)',marginBottom:6}}>No hay documentos registrados.</p>
-          {canManage && <p style={{color:'var(--tx4)',fontSize:'.8rem'}}>Agrega diagramas de conexión, manuales y planos eléctricos.</p>}
-        </div>
-      )}
-
-      {Object.entries(byType).map(([type,items])=>{
-        const dt=DOC_TYPES[type]||DOC_TYPES.otro;
-        return (
-          <div key={type} style={{marginBottom:18}}>
-            <div style={{fontSize:'.7rem',color:dt.color,textTransform:'uppercase',letterSpacing:'.08em',fontFamily:"'Exo 2',sans-serif",marginBottom:8}}>
-              {dt.icon} {dt.label}s ({items.length})
-            </div>
-            {items.map(doc=>(
-              <div key={doc.id} className="card" style={{marginBottom:8,borderLeft:'3px solid '+dt.color}}>
-                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}>
-                  <div style={{flex:1}}>
-                    <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                      style={{color:dt.color,fontWeight:700,fontSize:'.95rem',textDecoration:'none',fontFamily:"'Exo 2',sans-serif"}}>
-                      {dt.icon} {doc.title} ↗
-                    </a>
-                    {doc.notes && <div style={{color:'var(--tx3)',fontSize:'.78rem',marginTop:3}}>{doc.notes}</div>}
-                    <div style={{color:'var(--tx4)',fontSize:'.7rem',marginTop:4}}>Agregado por {doc.author}</div>
-                  </div>
-                  {canManage && <button onClick={()=>deleteDoc(doc.id)} className="bd" style={{padding:'4px 8px',fontSize:'.72rem',flexShrink:0}}>🗑️</button>}
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -2006,22 +1872,12 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
   const [editEq,setEditEq]=useState(null); // equipo siendo editado
 
   useEffect(()=>{
-    // Equipment: always loaded (needed for inspections + Cargas tab)
     const u1=db.collection('energy_nodes').doc(node.id).collection('energy_equipment')
       .onSnapshot(s=>{setEquipment(s.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);});
-    return()=>{u1();};
+    const u2=db.collection('energy_nodes').doc(node.id).collection('energy_records')
+      .orderBy('date','desc').onSnapshot(s=>{setRecords(s.docs.map(d=>({id:d.id,...d.data()})));});
+    return()=>{u1();u2();};
   },[node.id]);
-
-  // Records: lazy — load only when historial or cargas tab is first opened
-  const [recordsLoaded,setRecordsLoaded]=useState(false);
-  useEffect(()=>{
-    if((tab==='historial'||tab==='cargas')&&!recordsLoaded){
-      setRecordsLoaded(true);
-      const u2=db.collection('energy_nodes').doc(node.id).collection('energy_records')
-        .orderBy('date','desc').onSnapshot(s=>{setRecords(s.docs.map(d=>({id:d.id,...d.data()})));});
-      return()=>{u2();};
-    }
-  },[tab,recordsLoaded,node.id]);
 
   const exportPDF = () => {
     const {jsPDF}=window.jspdf;
@@ -2129,7 +1985,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       'Observaciones':r.observations||'',
     }));
     const eqRows=equipment.map(e=>({
-      'Tag': e.tag, 'Tipo': e.type, 'Tensión': e.voltage||'',
+      'Tag': e.tag, 'Serial': e.serial||'', 'Tipo': e.type, 'Tensión': e.voltage||'',
       'Panel Solar': e.hasSolar?'Sí':'No', 'Batería': e.batteryType||'',
       'Capacidad (Ah)': e.batCapacity||'', 'N° Baterías': e.batCount||'', 'Tipo Celda': e.batCellType||'',
       'Estado': e.active!==false?'Activo':'Retirado',
@@ -2157,6 +2013,15 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       toast('Equipo actualizado.','success');
       setEditEq(null);
     } catch(e) { toast('Error al guardar.','error'); }
+  };
+
+  const deleteEq = async (eq) => {
+    if(!window.confirm(`¿Eliminar permanentemente el equipo ${eq.tag}?
+Esta acción no se puede deshacer.`)) return;
+    try {
+      await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(eq.id).delete();
+      toast('Equipo eliminado.','success');
+    } catch(e) { toast('Error al eliminar.','error'); }
   };
 
   return (
@@ -2198,7 +2063,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
 
       {/* Tabs */}
       <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex',overflowX:'auto'}}>
-        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['docs','📁 Docs'],['alertas','🔔 Alertas'],['exportar','Exportar']].map(([k,lbl])=>(
+        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['alertas','🔔 Alertas'],['exportar','Exportar']].map(([k,lbl])=>(
           <button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)} style={{whiteSpace:'nowrap'}}>{lbl}</button>
         ))}
       </div>
@@ -2243,9 +2108,14 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                             style={{background:'none',border:'1px solid var(--border)',color:'var(--tx3)',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
                             ✏️ Editar
                           </button>}
+                          {userProfile.role==='admin' && <button onClick={()=>deleteEq(eq)}
+                            style={{background:'none',border:'1px solid rgba(239,68,68,.3)',color:'#ef4444',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
+                            🗑️
+                          </button>}
                         </span>
                       </div>
-                      {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
+                      {eq.serial && <div style={{marginTop:4,fontSize:'.72rem',color:'var(--tx4)',fontFamily:"'JetBrains Mono',monospace"}}>S/N: {eq.serial}</div>}
+                      {eq.notes && <div style={{marginTop:4,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
                     </div>
                   );
                 })}
@@ -2301,9 +2171,6 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
           }
         </div>
       )}
-
-      {/* TAB DOCS */}
-      {tab==='docs' && <NodeDocs nodeId={node.id} userProfile={userProfile} toast={toast} />}
 
       {/* TAB ALERTAS */}
       {tab==='alertas' && <NodeAlerts nodeId={node.id} nodeName={node.name} userProfile={userProfile} toast={toast} />}
@@ -3111,6 +2978,20 @@ function PublicNodeView({ nodeId }) {
 // ═══════════════════════════════════════════════════
 // 🔋 CALCULADORA DE AUTONOMÍA STANDALONE
 // ═══════════════════════════════════════════════════
+// Standalone input para autonomía — FUERA del componente para evitar pérdida de foco
+function AutonomiaInput({label, val, onChange, unit, small}) {
+  return (
+    <div>
+      <label style={{display:'block',fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:3,fontFamily:"'Exo 2',sans-serif"}}>
+        {label}{unit&&<span style={{color:'var(--amber)',marginLeft:3}}>{unit}</span>}
+      </label>
+      <input className="mi" type="text" inputMode="decimal" value={val}
+        onChange={e=>onChange(e.target.value)}
+        style={{fontSize:small?'.8rem':'.88rem'}} placeholder="0" />
+    </div>
+  );
+}
+
 function AutonomiaCalc() {
   const [bancos, setBancos] = useState([
     { id:1, tipo:'LFP', capacidad:'', Vn:'48', SoH:'1.0', DoD:'0.8', ebanco:'0.98', eTemp:'1.0', carga:'', resultado:null }
@@ -3152,16 +3033,6 @@ function AutonomiaCalc() {
     return nb;
   }));
 
-  const FN = ({label, val, onChange, unit, small}) => (
-    <div>
-      <label style={{display:'block',fontSize:'.65rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.05em',marginBottom:3,fontFamily:"'Exo 2',sans-serif"}}>
-        {label}{unit&&<span style={{color:'var(--amber)',marginLeft:3}}>{unit}</span>}
-      </label>
-      <input className="mi" type="text" inputMode="decimal" value={val} onChange={e=>onChange(e.target.value)}
-        style={{fontSize:small?'.8rem':'.88rem'}} placeholder="0" />
-    </div>
-  );
-
   return (
     <div>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
@@ -3196,13 +3067,13 @@ function AutonomiaCalc() {
                   {['LFP','NMC','GEL','AGM','VRLA'].map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <FN label="Capacidad" unit="Ah" val={b.capacidad} onChange={v=>updateBanco(b.id,'capacidad',v)} />
-              <FN label="Carga del Banco" unit="kW" val={b.carga} onChange={v=>updateBanco(b.id,'carga',v)} />
-              <FN label="Vn Banco" unit="V" val={b.Vn} onChange={v=>updateBanco(b.id,'Vn',v)} small />
-              <FN label="SoH (0-1)" unit="" val={b.SoH} onChange={v=>updateBanco(b.id,'SoH',v)} small />
-              <FN label="DoD (0-1)" unit="" val={b.DoD} onChange={v=>updateBanco(b.id,'DoD',v)} small />
-              <FN label="η Banco" unit="" val={b.ebanco} onChange={v=>updateBanco(b.id,'ebanco',v)} small />
-              <FN label="η Temp" unit="" val={b.eTemp} onChange={v=>updateBanco(b.id,'eTemp',v)} small />
+              <AutonomiaInput label="Capacidad" unit="Ah" val={b.capacidad} onChange={v=>updateBanco(b.id,'capacidad',v)} />
+              <AutonomiaInput label="Carga del Banco" unit="kW" val={b.carga} onChange={v=>updateBanco(b.id,'carga',v)} />
+              <AutonomiaInput label="Vn Banco" unit="V" val={b.Vn} onChange={v=>updateBanco(b.id,'Vn',v)} small />
+              <AutonomiaInput label="SoH (0-1)" unit="" val={b.SoH} onChange={v=>updateBanco(b.id,'SoH',v)} small />
+              <AutonomiaInput label="DoD (0-1)" unit="" val={b.DoD} onChange={v=>updateBanco(b.id,'DoD',v)} small />
+              <AutonomiaInput label="η Banco" unit="" val={b.ebanco} onChange={v=>updateBanco(b.id,'ebanco',v)} small />
+              <AutonomiaInput label="η Temp" unit="" val={b.eTemp} onChange={v=>updateBanco(b.id,'eTemp',v)} small />
             </div>
 
             {!b.resultado&&b.capacidad&&b.carga&&(
@@ -3339,40 +3210,24 @@ function MaterialesCalc() {
   };
 
   const copy = (lista,cat) => {
-    let txt='MATERIALES - '+cat.toUpperCase()+'\n'+new Date().toLocaleString()+'\n';
-    if(proyecto) txt+='Proyecto: '+proyecto+'\n';
+    let txt=`MATERIALES - ${cat.toUpperCase()}\n${new Date().toLocaleString()}\n`;
+    if(proyecto) txt+=`Proyecto: ${proyecto}\n`;
     txt+='\n';
-    lista.forEach(i=>{txt+=i.nombre+'\t'+i.cantidad+'\n';});
-    navigator.clipboard.writeText(txt).catch(()=>{
-      // Fallback para contextos sin permiso de clipboard
-      const ta=document.createElement('textarea');
-      ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0';
-      document.body.appendChild(ta); ta.select();
-      document.execCommand('copy'); document.body.removeChild(ta);
-    });
+    lista.forEach(i=>txt+=`${i.nombre}\t${i.cantidad}\n`);
+    navigator.clipboard.writeText(txt);
   };
 
   const exportXls = (lista,cat) => {
-    if(!lista.length){return;}
-    // Usar SheetJS si disponible, sino fallback HTML
-    if(window.XLSX) {
-      const rows=lista.map(i=>({'Material':i.nombre,'Cantidad':i.cantidad,'Comentario':i.comentario||''}));
-      const wb=window.XLSX.utils.book_new();
-      const ws=window.XLSX.utils.json_to_sheet(rows);
-      window.XLSX.utils.book_append_sheet(wb,ws,'Materiales');
-      window.XLSX.writeFile(wb,'materiales_'+cat+'_'+Date.now()+'.xlsx');
-    } else {
-      let html='<html><head><meta charset="UTF-8"></head><body>';
-      html+='<h2>Materiales - '+cat+'</h2>';
-      if(proyecto) html+='<p>Proyecto: '+proyecto+'</p>';
-      html+='<table border="1"><tr><th>Material</th><th>Cantidad</th><th>Comentario</th></tr>';
-      lista.forEach(i=>{html+='<tr><td>'+i.nombre+'</td><td>'+i.cantidad+'</td><td>'+(i.comentario||'')+'</td></tr>';});
-      html+='</table></body></html>';
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(new Blob([html],{type:'application/vnd.ms-excel'}));
-      a.download='materiales_'+cat+'_'+Date.now()+'.xls';
-      a.click(); URL.revokeObjectURL(a.href);
-    }
+    let html=`<html><head><meta charset="UTF-8"></head><body><h2>Materiales - ${cat}</h2>`;
+    if(proyecto) html+=`<p>Proyecto: ${proyecto}</p>`;
+    html+=`<table border="1"><tr><th>Material</th><th>Cantidad</th><th>Comentario</th></tr>`;
+    lista.forEach(i=>html+=`<tr><td>${i.nombre}</td><td>${i.cantidad}</td><td>${i.comentario||''}</td></tr>`);
+    html+=`</table></body></html>`;
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([html],{type:'application/vnd.ms-excel'}));
+    a.download=`materiales_${cat}_${Date.now()}.xls`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const FI = ({label,val,onChange,placeholder,type='number'}) => (
