@@ -752,7 +752,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
   const [participants,setParticipants]=useState('');
   const [meas,setMeas]=useState({});
   const [saving,setSaving]=useState(false);
-  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',serial:'',notes:''});
+  const [eqAction,setEqA]=useState({tag:'',type:'INV',voltage:'220V',hasAcIn:false,hasAcOut:true,hasDcOut:false,hasSolar:false,batteryType:'LFP',batCapacity:'',batCount:'',batCellType:'No aplica',notes:''});
   const [reportData,setReportData]=useState(null);
 
   const updM=(tag,k,v)=>setMeas(p=>({...p,[tag]:{...(p[tag]||{}),[k]:v}}));
@@ -782,7 +782,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
           hasAcIn:!!eqAction.hasAcIn, hasAcOut:!!eqAction.hasAcOut, hasDcOut:!!eqAction.hasDcOut,
           hasSolar:eqAction.hasSolar, batteryType:eqAction.batteryType,
           batCapacity:eqAction.batCapacity||'', batCount:eqAction.batCount||'',
-          batCellType:eqAction.batCellType||'No aplica', serial:eqAction.serial||'',
+          batCellType:eqAction.batCellType||'No aplica',
           active:true, installedAt:new Date(date), installedBy:userProfile.name, notes:eqAction.notes
         });
       }
@@ -933,13 +933,9 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         <div className="card" style={{marginBottom:14}}>
           <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>⚡ Equipo a Instalar</h3>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div>
+            <div style={{gridColumn:'1/-1'}}>
               <label className="lbl">Tag / Identificador del Equipo</label>
               <input className="fi fm" value={eqAction.tag} onChange={e=>setEqA({...eqAction,tag:e.target.value})} placeholder="Ej: INV00-PV-LFP00" />
-            </div>
-            <div>
-              <label className="lbl">Serial del Equipo <span style={{color:'var(--tx4)',fontWeight:400,textTransform:'none'}}>(opcional)</span></label>
-              <input className="fi fm" value={eqAction.serial||''} onChange={e=>setEqA({...eqAction,serial:e.target.value})} placeholder="Ej: P02362013757" />
             </div>
             <div>
               <label className="lbl">Tipo</label>
@@ -1752,7 +1748,6 @@ function EditEqModal({ eq, onSave, onClose }) {
     batCount:      eq.batCount||'',
     batCellType:   eq.batCellType||'No aplica',
     conductorGauge:eq.conductorGauge||'',
-    serial:    eq.serial||'',
     notes:     eq.notes||'',
   });
   const [saving,setSaving]=useState(false);
@@ -1834,12 +1829,6 @@ function EditEqModal({ eq, onSave, onClose }) {
               </select>
             </div>
           )}
-          {(f.type==='INV'||f.type==='ETP'||f.type==='BAT') && (
-            <div style={{gridColumn:'1/-1'}}>
-              <label className="lbl">Serial del Equipo</label>
-              <input className="fi fm" value={f.serial} onChange={e=>setF({...f,serial:e.target.value})} placeholder="Ej: P02362013757" />
-            </div>
-          )}
           <div style={{gridColumn:'1/-1'}}>
             <label className="lbl">Notas</label>
             <input className="fi" value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} placeholder="Modelo, serie, observaciones..." />
@@ -1853,6 +1842,169 @@ function EditEqModal({ eq, onSave, onClose }) {
           <button className="bs" onClick={onClose} disabled={saving}>Cancelar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════
+// 📁 DOCUMENTOS DEL NODO — Diagramas y manuales (solo usuarios registrados)
+// ═══════════════════════════════════════════════════
+function NodeDocs({ nodeId, userProfile, toast }) {
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title:'', url:'', type:'diagrama', notes:'' });
+  const [saving, setSaving] = useState(false);
+  const canManage = userProfile.role==='admin' || userProfile.role==='supervisor';
+
+  useEffect(()=>{
+    const u = db.collection('energy_nodes').doc(nodeId).collection('node_docs')
+      .orderBy('createdAt','desc')
+      .onSnapshot(s=>{ setDocs(s.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); });
+    return u;
+  },[nodeId]);
+
+  const save = async () => {
+    if(!form.title.trim()||!form.url.trim()){ toast('Completa título y enlace.','error'); return; }
+    let url = form.url.trim();
+    if(!url.startsWith('http')) url = 'https://'+url;
+    setSaving(true);
+    try {
+      await db.collection('energy_nodes').doc(nodeId).collection('node_docs').add({
+        title: form.title.trim(),
+        url,
+        type: form.type,
+        notes: form.notes.trim(),
+        author: userProfile.name,
+        createdAt: TS(),
+      });
+      toast('Documento guardado.','success');
+      setForm({ title:'', url:'', type:'diagrama', notes:'' });
+      setShowForm(false);
+    } catch(e){ toast('Error al guardar.','error'); }
+    setSaving(false);
+  };
+
+  const del = async id => {
+    if(!window.confirm('¿Eliminar este documento?')) return;
+    await db.collection('energy_nodes').doc(nodeId).collection('node_docs').doc(id).delete();
+    toast('Eliminado.','success');
+  };
+
+  const DOC_TYPES = {
+    diagrama: { label:'Diagrama de conexión', color:'#3b82f6', icon:'📐' },
+    manual:   { label:'Manual técnico',        color:'#10b981', icon:'📖' },
+    plano:    { label:'Plano eléctrico',       color:'#f59e0b', icon:'⚡' },
+    otro:     { label:'Otro documento',        color:'#64748b', icon:'📄' },
+  };
+
+  // Agrupar por tipo
+  const grupos = {};
+  docs.forEach(d=>{ (grupos[d.type]=grupos[d.type]||[]).push(d); });
+
+  return (
+    <div className="fin">
+      {/* Encabezado */}
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,gap:10}}>
+        <div>
+          <div className="fd" style={{fontWeight:800,fontSize:'1rem',color:'var(--tx1)'}}>📁 Documentos del Nodo</div>
+          <div style={{color:'var(--tx3)',fontSize:'.78rem',marginTop:2}}>
+            Diagramas, manuales y planos — visible solo para usuarios registrados
+          </div>
+        </div>
+        {canManage && (
+          <button className="bp" style={{fontSize:'.8rem',flexShrink:0}} onClick={()=>setShowForm(v=>!v)}>
+            {showForm ? 'Cancelar' : '+ Agregar'}
+          </button>
+        )}
+      </div>
+
+      {/* Formulario */}
+      {showForm && (
+        <div className="card fin" style={{marginBottom:14,borderColor:'rgba(59,130,246,.35)'}}>
+          <div className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#3b82f6',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:14}}>
+            Nuevo Documento
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Título</label>
+              <input className="fi" value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}
+                placeholder="Ej: Diagrama conexión inversor LFP00" />
+            </div>
+            <div style={{gridColumn:'1/-1'}}>
+              <label className="lbl">Enlace (Google Drive, OneDrive, URL directa…)</label>
+              <input className="fi" value={form.url} onChange={e=>setForm(p=>({...p,url:e.target.value}))}
+                placeholder="https://drive.google.com/file/d/..." />
+            </div>
+            <div>
+              <label className="lbl">Tipo</label>
+              <select className="fi" value={form.type} onChange={e=>setForm(p=>({...p,type:e.target.value}))}>
+                {Object.entries(DOC_TYPES).map(([k,v])=>
+                  <option key={k} value={k}>{v.icon} {v.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="lbl">Notas (opcional)</label>
+              <input className="fi" value={form.notes} onChange={e=>setForm(p=>({...p,notes:e.target.value}))}
+                placeholder="Versión, fecha, referencia…" />
+            </div>
+          </div>
+          <button className="bp" style={{marginTop:14,width:'100%'}} onClick={save} disabled={saving}>
+            {saving ? 'Guardando…' : '💾 Guardar'}
+          </button>
+        </div>
+      )}
+
+      {loading && <div style={{color:'var(--tx3)',textAlign:'center',padding:40}}>Cargando…</div>}
+
+      {!loading && docs.length===0 && !showForm && (
+        <div style={{textAlign:'center',padding:50}}>
+          <div style={{fontSize:36,marginBottom:10}}>📁</div>
+          <p style={{color:'var(--tx3)',marginBottom:4}}>No hay documentos registrados en este nodo.</p>
+          {canManage && <p style={{color:'var(--tx4)',fontSize:'.8rem'}}>Admin y supervisores pueden agregar links de Drive, manuales y planos.</p>}
+        </div>
+      )}
+
+      {/* Listado agrupado por tipo */}
+      {Object.entries(grupos).map(([tipo, items])=>{
+        const dt = DOC_TYPES[tipo]||DOC_TYPES.otro;
+        return (
+          <div key={tipo} style={{marginBottom:18}}>
+            <div style={{fontSize:'.68rem',color:dt.color,textTransform:'uppercase',letterSpacing:'.08em',
+              fontFamily:"'Exo 2',sans-serif",marginBottom:8}}>
+              {dt.icon} {dt.label}s ({items.length})
+            </div>
+            {items.map(doc=>(
+              <div key={doc.id} className="card" style={{marginBottom:8,borderLeft:'3px solid '+dt.color}}>
+                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                      style={{color:dt.color,fontWeight:700,fontSize:'.92rem',textDecoration:'none',
+                        fontFamily:"'Exo 2',sans-serif",display:'block',marginBottom:3}}>
+                      {dt.icon} {doc.title} ↗
+                    </a>
+                    <div style={{fontSize:'.72rem',color:'var(--tx4)',
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {doc.url}
+                    </div>
+                    {doc.notes && <div style={{fontSize:'.78rem',color:'var(--tx3)',marginTop:4}}>{doc.notes}</div>}
+                    <div style={{fontSize:'.68rem',color:'var(--tx4)',marginTop:4}}>
+                      Agregado por {doc.author}
+                    </div>
+                  </div>
+                  {canManage && (
+                    <button onClick={()=>del(doc.id)} className="bd"
+                      style={{padding:'4px 9px',fontSize:'.72rem',flexShrink:0}}>
+                      🗑️
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1985,7 +2137,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       'Observaciones':r.observations||'',
     }));
     const eqRows=equipment.map(e=>({
-      'Tag': e.tag, 'Serial': e.serial||'', 'Tipo': e.type, 'Tensión': e.voltage||'',
+      'Tag': e.tag, 'Tipo': e.type, 'Tensión': e.voltage||'',
       'Panel Solar': e.hasSolar?'Sí':'No', 'Batería': e.batteryType||'',
       'Capacidad (Ah)': e.batCapacity||'', 'N° Baterías': e.batCount||'', 'Tipo Celda': e.batCellType||'',
       'Estado': e.active!==false?'Activo':'Retirado',
@@ -2013,15 +2165,6 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       toast('Equipo actualizado.','success');
       setEditEq(null);
     } catch(e) { toast('Error al guardar.','error'); }
-  };
-
-  const deleteEq = async (eq) => {
-    if(!window.confirm(`¿Eliminar permanentemente el equipo ${eq.tag}?
-Esta acción no se puede deshacer.`)) return;
-    try {
-      await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(eq.id).delete();
-      toast('Equipo eliminado.','success');
-    } catch(e) { toast('Error al eliminar.','error'); }
   };
 
   return (
@@ -2063,7 +2206,7 @@ Esta acción no se puede deshacer.`)) return;
 
       {/* Tabs */}
       <div style={{borderBottom:'1px solid var(--border)',marginBottom:16,display:'flex',overflowX:'auto'}}>
-        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['alertas','🔔 Alertas'],['exportar','Exportar']].map(([k,lbl])=>(
+        {[['equipos','Equipos'],['historial','Historial'],['cargas','Cargas'],['docs','📁 Docs'],['alertas','🔔 Alertas'],['exportar','Exportar']].map(([k,lbl])=>(
           <button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)} style={{whiteSpace:'nowrap'}}>{lbl}</button>
         ))}
       </div>
@@ -2108,14 +2251,9 @@ Esta acción no se puede deshacer.`)) return;
                             style={{background:'none',border:'1px solid var(--border)',color:'var(--tx3)',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
                             ✏️ Editar
                           </button>}
-                          {userProfile.role==='admin' && <button onClick={()=>deleteEq(eq)}
-                            style={{background:'none',border:'1px solid rgba(239,68,68,.3)',color:'#ef4444',padding:'2px 8px',borderRadius:4,cursor:'pointer',fontSize:'.72rem',fontFamily:"'Exo 2',sans-serif"}}>
-                            🗑️
-                          </button>}
                         </span>
                       </div>
-                      {eq.serial && <div style={{marginTop:4,fontSize:'.72rem',color:'var(--tx4)',fontFamily:"'JetBrains Mono',monospace"}}>S/N: {eq.serial}</div>}
-                      {eq.notes && <div style={{marginTop:4,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
+                      {eq.notes && <div style={{marginTop:6,fontSize:'.78rem',color:'var(--tx3)'}}>{eq.notes}</div>}
                     </div>
                   );
                 })}
@@ -2127,6 +2265,9 @@ Esta acción no se puede deshacer.`)) return;
 
       {/* TAB CARGAS */}
       {tab==='cargas' && <LoadChart records={records} equipment={equipment} />}
+
+      {/* TAB DOCS */}
+      {tab==='docs' && <NodeDocs nodeId={node.id} userProfile={userProfile} toast={toast} />}
 
       {/* TAB HISTORIAL */}
       {tab==='historial' && (
@@ -2714,6 +2855,13 @@ function Topbar({ userProfile, view, setView, onLogout, toast }) {
             cursor:'pointer',fontSize:'.78rem',fontFamily:"'Exo 2',sans-serif",fontWeight:600}}>
           🧮 Materiales
         </button>
+        <button onClick={()=>setView(view==='autonomia'?'nodes':'autonomia')}
+          style={{background:view==='autonomia'?'rgba(16,185,129,.15)':'none',border:'1px solid',
+            borderColor:view==='autonomia'?'rgba(16,185,129,.4)':'var(--border)',
+            color:view==='autonomia'?'#10b981':'var(--tx3)',padding:'4px 12px',borderRadius:6,
+            cursor:'pointer',fontSize:'.78rem',fontFamily:"'Exo 2',sans-serif",fontWeight:600}}>
+          🔋 Autonomía
+        </button>
         {userProfile.role==='admin' && (
           <button onClick={()=>setView(view==='admin'?'nodes':'admin')}
             style={{background:view==='admin'?'rgba(245,158,11,.15)':'none',border:'1px solid',borderColor:view==='admin'?'rgba(245,158,11,.4)':'var(--border)',
@@ -2978,7 +3126,7 @@ function PublicNodeView({ nodeId }) {
 // ═══════════════════════════════════════════════════
 // 🔋 CALCULADORA DE AUTONOMÍA STANDALONE
 // ═══════════════════════════════════════════════════
-// Standalone input para autonomía — FUERA del componente para evitar pérdida de foco
+// Input de autonomía fuera del componente → sin pérdida de foco al escribir
 function AutonomiaInput({label, val, onChange, unit, small}) {
   return (
     <div>
@@ -3098,220 +3246,238 @@ function AutonomiaCalc() {
   );
 }
 
-// ═══════════════════════════════════════════════════
-// 🧮 CALCULADORA DE MATERIALES
-// ═══════════════════════════════════════════════════
-const MAT_FUENTES = [
-  { nombre:'CABLE ROJO AUTOMOTRIZ #2 AWG', base:2.5 },
-  { nombre:'CABLE NEGRO AUTOMOTRIZ #2 AWG', base:2.5 },
-  { nombre:'TERMINAL DE OJO #2', base:4 },
-  { nombre:'TERMINAL DE OJO #{calibre}', base:1, dinamico:true, comentario:'TERMINAL DE ENTRADA AC' },
-  { nombre:'TERMINAL AUTOMOTRIZ AISLADO DE ANILLO #10-12 AWG (M6)', base:2, comentario:'TERMINAL PARA CONEXIÓN A TIERRA' },
-  { nombre:'TORNILLO 5/16"', base:2, comentario:'BATERÍA - BARRA EQUIPOTENCIAL' },
-  { nombre:'ARANDELA 5/16"', base:2, comentario:'BATERÍA - BARRA EQUIPOTENCIAL' },
-  { nombre:'TUERCA 5/16"', base:2, comentario:'BATERÍA - BARRA EQUIPOTENCIAL' },
-  { nombre:'CHASIS DE FUENTE DE PODER (PSU) HUAWEI ETP23006', base:1 },
-  { nombre:'MÓDULO INVERSOR HUAWEI', formula:'inversores' },
-  { nombre:'MÓDULO RECTIFICADOR HUAWEI', formula:'rectificadores' },
-  { nombre:'MÓDULO SOLAR SCC MPPT HUAWEI', formula:'modulosSolares' },
-  { nombre:'CONECTOR PV HUAWEI PARA MÓDULO SOLAR', formula:'modulosSolares', mult:2 },
-];
-const MAT_RACK = [
-  { nombre:'RACK PISO STRIG 42U CERRADO', base:1, factor:'racks' },
-  { nombre:'TERMINAL AUTOMOTRIZ AISLADO DE ANILLO #10-12 AWG (M6)', base:2, factor:'racks' },
-  { nombre:'BATERÍA PYLONTECH US/UP 5000', base:1, factor:'baterias' },
-  { nombre:'KIT DE CABLES EXTERNOS PYLONTECH US/UP', base:1, factor:'baterias' },
-  { nombre:'TORNILLO 5/16"', base:2, factor:'baterias', comentario:'BATERÍA - BARRA EQUIPOTENCIAL' },
-  { nombre:'ARANDELA 5/16"', base:2, factor:'baterias', comentario:'BATERÍA - BARRA EQUIPOTENCIAL' },
-  { nombre:'TUERCA 5/16"', base:2, factor:'baterias', comentario:'BATERÍA - BARRA EQUIPOTENCIAL' },
-  { nombre:'BARRA PLETINA DE COBRE 30 CM', base:2, factor:'racks', comentario:'BARRA EQUIPOTENCIAL' },
-  { nombre:'AISLADOR PARA BARRA DE COBRE SM-35', base:4, factor:'racks' },
-  { nombre:'TORNILLO 5/16"', base:8, factor:'racks', comentario:'TORNILLO DE AISLADORES' },
-];
-const MAT_ESC = [
-  { nombre:'ACOPLADOR GALVANIZADO PARA BANDEJA', base:1 },
-  { nombre:'SOPORTE RIEL UNISTRURT DE 30CM', base:1 },
-  { nombre:'SOPORTE PARA ANCLAJE DE BANDEJA EN TECHO', base:2 },
-  { nombre:'TUERCA PARA BARRA ROSCADA DE 1/2"', base:8 },
-  { nombre:'ARANDELA PARA BARRA ROSCADA DE 1/2"', base:8 },
-  { nombre:'TORNILLOS PARA RAMPLUG NARANJA', base:4 },
-  { nombre:'RAMPLUG NARANJA 3/8"', base:4 },
-  { nombre:'ARANDELAS 1/4', base:4 },
-];
 
-function ResultTable({ items, onCopy, onExport }) {
-  if(!items.length) return null;
+// ═══════════════════════════════════════════════════
+// 🔋 VISTA STANDALONE DE AUTONOMÍA
+// ═══════════════════════════════════════════════════
+function AutonomiaWrapper() {
   return (
-    <div>
-      <div style={{border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',marginBottom:12}}>
-        {items.map((it,i)=>(
-          <div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'9px 14px',
-            background:i%2===0?'var(--bg-surface)':'var(--bg-card)',borderBottom:i<items.length-1?'1px solid var(--border)':'none'}}>
-            <div>
-              <div style={{fontSize:'.85rem',color:'var(--tx1)',fontWeight:500}}>{it.nombre}</div>
-              {it.comentario&&<div style={{fontSize:'.7rem',color:'var(--tx3)',marginTop:2}}>{it.comentario}</div>}
-            </div>
-            <span className="fm" style={{fontSize:'1rem',fontWeight:700,color:'#f59e0b',marginLeft:16,flexShrink:0}}>{it.cantidad}</span>
-          </div>
-        ))}
+    <div className="fin">
+      <div style={{marginBottom:20}}>
+        <h1 className="fd" style={{fontSize:'1.4rem',fontWeight:800,color:'var(--tx1)',marginBottom:4}}>🔋 Calculadora de Autonomía</h1>
+        <p style={{color:'var(--tx3)',fontSize:'.85rem'}}>Estima cuánto tiempo duran los bancos de baterías según su carga y parámetros</p>
       </div>
-      <div style={{display:'flex',gap:8}}>
-        <button className="bs" style={{fontSize:'.8rem',padding:'7px 14px'}} onClick={onCopy}>📋 Copiar lista</button>
-        <button className="bs" style={{fontSize:'.8rem',padding:'7px 14px'}} onClick={onExport}>📎 Exportar Excel</button>
-      </div>
+      <AutonomiaCalc />
     </div>
   );
 }
 
+// ═══════════════════════════════════════════════════
+// 🧮 CALCULADORA DE MATERIALES
+// ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// 🧮 CALCULADORA DE MATERIALES (una sola tabla unificada)
+// ═══════════════════════════════════════════════════
+const MAT_FUENTES_NEW = [
+  { nombre:'CABLE ROJO AUTOMOTRIZ #2 AWG',      cantidadBase:1.5, unidad:'mts', dep:'fuentes' },
+  { nombre:'CABLE NEGRO AUTOMOTRIZ #2 AWG',      cantidadBase:1.5, unidad:'mts', dep:'fuentes' },
+  { nombre:'TERMINAL DE OJO #2',                 cantidadBase:4,   unidad:'und', dep:'fuentes' },
+  { nombre:'TERMINAL DE OJO #{calibre} AWG',     cantidadBase:1,   unidad:'und', dep:'fuentes', dinamico:true },
+  { nombre:'TERMINAL AUTOMOTRIZ AISLADO DE ANILLO #10-12 AWG (M6)', cantidadBase:2, unidad:'und', dep:'fuentes' },
+  { nombre:'TORNILLO 5/16"',                     cantidadBase:2,   unidad:'und', dep:'fuentes' },
+  { nombre:'ARANDELA 5/16"',                     cantidadBase:2,   unidad:'und', dep:'fuentes' },
+  { nombre:'TUERCA 5/16"',                       cantidadBase:2,   unidad:'und', dep:'fuentes' },
+  { nombre:'CHASIS DE FUENTE DE PODER (PSU) HUAWEI ETP23006', cantidadBase:1, unidad:'und', dep:'fuentes' },
+  { nombre:'MODULO INVERSOR HUAWEI',             cantidadBase:1,   unidad:'und', dep:'inversores' },
+  { nombre:'MODULO RECTIFICADOR HUAWEI',         cantidadBase:1,   unidad:'und', dep:'rectificadores' },
+  { nombre:'MODULO SOLAR SCC MPPT HUAWEI',       cantidadBase:1,   unidad:'und', dep:'solares' },
+  { nombre:'CONECTOR PV HUAWEI PARA MODULO SOLAR',cantidadBase:2,  unidad:'und', dep:'solares' },
+];
+const MAT_RACK_NEW = [
+  { nombre:'RACK PISO STRIG 42U CERRADO',        cantidadBase:1,   unidad:'und', dep:'racks' },
+  { nombre:'TERMINAL AUTOMOTRIZ AISLADO DE ANILLO #10-12 AWG (M6)', cantidadBase:2, unidad:'und', dep:'racks' },
+  { nombre:'BATERIA PYLONTECH US/UP 5000',       cantidadBase:1,   unidad:'und', dep:'baterias' },
+  { nombre:'KIT DE CABLES EXTERNOS PYLONTECH US/UP', cantidadBase:1, unidad:'und', dep:'baterias' },
+  { nombre:'TORNILLO 5/16"',                     cantidadBase:2,   unidad:'und', dep:'baterias' },
+  { nombre:'ARANDELA 5/16"',                     cantidadBase:2,   unidad:'und', dep:'baterias' },
+  { nombre:'TUERCA 5/16"',                       cantidadBase:2,   unidad:'und', dep:'baterias' },
+  { nombre:'BARRA PLETINA DE COBRE 30 CM',       cantidadBase:2,   unidad:'und', dep:'racks' },
+  { nombre:'AISLADOR PARA BARRA DE COBRE SM-35', cantidadBase:4,   unidad:'und', dep:'racks' },
+  { nombre:'TORNILLO 5/16"',                     cantidadBase:8,   unidad:'und', dep:'racks' },
+  { nombre:'ARANDELA 5/16"',                     cantidadBase:8,   unidad:'und', dep:'racks' },
+];
+const MAT_ESC_NEW = [
+  { nombre:'ACOPLADOR GALVANIZADO PARA BANDEJA',        cantidadBase:1, unidad:'und', dep:'soportes' },
+  { nombre:'SOPORTE RIEL UNISTRURT DE 30CM',             cantidadBase:1, unidad:'und', dep:'soportes' },
+  { nombre:'SOPORTE PARA ANCLAJE DE BANDEJA EN TECHO',  cantidadBase:2, unidad:'und', dep:'soportes' },
+  { nombre:'TUERCA PARA BARRA ROSCADA DE 1/2"',         cantidadBase:8, unidad:'und', dep:'soportes' },
+  { nombre:'ARANDELA PARA BARRA ROSCADA DE 1/2"',       cantidadBase:8, unidad:'und', dep:'soportes' },
+  { nombre:'TORNILLOS PARA RAMPLUG NARANJA',             cantidadBase:4, unidad:'und', dep:'soportes' },
+  { nombre:'RAMPLUG NARANJA 3/8"',                      cantidadBase:4, unidad:'und', dep:'soportes' },
+  { nombre:'ARANDELAS 1/4',                             cantidadBase:4, unidad:'und', dep:'soportes' },
+];
+
+function calcularMaterialesTotal({fuentes,calibre,rect,inv,solar,racks,baterias,soportes}) {
+  const mapa = new Map();
+  const add = (nombre, cantidad, unidad, seccion) => {
+    if(cantidad<=0) return;
+    if(mapa.has(nombre)) mapa.get(nombre).cantidad += cantidad;
+    else mapa.set(nombre, {cantidad, unidad, seccion});
+  };
+  const n = v => parseFloat((v||'0').toString().replace(',','.')) || 0;
+  const F=n(fuentes), C=n(calibre), R=n(rect), I=n(inv), S=n(solar), Ra=n(racks), B=n(baterias), So=n(soportes);
+  MAT_FUENTES_NEW.forEach(m=>{
+    const mult = m.dep==='fuentes'?F : m.dep==='inversores'?I*F : m.dep==='rectificadores'?R*F : m.dep==='solares'?S*F : 0;
+    const nombre = m.dinamico&&C>0 ? m.nombre.replace('{calibre}',C) : m.nombre;
+    add(nombre, m.cantidadBase*mult, m.unidad, 'fuentes');
+  });
+  MAT_RACK_NEW.forEach(m=>{
+    const mult = m.dep==='racks'?Ra : m.dep==='baterias'?B : 0;
+    add(m.nombre, m.cantidadBase*mult, m.unidad, 'rack');
+  });
+  MAT_ESC_NEW.forEach(m=>add(m.nombre, m.cantidadBase*So, m.unidad, 'escalerillas'));
+  const orden = {fuentes:1, rack:2, escalerillas:3};
+  return Array.from(mapa.entries())
+    .map(([nombre,d])=>({nombre, cantidad:d.cantidad, unidad:d.unidad, seccion:d.seccion}))
+    .sort((a,b)=>(orden[a.seccion]||4)-(orden[b.seccion]||4));
+}
+
 function MaterialesCalc() {
-  const [tab,setTab]=useState('fuentes');
   const [proyecto,setProyecto]=useState('');
-  const [resFuentes,setResFuentes]=useState([]);
-  const [resRack,setResRack]=useState([]);
-  const [resEsc,setResEsc]=useState([]);
+  const [f,setF]=useState({fuentes:'',calibre:'',rect:'',inv:'',solar:'',racks:'',baterias:'',soportes:''});
+  const [resultados,setResultados]=useState(null); // null=sin calcular, []=vacío
 
-  // Fuentes state
-  const [fF,setFF]=useState({cantFuentes:'',calibre:'',rect:'',inv:'',solar:''});
-  // Rack state
-  const [fR,setFR]=useState({racks:'',baterias:''});
-  // Escalerillas state
-  const [fE,setFE]=useState({soportes:''});
-
-  const calcFuentes = () => {
-    const n=parseInt(fF.cantFuentes)||0; if(!n||!fF.calibre){setResFuentes([]);return;}
-    const vals={inversores:parseInt(fF.inv)||0,rectificadores:parseInt(fF.rect)||0,modulosSolares:parseInt(fF.solar)||0};
-    const lista=MAT_FUENTES.map(m=>{
-      let cant=m.formula?(vals[m.formula]||0)*(m.mult||1):m.base;
-      let total=cant*n;
-      if(total<=0) return null;
-      const nombre=m.dinamico?m.nombre.replace('{calibre}',fF.calibre):m.nombre;
-      return {nombre,cantidad:Number.isInteger(total)?total:total.toFixed(2),comentario:m.comentario||''};
-    }).filter(Boolean);
-    setResFuentes(lista);
+  const calcular = () => {
+    const res = calcularMaterialesTotal(f);
+    setResultados(res);
   };
 
-  const calcRack = () => {
-    const racks=parseInt(fR.racks)||0, bats=parseInt(fR.baterias)||0;
-    if(!racks||!bats){setResRack([]);return;}
-    setResRack(MAT_RACK.map(m=>{
-      const mult=m.factor==='racks'?racks:bats;
-      const total=m.base*mult;
-      return {nombre:m.nombre,cantidad:Number.isInteger(total)?total:total.toFixed(2),comentario:m.comentario||''};
-    }).filter(i=>i.cantidad>0));
+  const copy = () => {
+    if(!resultados||!resultados.length) return;
+    let txt='AIRTEK - MATERIALES TOTALES\n';
+    if(proyecto) txt+='Proyecto: '+proyecto+'\n';
+    txt+='Fecha: '+new Date().toLocaleString()+'\n';
+    txt+='----------------------------------------\n\n';
+    resultados.forEach(r=>{
+      const c=Number.isInteger(r.cantidad)?r.cantidad:r.cantidad.toFixed(2);
+      txt+=r.nombre+': '+c+' '+r.unidad+'\n';
+    });
+    navigator.clipboard.writeText(txt).catch(()=>{
+      const ta=document.createElement('textarea');
+      ta.value=txt; ta.style.cssText='position:fixed;opacity:0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    });
   };
 
-  const calcEsc = () => {
-    const s=parseInt(fE.soportes)||0;
-    if(!s){setResEsc([]);return;}
-    setResEsc(MAT_ESC.map(m=>{
-      const total=m.base*s;
-      return {nombre:m.nombre,cantidad:total,comentario:''};
+  const exportXlsx = () => {
+    if(!resultados||!resultados.length) return;
+    const rows=resultados.map(r=>({
+      'Material':r.nombre,
+      'Cantidad':Number.isInteger(r.cantidad)?r.cantidad:parseFloat(r.cantidad.toFixed(2)),
+      'Unidad':r.unidad,
+      'Sección':r.seccion,
     }));
+    const wb=window.XLSX.utils.book_new();
+    const ws=window.XLSX.utils.json_to_sheet(rows);
+    ws['!cols']=[{wch:55},{wch:12},{wch:10},{wch:14}];
+    window.XLSX.utils.book_append_sheet(wb,ws,'Materiales');
+    window.XLSX.writeFile(wb,'materiales_airtek_'+Date.now()+'.xlsx');
   };
 
-  const copy = (lista,cat) => {
-    let txt=`MATERIALES - ${cat.toUpperCase()}\n${new Date().toLocaleString()}\n`;
-    if(proyecto) txt+=`Proyecto: ${proyecto}\n`;
-    txt+='\n';
-    lista.forEach(i=>txt+=`${i.nombre}\t${i.cantidad}\n`);
-    navigator.clipboard.writeText(txt);
-  };
-
-  const exportXls = (lista,cat) => {
-    let html=`<html><head><meta charset="UTF-8"></head><body><h2>Materiales - ${cat}</h2>`;
-    if(proyecto) html+=`<p>Proyecto: ${proyecto}</p>`;
-    html+=`<table border="1"><tr><th>Material</th><th>Cantidad</th><th>Comentario</th></tr>`;
-    lista.forEach(i=>html+=`<tr><td>${i.nombre}</td><td>${i.cantidad}</td><td>${i.comentario||''}</td></tr>`);
-    html+=`</table></body></html>`;
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([html],{type:'application/vnd.ms-excel'}));
-    a.download=`materiales_${cat}_${Date.now()}.xls`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const FI = ({label,val,onChange,placeholder,type='number'}) => (
+  const FI2=({label,k,placeholder,type='number'})=>(
     <div>
       <label className="lbl">{label}</label>
-      <input className="fi" type={type} value={val} onChange={e=>onChange(e.target.value)} placeholder={placeholder||'0'} />
+      <input className="fi" type={type} value={f[k]} onChange={e=>setF(p=>({...p,[k]:e.target.value}))} placeholder={placeholder||'0'} />
     </div>
   );
 
   return (
     <div className="fin">
-      <div style={{marginBottom:20}}>
+      <div style={{marginBottom:18}}>
         <h1 className="fd" style={{fontSize:'1.4rem',fontWeight:800,color:'var(--tx1)',marginBottom:4}}>🧮 Calculadora de Materiales</h1>
-        <p style={{color:'var(--tx3)',fontSize:'.85rem'}}>Operaciones y Mantenimiento de Energía</p>
+        <p style={{color:'var(--tx3)',fontSize:'.85rem'}}>Todos los materiales en una sola lista consolidada</p>
       </div>
 
-      {/* Nombre de proyecto */}
-      <div className="card" style={{marginBottom:16}}>
+      <div className="card" style={{marginBottom:14}}>
         <label className="lbl">Nombre del Proyecto (opcional)</label>
-        <input className="fi" type="text" value={proyecto} onChange={e=>setProyecto(e.target.value)} placeholder="Ej: Nodo Bella Vista — Instalación ETP" />
+        <input className="fi" type="text" value={proyecto} onChange={e=>setProyecto(e.target.value)}
+          placeholder="Ej: Nodo Bella Vista — Instalación ETP" />
       </div>
 
-      {/* Tabs */}
-      <div style={{borderBottom:'1px solid var(--border)',marginBottom:18,display:'flex',overflowX:'auto'}}>
-        {[['fuentes','⚡ Fuentes ETP'],['rack','🔋 Rack + Baterías'],['escalerillas','🏗️ Escalerillas'],['autonomia','🔋 Autonomía']].map(([k,lbl])=>(
-          <button key={k} className={`tab ${tab===k?'on':''}`} onClick={()=>setTab(k)} style={{whiteSpace:'nowrap'}}>{lbl}</button>
-        ))}
-      </div>
-
-      {/* TAB FUENTES */}
-      {tab==='fuentes' && (
-        <div>
-          <div className="card" style={{marginBottom:14}}>
-            <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>Fuentes ETP Huawei 23006</h3>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <FI label="Cantidad de fuentes ETP" val={fF.cantFuentes} onChange={v=>setFF({...fF,cantFuentes:v})} />
-              <div>
-                <label className="lbl">Calibre de alimentación AC</label>
-                <select className="fi" value={fF.calibre} onChange={e=>setFF({...fF,calibre:e.target.value})}>
-                  <option value="">-- Selecciona --</option>
-                  {['14 AWG','12 AWG','10 AWG','8 AWG','6 AWG','4 AWG','3 AWG','2 AWG','1 AWG','1/0 AWG','2/0 AWG','3/0 AWG','4/0 AWG','250 kcmil','300 kcmil','350 kcmil','400 kcmil','500 kcmil'].map(c=>(
-                    <option key={c} value={c}>{c} — máx {AWG_AMPACITY[c]||'—'}A</option>
-                  ))}
-                </select>
-              </div>
-              <FI label="Módulos rectificadores por fuente" val={fF.rect} onChange={v=>setFF({...fF,rect:v})} />
-              <FI label="Módulos inversores por fuente" val={fF.inv} onChange={v=>setFF({...fF,inv:v})} />
-              <FI label="Módulos solares MPPT por fuente" val={fF.solar} onChange={v=>setFF({...fF,solar:v})} />
-            </div>
-            <button className="bp" style={{marginTop:14,fontSize:'.85rem'}} onClick={calcFuentes}>📐 Calcular Materiales</button>
+      {/* Fuentes */}
+      <div className="card" style={{marginBottom:10}}>
+        <div className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--amber)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>⚡ Fuentes ETP Huawei 23006</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(175px,1fr))',gap:10}}>
+          <FI2 label="Cantidad de fuentes" k="fuentes" />
+          <div>
+            <label className="lbl">Calibre entrada AC (AWG)</label>
+            <select className="fi" value={f.calibre} onChange={e=>setF(p=>({...p,calibre:e.target.value}))}>
+              <option value="">-- Sin calibre --</option>
+              {['14','12','10','8','6','4','3','2','1','1/0','2/0','3/0','4/0'].map(c=><option key={c} value={c}>{c} AWG</option>)}
+            </select>
           </div>
-          <ResultTable items={resFuentes} onCopy={()=>copy(resFuentes,'fuentes')} onExport={()=>exportXls(resFuentes,'fuentes')} />
+          <FI2 label="Módulos rectificadores/fuente" k="rect" />
+          <FI2 label="Módulos inversores/fuente" k="inv" />
+          <FI2 label="Módulos solares MPPT/fuente" k="solar" />
+        </div>
+      </div>
+
+      {/* Rack */}
+      <div className="card" style={{marginBottom:10}}>
+        <div className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#8b5cf6',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>🔋 Rack + Baterías Pylontech</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <FI2 label="Cantidad de racks" k="racks" />
+          <FI2 label="Cantidad de baterías" k="baterias" />
+        </div>
+      </div>
+
+      {/* Escalerillas */}
+      <div className="card" style={{marginBottom:14}}>
+        <div className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'#3b82f6',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>🏗️ Escalerillas y Soportes</div>
+        <div style={{maxWidth:280}}>
+          <FI2 label="Cantidad de soportes de techo" k="soportes" />
+        </div>
+      </div>
+
+      <button className="bp" style={{width:'100%',marginBottom:16,fontSize:'.95rem',padding:'12px'}} onClick={calcular}>
+        📐 Calcular Materiales Totales
+      </button>
+
+      {resultados===null && (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--tx3)'}}>
+          Complete los valores y presione Calcular
         </div>
       )}
 
-      {/* TAB RACK */}
-      {tab==='rack' && (
-        <div>
-          <div className="card" style={{marginBottom:14}}>
-            <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>Rack Strig 42U + Baterías Pylontech</h3>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-              <FI label="Cantidad de racks" val={fR.racks} onChange={v=>setFR({...fR,racks:v})} />
-              <FI label="Cantidad de baterías Pylontech" val={fR.baterias} onChange={v=>setFR({...fR,baterias:v})} />
-            </div>
-            <button className="bp" style={{marginTop:14,fontSize:'.85rem'}} onClick={calcRack}>📐 Calcular Materiales</button>
-          </div>
-          <ResultTable items={resRack} onCopy={()=>copy(resRack,'rack')} onExport={()=>exportXls(resRack,'rack')} />
+      {resultados!==null && resultados.length===0 && (
+        <div className="card" style={{textAlign:'center',padding:32,color:'var(--tx3)'}}>
+          No hay materiales con cantidad positiva. Ingrese al menos un valor.
         </div>
       )}
 
-      {/* TAB AUTONOMÍA */}
-      {tab==='autonomia' && <AutonomiaCalc />}
-
-      {/* TAB ESCALERILLAS */}
-      {tab==='escalerillas' && (
+      {resultados!==null && resultados.length>0 && (
         <div>
-          <div className="card" style={{marginBottom:14}}>
-            <h3 className="fd" style={{fontSize:'.78rem',fontWeight:700,color:'var(--tx2)',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:14}}>Escalerillas y Soportes</h3>
-            <div style={{maxWidth:260}}>
-              <FI label="Cantidad de soportes" val={fE.soportes} onChange={v=>setFE({...fE,soportes:v})} />
+          <div style={{border:'1px solid var(--border)',borderRadius:8,overflow:'hidden',marginBottom:12}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto auto',background:'var(--bg-elevated)',padding:'8px 12px',fontSize:'.7rem',color:'var(--tx3)',textTransform:'uppercase',letterSpacing:'.06em',fontFamily:"'Exo 2',sans-serif"}}>
+              <span>Material</span><span style={{textAlign:'center',minWidth:60}}>Cantidad</span><span style={{textAlign:'center',minWidth:45}}>Unidad</span>
             </div>
-            <button className="bp" style={{marginTop:14,fontSize:'.85rem'}} onClick={calcEsc}>📐 Calcular Materiales</button>
+            {resultados.map((r,i)=>{
+              const secColors={fuentes:'var(--amber)',rack:'var(--purple)',escalerillas:'var(--blue)'};
+              const c=Number.isInteger(r.cantidad)?r.cantidad:r.cantidad.toFixed(2);
+              return (
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr auto auto',padding:'9px 12px',
+                  background:i%2===0?'var(--bg-surface)':'var(--bg-card)',
+                  borderTop:'1px solid var(--border)',alignItems:'center',gap:8}}>
+                  <div>
+                    <span style={{display:'inline-block',width:6,height:6,borderRadius:'50%',background:secColors[r.seccion]||'var(--tx3)',marginRight:7,flexShrink:0,verticalAlign:'middle'}}></span>
+                    <span style={{fontSize:'.84rem',color:'var(--tx1)'}}>{r.nombre}</span>
+                  </div>
+                  <span className="fm" style={{fontSize:'1rem',fontWeight:700,color:'var(--green)',textAlign:'center',minWidth:60}}>{c}</span>
+                  <span style={{fontSize:'.78rem',color:'var(--tx3)',textAlign:'center',minWidth:45}}>{r.unidad}</span>
+                </div>
+              );
+            })}
           </div>
-          <ResultTable items={resEsc} onCopy={()=>copy(resEsc,'escalerillas')} onExport={()=>exportXls(resEsc,'escalerillas')} />
+          <div style={{display:'flex',gap:10}}>
+            <button className="bg" style={{flex:1,fontSize:'.85rem'}} onClick={copy}>📋 Copiar lista</button>
+            <button className="bs" style={{flex:1,fontSize:'.85rem'}} onClick={exportXlsx}>📊 Exportar Excel</button>
+          </div>
+          <div style={{marginTop:8,fontSize:'.72rem',color:'var(--tx4)',display:'flex',gap:14,flexWrap:'wrap'}}>
+            <span><span style={{color:'var(--amber)'}}>●</span> Fuentes ETP</span>
+            <span><span style={{color:'var(--purple)'}}>●</span> Rack + Baterías</span>
+            <span><span style={{color:'var(--blue)'}}>●</span> Escalerillas</span>
+          </div>
         </div>
       )}
     </div>
@@ -3397,6 +3563,7 @@ function App() {
       <div style={{maxWidth:980,margin:'0 auto',padding:'22px 16px'}}>
         {appView==='nodes' && <NodeList userProfile={userProfile} toast={toast} />}
         {appView==='calc'  && <MaterialesCalc />}
+        {appView==='autonomia' && <AutonomiaWrapper />}
         {appView==='admin' && userProfile.role==='admin' && <AdminPanel userProfile={userProfile} toast={toast} />}
         {appView==='admin' && userProfile.role!=='admin' && <NodeList userProfile={userProfile} toast={toast} />}
       </div>
