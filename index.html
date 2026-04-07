@@ -1040,7 +1040,20 @@
       const [participants, setParticipants] = useState('');
       const [meas, setMeas] = useState({});
       const [saving, setSaving] = useState(false);
-      const [eqAction, setEqA] = useState({ tag: '', type: 'INV', voltage: '220V', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false, batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '', batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador' });
+      const [eqAction, setEqA] = useState({ 
+        tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false, 
+        batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '', 
+        batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador' 
+      });
+
+      const onBatTypeChange = (val) => {
+        let vdc = '';
+        if (val === 'LFP') vdc = '48';
+        else if (val === 'NMC') vdc = '52.5';
+        else if (val.includes('GEL')) vdc = '48';
+        setEqA({ ...eqAction, batteryType: val, voltageDC: vdc });
+      };
+
       const [reportData, setReportData] = useState(null);
 
       const updM = (tag, k, v) => setMeas(p => ({ ...p, [tag]: { ...(p[tag] || {}), [k]: v } }));
@@ -1065,8 +1078,11 @@
           };
           await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add(record);
           if (type === 'instalacion' && eqAction.tag) {
+            const isDC = eqAction.type === 'BAT' || eqAction.type === 'ETP';
             await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
-              tag: eqAction.tag, type: eqAction.type, voltage: eqAction.voltage,
+              tag: eqAction.tag, type: eqAction.type, 
+              voltage: isDC ? '' : eqAction.voltage,
+              voltageDC: eqAction.voltageDC || '',
               hasAcIn: !!eqAction.hasAcIn, hasAcOut: !!eqAction.hasAcOut, hasDcOut: !!eqAction.hasDcOut,
               hasSolar: !!eqAction.hasSolar, batteryType: eqAction.batteryType,
               batCapacity: eqAction.batCapacity || '', batCount: eqAction.batCount || '',
@@ -1243,7 +1259,7 @@
                     </select>
                   </div>
                   {eqAction.invMode !== 'Solo Cargador' && <div>
-                    <label className="lbl">Tensión de Salida</label>
+                    <label className="lbl">Tensión de Salida AC</label>
                     <select className="fi" value={eqAction.voltage} onChange={e => setEqA({ ...eqAction, voltage: e.target.value })}>
                       <option value="110V">110V (1 Línea)</option>
                       <option value="220V">220V (2 Líneas)</option>
@@ -1276,10 +1292,16 @@
                     <input className="fi" type="number" value={eqAction.solarRegPercentage} onChange={e => setEqA({ ...eqAction, solarRegPercentage: e.target.value })} placeholder="Ej: 85" />
                   </div>
                 </>}
+                {(eqAction.type === 'BAT' || eqAction.type === 'ETP') && (
+                  <div>
+                    <label className="lbl">Voltaje Nominal (VDC)</label>
+                    <input className="fi fm" value={eqAction.voltageDC} onChange={e => setEqA({ ...eqAction, voltageDC: e.target.value })} placeholder="Ej: 48" />
+                  </div>
+                )}
                 {(eqAction.type === 'INV' || eqAction.type === 'BAT' || eqAction.type === 'ETP') && (
                   <div>
                     <label className="lbl">Tipo de Batería Principal</label>
-                    <select className="fi" value={eqAction.batteryType} onChange={e => setEqA({ ...eqAction, batteryType: e.target.value })}>
+                    <select className="fi" value={eqAction.batteryType} onChange={e => onBatTypeChange(e.target.value)}>
                       {BAT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
@@ -2097,23 +2119,65 @@ ${alertData.body}`,
         tag: eq.tag || '',
         type: eq.type || 'INV',
         voltage: eq.voltage || '220V',
+        voltageDC: eq.voltageDC || '',
+        invMode: eq.invMode || 'Cargador/Descargador',
         hasAcIn: !!eq.hasAcIn,
         hasAcOut: !!eq.hasAcOut,
         hasDcOut: !!eq.hasDcOut,
         hasSolar: !!eq.hasSolar,
+        solarRegPercentage: eq.solarRegPercentage || '',
         batteryType: eq.batteryType || 'No aplica',
         batCapacity: eq.batCapacity || '',
         batCount: eq.batCount || '',
+        batSoH: eq.batSoH || '',
+        batDoD: eq.batDoD || '',
         batCellType: eq.batCellType || 'No aplica',
         conductorGauge: eq.conductorGauge || '',
+        serial: eq.serial || '',
         notes: eq.notes || '',
       });
+
+      useEffect(() => {
+        setF({
+          tag: eq.tag || '',
+          type: eq.type || 'INV',
+          voltage: eq.voltage || '220V',
+          voltageDC: eq.voltageDC || '',
+          invMode: eq.invMode || 'Cargador/Descargador',
+          hasAcIn: !!eq.hasAcIn,
+          hasAcOut: !!eq.hasAcOut,
+          hasDcOut: !!eq.hasDcOut,
+          hasSolar: !!eq.hasSolar,
+          solarRegPercentage: eq.solarRegPercentage || '',
+          batteryType: eq.batteryType || 'No aplica',
+          batCapacity: eq.batCapacity || '',
+          batCount: eq.batCount || '',
+          batSoH: eq.batSoH || '',
+          batDoD: eq.batDoD || '',
+          batCellType: eq.batCellType || 'No aplica',
+          conductorGauge: eq.conductorGauge || '',
+          serial: eq.serial || '',
+          notes: eq.notes || '',
+        });
+      }, [eq]);
+
+      const onBatTypeChange = (val) => {
+        let vdc = f.voltageDC;
+        if (!f.voltageDC) {
+          if (val === 'LFP') vdc = '48';
+          else if (val === 'NMC') vdc = '52.5';
+          else if (val.includes('GEL')) vdc = '48';
+        }
+        setF({ ...f, batteryType: val, voltageDC: vdc });
+      };
+
       const [saving, setSaving] = useState(false);
 
       const save = async () => {
         if (!f.tag.trim()) { return; }
         setSaving(true);
-        await onSave({ ...f, tag: f.tag.trim().toUpperCase() });
+        const isDC = f.type === 'BAT' || f.type === 'ETP';
+        await onSave({ ...f, tag: f.tag.trim().toUpperCase(), voltage: isDC ? '' : f.voltage });
         setSaving(false);
       };
 
@@ -2136,40 +2200,81 @@ ${alertData.body}`,
                   {Object.entries(EQ_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
               </div>
+
+              {/* Inversor Fields */}
               {f.type === 'INV' && (
-                <div>
-                  <label className="lbl">Tensión</label>
-                  <select className="fi" value={f.voltage} onChange={e => setF({ ...f, voltage: e.target.value })}>
-                    <option value="110V">110V</option>
-                    <option value="220V">220V</option>
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="lbl">Modo Operación</label>
+                    <select className="fi" value={f.invMode} onChange={e => setF({ ...f, invMode: e.target.value })}>
+                      <option value="Cargador/Descargador">Inversor / Cargador</option>
+                      <option value="Solo Inversor">Solo Inversor (Descargador)</option>
+                      <option value="Solo Cargador">Solo Cargador</option>
+                    </select>
+                  </div>
+                  {f.invMode !== 'Solo Cargador' && (
+                    <div>
+                      <label className="lbl">Tensión</label>
+                      <select className="fi" value={f.voltage} onChange={e => setF({ ...f, voltage: e.target.value })}>
+                        <option value="110V">110V</option>
+                        <option value="220V">220V</option>
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
-              {f.type === 'INV' && (
+
+              {/* Conexiones Reutilizado */}
+              {(f.type === 'INV' || f.type === 'ETP') && (
                 <div style={{ gridColumn: '1/-1', display: 'flex', flexWrap: 'wrap', gap: 16, paddingTop: 4 }}>
-                  {[['hasAcIn', '🔌 Entrada AC'], ['hasAcOut', '⚡ Salida AC'], ['hasDcOut', '🔋 Salida DC'], ['hasSolar', '☀️ PV']].map(([k, lbl]) => (
+                  {[
+                    ['hasAcIn', '🔌 Entrada AC'],
+                    ['hasAcOut', '⚡ Salida AC'],
+                    ['hasDcOut', '🔋 Salida DC'],
+                    ['hasSolar', '☀️ PV']
+                  ].map(([k, lbl]) => (
                     <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx2)', fontSize: '.84rem', cursor: 'pointer' }}>
                       <input type="checkbox" checked={!!f[k]} onChange={e => setF({ ...f, [k]: e.target.checked })} />{lbl}
                     </label>
                   ))}
                 </div>
               )}
+
+              {/* ETP Fields */}
+              {f.type === 'ETP' && (
+                <div>
+                  <label className="lbl">Efic. Regulación (%) - Opcional</label>
+                  <input className="fi" type="number" value={f.solarRegPercentage} onChange={e => setF({ ...f, solarRegPercentage: e.target.value })} placeholder="Ej: 85" />
+                </div>
+              )}
+
+              {/* Voltaje Nominal (BAT/ETP) */}
+              {(f.type === 'BAT' || f.type === 'ETP') && (
+                <div>
+                  <label className="lbl">Voltaje Nominal (VDC)</label>
+                  <input className="fi fm" value={f.voltageDC} onChange={e => setF({ ...f, voltageDC: e.target.value })} placeholder="Ej: 48" />
+                </div>
+              )}
+
+              {/* Bateria Info (Base) */}
               {(f.type === 'INV' || f.type === 'ETP' || f.type === 'BAT') && (
                 <div>
                   <label className="lbl">Tipo Batería</label>
-                  <select className="fi" value={f.batteryType} onChange={e => setF({ ...f, batteryType: e.target.value })}>
+                  <select className="fi" value={f.batteryType} onChange={e => onBatTypeChange(e.target.value)}>
                     {BAT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
               )}
+
+              {/* Bateria Detalle */}
               {f.type === 'BAT' && <>
                 <div>
                   <label className="lbl">Capacidad (Ah)</label>
-                  <input className="fi" type="number" step="any" value={f.batCapacity} onChange={e => setF({ ...f, batCapacity: e.target.value })} placeholder="200" />
+                  <input className="fi" type="number" step="any" value={f.batCapacity} onChange={e => setF({ ...f, batCapacity: e.target.value })} placeholder="Ej: 200" />
                 </div>
                 <div>
                   <label className="lbl">N° Baterías</label>
-                  <input className="fi" type="number" step="1" value={f.batCount} onChange={e => setF({ ...f, batCount: e.target.value })} placeholder="4" />
+                  <input className="fi" type="number" step="1" value={f.batCount} onChange={e => setF({ ...f, batCount: e.target.value })} placeholder="Ej: 4" />
                 </div>
                 <div>
                   <label className="lbl">Tipo Celda</label>
@@ -2177,7 +2282,17 @@ ${alertData.body}`,
                     {BAT_CELL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="lbl">Salud (SoH %)</label>
+                  <input className="fi" type="number" step="1" value={f.batSoH} onChange={e => setF({ ...f, batSoH: e.target.value })} placeholder="Ej: 100" />
+                </div>
+                <div>
+                  <label className="lbl">Profund. Descarga (DoD %)</label>
+                  <input className="fi" type="number" step="1" value={f.batDoD} onChange={e => setF({ ...f, batDoD: e.target.value })} placeholder="Ej: 80" />
+                </div>
               </>}
+
+              {/* Otros */}
               {f.type === 'ATS' && (
                 <div style={{ gridColumn: '1/-1' }}>
                   <label className="lbl">Calibre del Conductor (opcional)</label>
@@ -2187,6 +2302,12 @@ ${alertData.body}`,
                   </select>
                 </div>
               )}
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Serial Principal (opcional)</label>
+                <input className="fi fm" value={f.serial} onChange={e => setF({ ...f, serial: e.target.value })} placeholder="SN del equipo" />
+              </div>
+
               <div style={{ gridColumn: '1/-1' }}>
                 <label className="lbl">Notas</label>
                 <input className="fi" value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} placeholder="Modelo, serie, observaciones..." />
@@ -2431,7 +2552,8 @@ ${alertData.body}`,
           doc.text(tagPart, 18, y);
           const tw = doc.getTextWidth(tagPart);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
-          const infoPart = ` — ${eq.type}${eq.voltage ? ' ' + eq.voltage : ''}${eq.batteryType && eq.batteryType !== 'No aplica' ? ' [' + eq.batteryType + ']' : ''}`;
+          const vInfo = eq.voltage ? ` ${eq.voltage}` : (eq.voltageDC ? ` ${eq.voltageDC}VDC` : '');
+          const infoPart = ` — ${eq.type}${vInfo}${eq.batteryType && eq.batteryType !== 'No aplica' ? ' [' + eq.batteryType + ']' : ''}`;
           doc.text(infoPart, 18 + tw + 1, y);
           y += 5; if (y > 275) { doc.addPage(); y = 25; }
         });
@@ -2598,7 +2720,9 @@ ${alertData.body}`,
           'Observaciones': r.observations || '',
         }));
         const eqRows = equipment.map(e => ({
-          'Tag': e.tag, 'Tipo': e.type, 'Tensión': e.voltage || '',
+          'Tag': e.tag, 'Tipo': e.type, 
+          'Tensión AC': e.voltage || '',
+          'Tensión DC': e.voltageDC || '',
           'Panel Solar': e.hasSolar ? 'Sí' : 'No', 'Batería': e.batteryType || '',
           'Capacidad (Ah)': e.batCapacity || '', 'N° Baterías': e.batCount || '', 'Tipo Celda': e.batCellType || '',
           'Estado': e.active !== false ? 'Activo' : 'Retirado',
@@ -2720,7 +2844,8 @@ ${alertData.body}`,
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span className="badge" style={{ background: ti.bg, color: ti.color }}>{eq.type}</span>
                               <span className="fm" style={{ fontSize: '.92rem', fontWeight: 600, color: 'var(--tx1)' }}>{eq.tag}</span>
-                              {eq.voltage && <span style={{ color: 'var(--tx3)', fontSize: '.74rem' }}>⚡{eq.voltage}</span>}
+                              {(eq.type === 'INV' || eq.type === 'ATS') && eq.voltage && <span style={{ color: 'var(--tx3)', fontSize: '.74rem' }}>⚡{eq.voltage}</span>}
+                              {(eq.type === 'BAT' || eq.type === 'ETP') && eq.voltageDC && <span style={{ color: 'var(--tx3)', fontSize: '.74rem' }}>{eq.voltageDC} VDC</span>}
                               {eq.hasAcIn && <span style={{ color: '#3b82f6', fontSize: '.73rem' }}>AC/IN</span>}
                               {eq.hasAcOut && <span style={{ color: '#10b981', fontSize: '.73rem' }}>AC/OUT</span>}
                               {eq.hasDcOut && <span style={{ color: '#8b5cf6', fontSize: '.73rem' }}>DC/OUT</span>}
