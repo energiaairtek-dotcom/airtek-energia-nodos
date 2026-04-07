@@ -2552,7 +2552,10 @@ ${alertData.body}`,
           doc.text(tagPart, 18, y);
           const tw = doc.getTextWidth(tagPart);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
-          const vInfo = eq.voltage ? ` ${eq.voltage}` : (eq.voltageDC ? ` ${eq.voltageDC}VDC` : '');
+          
+          const isAC = eq.type === 'INV' || eq.type === 'ATS';
+          const vInfo = isAC ? (eq.voltage ? ` ${eq.voltage}` : '') : (eq.voltageDC ? ` ${eq.voltageDC}VDC` : '');
+          
           const infoPart = ` — ${eq.type}${vInfo}${eq.batteryType && eq.batteryType !== 'No aplica' ? ' [' + eq.batteryType + ']' : ''}`;
           doc.text(infoPart, 18 + tw + 1, y);
           y += 5; if (y > 275) { doc.addPage(); y = 25; }
