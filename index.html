@@ -1557,7 +1557,7 @@
     // ═══════════════════════════════════════════════════
     // 📊 GRÁFICO HISTÓRICO DE CARGAS POR BANCO
     // ═══════════════════════════════════════════════════
-    function LoadChart({ records, equipment }) {
+    function LoadChart({ records, equipment, onExport }) {
       const [selBank, setSelBank] = React.useState('_total');
 
       const inspRecords = records
@@ -1657,19 +1657,26 @@
           )}
 
           {/* ── SELECTOR DE BANCO PARA EL GRÁFICO ── */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-            {bankList.map(b => (
-              <button key={b} onClick={() => setSelBank(b)}
-                style={{
-                  padding: '4px 11px', borderRadius: 5, border: '1px solid', fontSize: '.74rem', cursor: 'pointer',
-                  fontFamily: "'Exo 2',sans-serif", fontWeight: 600, transition: 'all .15s',
-                  background: selBank === b ? (b === '_total' ? '#10b981' : '#f59e0b') : 'transparent',
-                  borderColor: b === '_total' ? '#10b981' : '#f59e0b',
-                  color: selBank === b ? '#000' : (b === '_total' ? '#10b981' : '#f59e0b')
-                }}>
-                {b === '_total' ? 'Total Nodo' : 'Banco ' + b}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {bankList.map(b => (
+                <button key={b} onClick={() => setSelBank(b)}
+                  style={{
+                    padding: '4px 11px', borderRadius: 5, border: '1px solid', fontSize: '.74rem', cursor: 'pointer',
+                    fontFamily: "'Exo 2',sans-serif", fontWeight: 600, transition: 'all .15s',
+                    background: selBank === b ? (b === '_total' ? '#10b981' : '#f59e0b') : 'transparent',
+                    borderColor: b === '_total' ? '#10b981' : '#f59e0b',
+                    color: selBank === b ? '#000' : (b === '_total' ? '#10b981' : '#f59e0b')
+                  }}>
+                  {b === '_total' ? 'Total Nodo' : 'Banco ' + b}
+                </button>
+              ))}
+            </div>
+            {onExport && (
+              <button onClick={onExport} className="bs" style={{ padding: '5px 12px', fontSize: '.74rem', color: '#10b981', border: '1px solid rgba(16,185,129,.35)' }}>
+                📥 Exportar Excel
               </button>
-            ))}
+            )}
           </div>
 
           {/* ── GRÁFICO TIPO COLUMNA ── */}
@@ -1758,9 +1765,9 @@
       const [loading, setLoading] = useState(true);
       const [showForm, setShowForm] = useState(false);
       const [equipment, setEquipment] = useState([]);
-      const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', notify: false });
+      const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', assistants: '', recordedBy: '', notify: false });
       const [saving, setSaving] = useState(false);
-      const canWrite = userProfile.role === 'tecnico' || userProfile.role === 'admin' || userProfile.role === 'supervisor';
+      const canWrite = userProfile.role === 'admin';
 
       useEffect(() => {
         const u1 = db.collection('energy_nodes').doc(nodeId).collection('node_events')
@@ -1771,6 +1778,7 @@
       }, [nodeId]);
 
       const save = async () => {
+        if (!form.recordedBy.trim()) { toast('Escribe quién está anotando el evento.', 'error'); return; }
         if (!form.description.trim()) { toast('Escribe la descripción del evento.', 'error'); return; }
         setSaving(true);
         try {
@@ -1778,21 +1786,23 @@
             date: new Date(form.date),
             equipo: form.equipo || null,
             description: form.description.trim(),
-            author: userProfile.name,
+            assistants: form.assistants.trim() || null,
+            author: form.recordedBy.trim(),
             authorId: userProfile.uid,
             createdAt: TS(),
           });
           if (form.notify && window.emailjs && EMAILJS_SERVICE_ID !== 'TU_SERVICE_ID') {
             window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
               nodo: nodeName,
-              tecnico: userProfile.name,
+              tecnico: form.recordedBy.trim(),
               fecha: new Date(form.date).toLocaleDateString('es-VE'),
-              alarmas: `EVENTO: ${form.equipo ? '[' + form.equipo + '] ' : ''}${form.description}`,
-              observaciones: 'Evento registrado desde el sistema.',
+              alarmas: `EVENTO: ${form.equipo ? '[' + form.equipo + '] ' : ''}${form.description}
+Personal Asistente: ${form.assistants || 'Solo autor'}`,
+              observaciones: `Evento anotado manualmente por cuenta de monitoreo (${userProfile.name}).`,
             }, EMAILJS_PUBLIC_KEY).catch(e => console.warn(e));
           }
           toast('Evento registrado.', 'success');
-          setForm({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', notify: false });
+          setForm({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', assistants: '', recordedBy: '', notify: false });
           setShowForm(false);
         } catch (e) { console.error(e); toast('Error al guardar.', 'error'); }
         setSaving(false);
@@ -1821,6 +1831,11 @@
                   <input className="fi" type="datetime-local" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
+                  <label className="lbl">Nombre de quien Anotó (Obligatorio)</label>
+                  <input className="fi" value={form.recordedBy} onChange={e => setForm({ ...form, recordedBy: e.target.value })} 
+                    placeholder="Escribe el nombre del personal de monitoreo que anota..." />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
                   <label className="lbl">Equipo Afectado <span style={{ color: 'var(--tx4)', fontWeight: 400, textTransform: 'none' }}>(opcional)</span></label>
                   <select className="fi" value={form.equipo} onChange={e => setForm({ ...form, equipo: e.target.value })}>
                     <option value="">— Sin equipo específico —</option>
@@ -1835,10 +1850,15 @@
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label className="lbl">Descripción del Evento</label>
-                  <textarea className="fi" rows={4} value={form.description}
+                  <textarea className="fi" rows={3} value={form.description}
                     onChange={e => setForm({ ...form, description: e.target.value })}
                     placeholder="Describe qué ocurrió, a qué hora, condiciones observadas, acciones tomadas..."
                     style={{ resize: 'vertical' }} />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className="lbl">Personal que asistió (Opcional)</label>
+                  <input className="fi" value={form.assistants} onChange={e => setForm({ ...form, assistants: e.target.value })}
+                    placeholder="Nombres del personal que atendió el evento..." />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input type="checkbox" id="evnotif" checked={form.notify} onChange={e => setForm({ ...form, notify: e.target.checked })} />
@@ -1870,7 +1890,10 @@
                     </span>
                     {ev.equipo && <span className="badge" style={{ background: 'rgba(59,130,246,.12)', color: '#3b82f6' }}>{ev.equipo}</span>}
                   </div>
-                  <span style={{ color: 'var(--tx4)', fontSize: '.72rem' }}>{ev.author}</span>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ color: 'var(--tx3)', fontSize: '.7rem' }}>Anotó: <b>{ev.author}</b></div>
+                    {ev.assistants && <div style={{ color: 'var(--tx4)', fontSize: '.68rem' }}>Asistió: {ev.assistants}</div>}
+                  </div>
                 </div>
                 <p style={{ color: '#cbd5e1', fontSize: '.88rem', lineHeight: 1.6 }}>{ev.description}</p>
               </div>
@@ -1891,7 +1914,6 @@
     };
 
     function NodeAlerts({ nodeId, nodeName, userProfile, toast }) {
-      const [section, setSection] = useState('alertas'); // alertas | eventos
       const [alerts, setAlerts] = useState([]);
       const [loading, setLoading] = useState(true);
       const [showForm, setShowForm] = useState(false);
@@ -1956,22 +1978,7 @@ ${alertData.body}`,
 
       return (
         <div className="fin">
-          {/* Sub-sección selector */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-            {[['alertas', '🔔 Alertas', '#ef4444'], ['eventos', '📋 Eventos', '#3b82f6']].map(([k, lbl, c]) => (
-              <button key={k} onClick={() => { setSection(k); setShowForm(false); }}
-                style={{
-                  flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${c}44`, cursor: 'pointer',
-                  fontFamily: "'Exo 2',sans-serif", fontWeight: 700, fontSize: '.82rem', transition: 'all .15s',
-                  background: section === k ? c : 'transparent', color: section === k ? '#fff' : c
-                }}>
-                {lbl}
-              </button>
-            ))}
-          </div>
-
-          {section === 'eventos' && <NodeEvents nodeId={nodeId} nodeName={nodeName} userProfile={userProfile} toast={toast} equipment={[]} />}
-          {section === 'alertas' && <>
+          <>
 
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -2077,7 +2084,7 @@ ${alertData.body}`,
                 })}
               </div>
             )}
-          </>}
+          </>
         </div>
       );
     }
@@ -2392,54 +2399,149 @@ ${alertData.body}`,
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
         const pw = doc.internal.pageSize.getWidth();
-        // Header
-        doc.setFillColor(7, 16, 31); doc.rect(0, 0, 210, 297, 'F');
-        doc.setFillColor(245, 158, 11); doc.rect(0, 0, 210, 12, 'F');
-        doc.setTextColor(0, 0, 0); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-        doc.text('AIRTEK ENERGÍA — REPORTE DE NODO', 15, 8);
-        doc.text(new Date().toLocaleDateString('es-VE'), pw - 15, 8, { align: 'right' });
-        let y = 22;
-        doc.setTextColor(245, 158, 11); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        let y = 25;
+
+        const slugify = t => t.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+        const fmtDateTime = d => d?.toDate ? d.toDate().toLocaleString('es-VE') : new Date(d).toLocaleString('es-VE');
+
+        // Header - Printer Friendly (White background)
+        doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+        doc.text('REPORTE DE ENERGÍA - AIRTEK', 15, 15);
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+        doc.text(`Generado: ${new Date().toLocaleString('es-VE')}`, pw - 15, 15, { align: 'right' });
+        doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.5); doc.line(15, 18, pw - 15, 18);
+
+        // Info Nodo
+        doc.setTextColor(0, 0, 0); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
         doc.text(node.name, 15, y); y += 6;
-        doc.setTextColor(148, 163, 184); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80);
         doc.text(`Zona: ${node.zone || '—'} | Tipo: ${(NODE_TYPES[node.type] || {}).label || node.type}`, 15, y); y += 10;
-        // Equipos
-        const actEq = sortEquipment(equipment.filter(e => e.active !== false));
-        doc.setTextColor(16, 185, 129); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+
+        // Equipos Activos
+        doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
         doc.text('EQUIPOS ACTIVOS', 15, y); y += 6;
-        if (actEq.length === 0) { doc.setTextColor(71, 85, 105); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('Sin equipos registrados.', 18, y); y += 5; }
+        const actEq = sortEquipment(equipment.filter(e => e.active !== false));
+        if (actEq.length === 0) {
+          doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(120, 120, 120);
+          doc.text('Sin equipos registrados.', 18, y); y += 5;
+        }
         actEq.forEach(eq => {
-          doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-          const line = `• ${eq.tag} — ${eq.type}${eq.voltage ? ' ' + eq.voltage : ''}${eq.batteryType && eq.batteryType !== 'No aplica' ? ' [' + eq.batteryType + ']' : ''}`;
-          doc.text(line, 18, y); y += 5; if (y > 270) { doc.addPage(); doc.setFillColor(7, 16, 31); doc.rect(0, 0, 210, 297, 'F'); y = 20; }
+          doc.setTextColor(40, 40, 40); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+          const tagPart = `• ${eq.tag}`;
+          doc.text(tagPart, 18, y);
+          const tw = doc.getTextWidth(tagPart);
+          doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+          const infoPart = ` — ${eq.type}${eq.voltage ? ' ' + eq.voltage : ''}${eq.batteryType && eq.batteryType !== 'No aplica' ? ' [' + eq.batteryType + ']' : ''}`;
+          doc.text(infoPart, 18 + tw + 1, y);
+          y += 5; if (y > 275) { doc.addPage(); y = 25; }
         });
         y += 5;
-        // Registros
-        doc.setTextColor(245, 158, 11); doc.setFontSize(10); doc.setFont('helvetica', 'bold');
+
+        // Historial
+        doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
         doc.text('HISTORIAL DE REGISTROS', 15, y); y += 6;
-        if (records.length === 0) { doc.setTextColor(71, 85, 105); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('Sin registros.', 18, y); y += 5; }
-        records.forEach(r => {
+        const histLimit = records.slice(0, 12);
+        histLimit.forEach(r => {
           const rt = REC_TYPES[r.type] || { label: r.type, icon: '·' };
-          doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-          doc.text(`${rt.label} — ${fmtDate(r.date)}`, 18, y); y += 4;
-          doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
-          doc.text(`Técnico: ${r.technicianName} | Turno: ${r.shift === 'dia' ? 'Día' : 'Noche'}`, 21, y); y += 4;
+          doc.setTextColor(40, 40, 40); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+          doc.text(`${rt.label} — ${fmtDate(r.date)}`, 18, y);
+          doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
+          doc.text(`Técnico: ${r.technicianName || '—'}`, 120, y);
+          y += 4;
           if (r.observations) {
-            const lines = doc.splitTextToSize(`Obs: ${r.observations}`, 165);
-            lines.forEach(l => { doc.text(l, 21, y); y += 4; if (y > 270) { doc.addPage(); doc.setFillColor(7, 16, 31); doc.rect(0, 0, 210, 297, 'F'); y = 20; } });
+            const obsLines = doc.splitTextToSize(`Obs: ${r.observations}`, 165);
+            doc.setFont('helvetica', 'italic'); doc.setTextColor(120, 120, 120);
+            obsLines.forEach(l => { doc.text(l, 21, y); y += 4; if (y > 275) { doc.addPage(); y = 25; } });
           }
-          if (r.measurements) {
-            Object.entries(r.measurements).forEach(([tag, vals]) => {
-              doc.setTextColor(245, 158, 11); doc.setFontSize(8);
-              doc.text(tag, 21, y); y += 4;
-              const parts = Object.entries(vals).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join('  |  ');
-              if (parts) { const ls = doc.splitTextToSize(parts, 160); doc.setTextColor(16, 185, 129); ls.forEach(l => { doc.text(l, 24, y); y += 4; if (y > 270) { doc.addPage(); doc.setFillColor(7, 16, 31); doc.rect(0, 0, 210, 297, 'F'); y = 20; } }); }
-            });
-          }
-          y += 3; if (y > 270) { doc.addPage(); doc.setFillColor(7, 16, 31); doc.rect(0, 0, 210, 297, 'F'); y = 20; }
+          y += 2; if (y > 275) { doc.addPage(); y = 25; }
         });
+        
+        // ─── GRÁFICA DE CARGAS HISTÓRICAS (Grayscale) ───
+        const inspRecs = records.filter(r => r.type === 'inspeccion' && r.measurements && Object.keys(r.measurements).length > 0).slice().reverse();
+        if (inspRecs.length > 0) {
+          if (y > 230) { doc.addPage(); y = 25; }
+          doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+          doc.text('GRÁFICO DE CARGAS (kW)', 15, y); y += 8;
+          
+          const chartH = 35; const chartW = 170; const startX = 20; const chartY = y + chartH;
+          const seriesData = inspRecs.map(r => {
+             let t = 0; Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
+                const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+                const ld = calcLoad(type, vals);
+                t += ld.ac + ld.dc;
+             });
+             return { label: fmtDate(r.date).slice(0,5), val: t };
+          });
+          const maxVal = Math.max(...seriesData.map(s => s.val), 0.5) * 1.2;
+          
+          doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2);
+          doc.line(startX, chartY, startX + chartW, chartY);
+          [0, 0.5, 1].forEach(p => {
+             const gy = chartY - (chartH * p);
+             doc.line(startX, gy, startX + chartW, gy);
+             doc.setTextColor(150, 150, 150); doc.setFontSize(7);
+             doc.text((maxVal * p).toFixed(1), startX - 2, gy + 1, { align: 'right' });
+          });
+          
+          const barW = Math.min(12, (chartW / seriesData.length) - 4);
+          seriesData.forEach((s, i) => {
+             const bh = (s.val / maxVal) * chartH;
+             const bx = startX + 10 + i * (chartW / seriesData.length);
+             doc.setFillColor(100, 100, 100); doc.rect(bx - barW / 2, chartY - bh, barW, bh, 'F');
+             doc.setTextColor(0, 0, 0); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+             doc.text(s.val.toFixed(2), bx, chartY - bh - 2, { align: 'center' });
+             doc.setTextColor(120, 120, 120); doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+             doc.text(s.label, bx, chartY + 4, { align: 'center' });
+          });
+          y += chartH + 15;
+        }
+
+        // ─── RESUMEN DE CARGAS POR BANCO (Printer Friendly) ───
+        if (inspRecs.length > 0) {
+          const lastR = inspRecs[inspRecs.length - 1];
+          if (y > 240) { doc.addPage(); y = 25; }
+          doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+          doc.text('RESUMEN DE BANCOS Y AUTONOMÍA', 15, y); y += 8;
+          
+          const allB = new Set();
+          Object.keys(lastR.measurements).forEach(tag => { const b = getBankId(tag); if (b) allB.add(b); });
+          const bks = Array.from(allB).sort();
+          
+          let col = 0;
+          bks.forEach(bank => {
+             const bLoad = Object.entries(lastR.measurements).reduce((sum, [tag, vals]) => {
+                if (getBankId(tag) !== bank) return sum;
+                const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+                const ld = calcLoad(type, vals);
+                return { ac: sum.ac + ld.ac, dc: sum.dc + ld.dc };
+             }, { ac: 0, dc: 0 });
+             const batEq = equipment.find(e => e.type === 'BAT' && getBankId(e.tag) === bank);
+             const aut = calcAutonomy(batEq, bLoad.ac, bLoad.dc);
+             
+             const cardX = 15 + col * 92;
+             if (y > 260) { doc.addPage(); y = 25; }
+             
+             // Card Printer Friendly (Border only)
+             doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
+             doc.rect(cardX, y, 88, 24);
+             
+             doc.setTextColor(0, 0, 0); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+             doc.text(`BANCO ${bank}`, cardX + 5, y + 6);
+             
+             doc.setTextColor(100, 100, 100); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+             doc.text(`Carga: ${(bLoad.ac+bLoad.dc).toFixed(2)} kW`, cardX + 5, y + 12);
+             doc.text(`(AC:${bLoad.ac.toFixed(1)} DC:${bLoad.dc.toFixed(1)})`, cardX + 5, y + 17);
+             
+             doc.setTextColor(0, 0, 0); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+             doc.text(fmtHours(aut), cardX + 83, y + 12, { align: 'right' });
+             
+             if (col === 1) { y += 28; col = 0; } else col = 1;
+          });
+          if (col === 1) y += 28;
+        }
+        
         doc.save(`${slugify(node.name)}-historial.pdf`);
-        toast('PDF generado', 'success');
+        toast('PDF generado (Versión impresión)', 'success');
       };
 
       const exportXLSX = () => {
@@ -2503,7 +2605,30 @@ ${alertData.body}`,
           'Instalado': fmtDate(e.installedAt), 'Instalado por': e.installedBy || '',
           'Notas': e.notes || '',
         }));
+        // Hoja 4: Historial de Cargas (Matriz de bancos)
+        const histRows = inspRecs.map(r => {
+          const row = { 'Fecha': fmtDate(r.date), 'Hora': r.date?.toDate ? r.date.toDate().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : '' };
+          let totalNodo = 0;
+          Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
+             const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+             const ld = calcLoad(type, vals);
+             const lTot = ld.ac + ld.dc;
+             totalNodo += lTot;
+             const b = getBankId(tag);
+             if (b) {
+               const k = `Banco ${b} (kW)`;
+               row[k] = parseFloat(((row[k] || 0) + lTot).toFixed(3));
+             }
+          });
+          row['TOTAL NODO (kW)'] = totalNodo.toFixed(3);
+          return row;
+        });
+
         const wb = XLSX.utils.book_new();
+        if (histRows.length) {
+          const wsHist = XLSX.utils.json_to_sheet(histRows);
+          XLSX.utils.book_append_sheet(wb, wsHist, 'Historial Cargas');
+        }
         if (measRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(measRows), 'Inspecciones');
         if (recRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(recRows), 'Resumen');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(eqRows), 'Equipos');
@@ -2565,7 +2690,7 @@ ${alertData.body}`,
 
           {/* Tabs */}
           <div style={{ borderBottom: '1px solid var(--border)', marginBottom: 16, display: 'flex', overflowX: 'auto' }}>
-            {[['equipos', 'Equipos'], ['historial', 'Historial'], ['cargas', 'Cargas'], ['docs', '📁 Docs'], ['alertas', '🔔 Alertas'], ['exportar', 'Exportar']].map(([k, lbl]) => (
+            {[['equipos', 'Equipos'], ['historial', 'Historial'], ['cargas', 'Cargas'], ['docs', 'Docs'], ['alertas', 'Alertas'], ['eventos', 'Eventos'], ['exportar', 'Exportar']].map(([k, lbl]) => (
               <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)} style={{ whiteSpace: 'nowrap' }}>{lbl}</button>
             ))}
           </div>
@@ -2623,7 +2748,7 @@ ${alertData.body}`,
           )}
 
           {/* TAB CARGAS */}
-          {tab === 'cargas' && <LoadChart records={records} equipment={equipment} />}
+          {tab === 'cargas' && <LoadChart records={records} equipment={equipment} onExport={exportXLSX} />}
 
           {/* TAB DOCS */}
           {tab === 'docs' && <NodeDocs nodeId={node.id} userProfile={userProfile} toast={toast} />}
@@ -2676,6 +2801,9 @@ ${alertData.body}`,
 
           {/* TAB ALERTAS */}
           {tab === 'alertas' && <NodeAlerts nodeId={node.id} nodeName={node.name} userProfile={userProfile} toast={toast} />}
+
+          {/* TAB EVENTOS */}
+          {tab === 'eventos' && <NodeEvents nodeId={node.id} nodeName={node.name} userProfile={userProfile} toast={toast} />}
 
           {/* TAB EXPORTAR */}
           {tab === 'exportar' && (
