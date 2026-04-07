@@ -1254,7 +1254,6 @@
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       {[['hasAcIn', '🔌 Entrada AC (Cargador)'],
                       ['hasAcOut', '⚡ Salida AC'],
-                      ['hasDcOut', '🔋 Salida DC'],
                       ['hasSolar', '☀️ Entrada PV (Solar)']].map(([k, lbl]) => (
                         <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--tx2)', fontSize: '.85rem', cursor: 'pointer' }}>
                           <input type="checkbox" checked={!!eqAction[k]} onChange={e => setEqA({ ...eqAction, [k]: e.target.checked })} />
@@ -1272,10 +1271,10 @@
                       ☀️ Tiene Paneles Solares
                     </label>
                   </div>
-                  {eqAction.hasSolar && <div>
+                  <div>
                     <label className="lbl">Efic. Regulación (%) - Opcional</label>
                     <input className="fi" type="number" value={eqAction.solarRegPercentage} onChange={e => setEqA({ ...eqAction, solarRegPercentage: e.target.value })} placeholder="Ej: 85" />
-                  </div>}
+                  </div>
                 </>}
                 {(eqAction.type === 'INV' || eqAction.type === 'BAT' || eqAction.type === 'ETP') && (
                   <div>
