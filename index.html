@@ -836,7 +836,6 @@
             <MF label="Carga Total" unit="kW" vals={vals} k="load_kw" onChange={onChange} />
             {hasPV && <><MF label="V Paneles" unit="V" vals={vals} k="V_panel" onChange={onChange} /><MF label="P Paneles" unit="kW" vals={vals} k="P_panel" onChange={onChange} /></>}
             <MF label="I Batería" unit="Adc" vals={vals} k="I_bat" onChange={onChange} />
-            <MF label="V DC OUT" unit="VDC" vals={vals} k="V_dc_out" onChange={onChange} />
           </div>
         );
       }
@@ -1192,6 +1191,7 @@
                             {eq.hasAcOut && <span style={{ color: '#10b981', fontSize: '.74rem' }}>AC/OUT</span>}
                             {eq.hasDcOut && <span style={{ color: '#8b5cf6', fontSize: '.74rem' }}>DC/OUT</span>}
                             {eq.hasSolar && <span style={{ color: '#f59e0b', fontSize: '.74rem' }}>☀️PV</span>}
+                            {eq.type === 'ETP' && eq.solarRegPercentage && <span style={{ color: '#3b82f6', fontSize: '.74rem' }}>⚙️ {eq.solarRegPercentage}%</span>}
                             {eq.batteryType && eq.batteryType !== 'No aplica' && <span style={{ color: '#8b5cf6', fontSize: '.74rem' }}>🔋{eq.batteryType}</span>}
                           </div>
                           <EqMeasurements eq={eq} vals={meas[eq.tag] || {}} onChange={(k, v) => updM(eq.tag, k, v)} />
@@ -1402,7 +1402,7 @@
     // ═══════════════════════════════════════════════════
     // 🔎 DETALLE DE REGISTRO
     // ═══════════════════════════════════════════════════
-    function RecordDetail({ record, onBack, nodeId }) {
+    function RecordDetail({ record, onBack, nodeId, equipment }) {
       const rt = REC_TYPES[record.type] || { label: record.type, icon: '📋', color: '#64748b' };
       const [editMeas, setEditMeas] = React.useState(false);
       const [measEdit, setMeasEdit] = React.useState(null); // snapshot editable
@@ -1518,6 +1518,13 @@
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span className="badge" style={{ background: ti.bg, color: ti.color, fontSize: '.62rem' }}>{type}</span>
                       <span className="fm" style={{ fontSize: '.88rem', color: 'var(--tx1)', fontWeight: 600 }}>{tag}</span>
+                      {(() => {
+                        const eq = (equipment || []).find(e => e.tag === tag);
+                        if (eq?.type === 'ETP' && eq.solarRegPercentage) {
+                          return <span style={{ color: '#3b82f6', fontSize: '.73rem', fontWeight: 600 }}>⚙️ {eq.solarRegPercentage}%</span>;
+                        }
+                        return null;
+                      })()}
                     </div>
                     {load > 0 && <span className="fm" style={{ fontSize: '.8rem', color: '#10b981', fontWeight: 700 }}>{load.toFixed(2)} kW</span>}
                   </div>
@@ -2132,6 +2139,7 @@ ${alertData.body}`,
         batSoH: eq.batSoH || '',
         batDoD: eq.batDoD || '',
         batCellType: eq.batCellType || 'No aplica',
+        batSerials: eq.batSerials || [],
         conductorGauge: eq.conductorGauge || '',
         serial: eq.serial || '',
         notes: eq.notes || '',
@@ -2155,6 +2163,7 @@ ${alertData.body}`,
           batSoH: eq.batSoH || '',
           batDoD: eq.batDoD || '',
           batCellType: eq.batCellType || 'No aplica',
+          batSerials: eq.batSerials || [],
           conductorGauge: eq.conductorGauge || '',
           serial: eq.serial || '',
           notes: eq.notes || '',
@@ -2232,7 +2241,7 @@ ${alertData.body}`,
                     ['hasAcOut', '⚡ Salida AC'],
                     ['hasDcOut', '🔋 Salida DC'],
                     ['hasSolar', '☀️ PV']
-                  ].map(([k, lbl]) => (
+                  ].filter(([k]) => f.type !== 'INV' || k !== 'hasDcOut').map(([k, lbl]) => (
                     <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx2)', fontSize: '.84rem', cursor: 'pointer' }}>
                       <input type="checkbox" checked={!!f[k]} onChange={e => setF({ ...f, [k]: e.target.checked })} />{lbl}
                     </label>
@@ -2290,6 +2299,17 @@ ${alertData.body}`,
                   <label className="lbl">Profund. Descarga (DoD %)</label>
                   <input className="fi" type="number" step="1" value={f.batDoD} onChange={e => setF({ ...f, batDoD: e.target.value })} placeholder="Ej: 80" />
                 </div>
+                {f.batCount > 0 && Array.from({ length: parseInt(f.batCount) || 0 }).map((_, i) => (
+                  <div key={i}>
+                    <label className="lbl">Serial Batería #{i + 1} (Opcional)</label>
+                    <input className="fi fm" value={f.batSerials?.[i] || ''}
+                      onChange={e => {
+                        const arr = [...(f.batSerials || [])];
+                        arr[i] = e.target.value;
+                        setF({ ...f, batSerials: arr });
+                      }} placeholder={`SN bloque ${i + 1}`} />
+                  </div>
+                ))}
               </>}
 
               {/* Otros */}
@@ -2768,7 +2788,7 @@ ${alertData.body}`,
       const canWrite = userProfile.role === 'tecnico' || userProfile.role === 'admin' || userProfile.role === 'supervisor';
 
       if (subView === 'newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={() => setSubView('main')} onCancel={() => setSubView('main')} toast={toast} />;
-      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} onBack={() => setSubView('main')} />;
+      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} equipment={equipment} onBack={() => setSubView('main')} />;
 
       const saveEditEq = async (data) => {
         try {
@@ -2853,6 +2873,7 @@ ${alertData.body}`,
                               {eq.hasAcOut && <span style={{ color: '#10b981', fontSize: '.73rem' }}>AC/OUT</span>}
                               {eq.hasDcOut && <span style={{ color: '#8b5cf6', fontSize: '.73rem' }}>DC/OUT</span>}
                               {eq.hasSolar && <span style={{ color: '#f59e0b', fontSize: '.73rem' }}>☀️ PV</span>}
+                              {eq.type === 'ETP' && eq.solarRegPercentage && <span style={{ color: '#3b82f6', fontSize: '.73rem' }}>⚙️ {eq.solarRegPercentage}%</span>}
                               {eq.batteryType && eq.batteryType !== 'No aplica' && <span style={{ color: '#8b5cf6', fontSize: '.73rem' }}>🔋{eq.batteryType}</span>}
                               {eq.batCapacity && <span style={{ color: '#8b5cf6', fontSize: '.73rem' }}>{eq.batCapacity}Ah</span>}
                               {eq.batCount && <span style={{ color: '#8b5cf6', fontSize: '.73rem' }}>{eq.batCount} bat.</span>}
