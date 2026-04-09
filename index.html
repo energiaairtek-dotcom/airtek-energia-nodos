@@ -1800,7 +1800,7 @@
 
       useEffect(() => {
         const u1 = db.collection('energy_nodes').doc(nodeId).collection('node_events')
-          .orderBy('date', 'desc').onSnapshot(s => { setEvents(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
+          .orderBy('date', 'desc').limit(25).onSnapshot(s => { setEvents(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
         const u2 = db.collection('energy_nodes').doc(nodeId).collection('energy_equipment')
           .where('active', '==', true).onSnapshot(s => setEquipment(s.docs.map(d => ({ id: d.id, ...d.data() }))));
         return () => { u1(); u2(); };
@@ -1952,7 +1952,7 @@ Personal Asistente: ${form.assistants || 'Solo autor'}`,
 
       useEffect(() => {
         const u = db.collection('energy_nodes').doc(nodeId).collection('node_alerts')
-          .orderBy('createdAt', 'desc')
+          .orderBy('createdAt', 'desc').limit(30)
           .onSnapshot(s => {
             setAlerts(s.docs.map(d => ({ id: d.id, ...d.data() })));
             setLoading(false);
@@ -2532,7 +2532,7 @@ ${alertData.body}`,
         const u1 = db.collection('energy_nodes').doc(node.id).collection('energy_equipment')
           .onSnapshot(s => { setEquipment(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
         const u2 = db.collection('energy_nodes').doc(node.id).collection('energy_records')
-          .orderBy('date', 'desc').onSnapshot(s => { setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
+          .orderBy('date', 'desc').limit(40).onSnapshot(s => { setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
         return () => { u1(); u2(); };
       }, [node.id]);
 
