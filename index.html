@@ -1402,11 +1402,15 @@
     // ═══════════════════════════════════════════════════
     // 🔎 DETALLE DE REGISTRO
     // ═══════════════════════════════════════════════════
-    function RecordDetail({ record, onBack, nodeId, equipment }) {
+    function RecordDetail({ record, onBack, nodeId, equipment, userProfile }) {
       const rt = REC_TYPES[record.type] || { label: record.type, icon: '📋', color: '#64748b' };
       const [editMeas, setEditMeas] = React.useState(false);
       const [measEdit, setMeasEdit] = React.useState(null); // snapshot editable
+      const [editRecord, setEditRecord] = React.useState(false);
+      const [recordForm, setRecordForm] = React.useState(null);
       const [saving, setSaving] = React.useState(false);
+
+      const isAdmin = userProfile?.role === 'admin';
 
       const openEdit = () => {
         // Deep clone measurements
@@ -1421,6 +1425,36 @@
           // Update local record object so view reflects changes
           Object.assign(record.measurements, measEdit);
           setEditMeas(false);
+        } catch (e) { console.error(e); }
+        setSaving(false);
+      };
+
+      const openEditRecord = () => {
+        setRecordForm({
+          tag: record.equipmentAction?.tag || '',
+          notes: record.equipmentAction?.notes || record.observations || '',
+          participants: record.participants || '',
+          date: record.date?.toDate ? record.date.toDate().toISOString().slice(0, 16) : new Date(record.date).toISOString().slice(0, 16)
+        });
+        setEditRecord(true);
+      };
+
+      const saveRecordEdit = async () => {
+        if (!nodeId || !record.id) return;
+        setSaving(true);
+        try {
+          const upd = {
+            participants: recordForm.participants,
+            date: new Date(recordForm.date)
+          };
+          if (record.type === 'inspeccion') {
+            upd.observations = recordForm.notes;
+          } else if (record.equipmentAction) {
+            upd.equipmentAction = { ...record.equipmentAction, tag: recordForm.tag, notes: recordForm.notes };
+          }
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).update(upd);
+          Object.assign(record, upd);
+          setEditRecord(false);
         } catch (e) { console.error(e); }
         setSaving(false);
       };
@@ -1470,10 +1504,47 @@
                 <p style={{ color: 'var(--tx3)', fontSize: '.8rem' }}>{fmtDateTime(record.date)}</p>
               </div>
             </div>
-            {record.type === 'inspeccion' && record.measurements && Object.keys(record.measurements).length > 0 && (
-              <button onClick={openEdit} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }}>✏️ Editar valores</button>
-            )}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {record.type === 'inspeccion' && record.measurements && Object.keys(record.measurements).length > 0 && (
+                <button onClick={openEdit} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }}>✏️ Valores</button>
+              )}
+              {isAdmin && (
+                <button onClick={openEditRecord} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem', color: 'var(--amber)', borderColor: 'rgba(245,158,11,.3)' }}>✏️ Registro</button>
+              )}
+            </div>
           </div>
+
+          {editRecord && (
+            <div className="overlay" onClick={() => setEditRecord(false)}>
+              <div className="card fin" style={{ maxWidth: 460, width: '100%' }} onClick={e => e.stopPropagation()}>
+                <h3 className="fd" style={{ fontWeight: 700, color: 'var(--amber)', fontSize: '1rem', marginBottom: 16 }}>✏️ Editar Registro</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+                  <div>
+                    <label className="lbl">Fecha y Hora</label>
+                    <input className="fi" type="datetime-local" value={recordForm.date} onChange={e => setRecordForm({ ...recordForm, date: e.target.value })} />
+                  </div>
+                  {record.type !== 'inspeccion' && record.equipmentAction && (
+                    <div>
+                      <label className="lbl">Tag del Equipo</label>
+                      <input className="fi fm" value={recordForm.tag} onChange={e => setRecordForm({ ...recordForm, tag: e.target.value })} />
+                    </div>
+                  )}
+                  <div>
+                    <label className="lbl">{record.type === 'inspeccion' ? 'Observaciones' : 'Notas / Motivo'}</label>
+                    <textarea className="fi" rows={3} value={recordForm.notes} onChange={e => setRecordForm({ ...recordForm, notes: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="lbl">Personal Involucrado</label>
+                    <input className="fi" value={recordForm.participants} onChange={e => setRecordForm({ ...recordForm, participants: e.target.value })} />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+                  <button className="bp" style={{ flex: 1 }} onClick={saveRecordEdit} disabled={saving}>{saving ? 'Guardando...' : '💾 Guardar Cambios'}</button>
+                  <button className="bs" onClick={() => setEditRecord(false)} disabled={saving}>Cancelar</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="card" style={{ marginBottom: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <II label="Registrado por" value={record.technicianName} />
@@ -2121,7 +2192,7 @@ ${alertData.body}`,
     // ═══════════════════════════════════════════════════
     // ✏️  MODAL EDICIÓN DE EQUIPO
     // ═══════════════════════════════════════════════════
-    function EditEqModal({ eq, onSave, onClose }) {
+    function EditEqModal({ eq, onSave, onClose, userProfile }) {
       const [f, setF] = useState({
         tag: eq.tag || '',
         type: eq.type || 'INV',
@@ -2143,6 +2214,7 @@ ${alertData.body}`,
         conductorGauge: eq.conductorGauge || '',
         serial: eq.serial || '',
         notes: eq.notes || '',
+        active: eq.active !== false,
       });
 
       useEffect(() => {
@@ -2167,6 +2239,7 @@ ${alertData.body}`,
           conductorGauge: eq.conductorGauge || '',
           serial: eq.serial || '',
           notes: eq.notes || '',
+          active: eq.active !== false,
         });
       }, [eq]);
 
@@ -2332,6 +2405,15 @@ ${alertData.body}`,
                 <label className="lbl">Notas</label>
                 <input className="fi" value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} placeholder="Modelo, serie, observaciones..." />
               </div>
+
+              {userProfile?.role === 'admin' && (
+                <div style={{ gridColumn: '1/-1', display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(16,185,129,.05)', padding: '10px', borderRadius: 8, border: '1px solid rgba(16,185,129,.2)' }}>
+                  <input type="checkbox" id="eqactive" checked={f.active} onChange={e => setF({ ...f, active: e.target.checked })} style={{ width: 18, height: 18 }} />
+                  <label htmlFor="eqactive" style={{ color: '#10b981', fontSize: '.88rem', fontWeight: 700, cursor: 'pointer' }}>
+                    Equipo Activo (Marcar para reactivar equipo retirado)
+                  </label>
+                </div>
+              )}
             </div>
 
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
@@ -2788,7 +2870,7 @@ ${alertData.body}`,
       const canWrite = userProfile.role === 'tecnico' || userProfile.role === 'admin' || userProfile.role === 'supervisor';
 
       if (subView === 'newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={() => setSubView('main')} onCancel={() => setSubView('main')} toast={toast} />;
-      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} equipment={equipment} onBack={() => setSubView('main')} />;
+      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} equipment={equipment} userProfile={userProfile} onBack={() => setSubView('main')} />;
 
       const saveEditEq = async (data) => {
         try {
@@ -2801,7 +2883,7 @@ ${alertData.body}`,
       return (
         <div className="fin">
           {qrOpen && <QRModal node={node} onClose={() => setQrOpen(false)} />}
-          {editEq && <EditEqModal eq={editEq} onSave={saveEditEq} onClose={() => setEditEq(null)} />}
+          {editEq && <EditEqModal eq={editEq} userProfile={userProfile} onSave={saveEditEq} onClose={() => setEditEq(null)} />}
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
