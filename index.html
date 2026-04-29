@@ -1432,6 +1432,7 @@
       const openEditRecord = () => {
         setRecordForm({
           tag: record.equipmentAction?.tag || '',
+          serial: record.equipmentAction?.serial || '',
           notes: record.equipmentAction?.notes || record.observations || '',
           participants: record.participants || '',
           date: record.date?.toDate ? record.date.toDate().toISOString().slice(0, 16) : new Date(record.date).toISOString().slice(0, 16)
@@ -1450,7 +1451,7 @@
           if (record.type === 'inspeccion') {
             upd.observations = recordForm.notes;
           } else if (record.equipmentAction) {
-            upd.equipmentAction = { ...record.equipmentAction, tag: recordForm.tag, notes: recordForm.notes };
+            upd.equipmentAction = { ...record.equipmentAction, tag: recordForm.tag, serial: recordForm.serial, notes: recordForm.notes };
           }
           await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).update(upd);
           Object.assign(record, upd);
@@ -1524,9 +1525,15 @@
                     <input className="fi" type="datetime-local" value={recordForm.date} onChange={e => setRecordForm({ ...recordForm, date: e.target.value })} />
                   </div>
                   {record.type !== 'inspeccion' && record.equipmentAction && (
-                    <div>
-                      <label className="lbl">Tag del Equipo</label>
-                      <input className="fi fm" value={recordForm.tag} onChange={e => setRecordForm({ ...recordForm, tag: e.target.value })} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div>
+                        <label className="lbl">Tag del Equipo</label>
+                        <input className="fi fm" value={recordForm.tag} onChange={e => setRecordForm({ ...recordForm, tag: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="lbl">Serial</label>
+                        <input className="fi fm" value={recordForm.serial} onChange={e => setRecordForm({ ...recordForm, serial: e.target.value })} />
+                      </div>
                     </div>
                   )}
                   <div>
@@ -1641,6 +1648,7 @@
               <h3 className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 12 }}>Acción de Equipo</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {record.equipmentAction.tag && <II label="Tag" value={record.equipmentAction.tag} mono />}
+                {record.equipmentAction.serial && <II label="Serial" value={record.equipmentAction.serial} mono />}
                 {record.equipmentAction.type && <II label="Tipo" value={record.equipmentAction.type} />}
                 {record.equipmentAction.voltage && <II label="Tensión" value={record.equipmentAction.voltage} />}
                 {record.equipmentAction.batteryType && record.equipmentAction.batteryType !== 'No aplica' && <II label="Batería" value={record.equipmentAction.batteryType} />}
