@@ -3292,6 +3292,8 @@ ${alertData.body}`,
       const [ldU, setLdU] = useState(true);
       const [ldN, setLdN] = useState(true);
       const [newNode, setNN] = useState({ name: '', zone: '', type: 'fibra', estado: 'Zulia' });
+      const [editNodeId, setEditNodeId] = useState(null);
+      const [editNodeData, setEditNodeData] = useState({});
       const [seeding, setSeeding] = useState(false);
       const [selNodeId, setSelNodeId] = useState('');
       const [bulkText, setBulkText] = useState('');
@@ -3401,6 +3403,22 @@ ${alertData.body}`,
         await db.collection('energy_nodes').add({ ...newNode, active: true, createdAt: TS() });
         setNN({ name: '', zone: '', type: 'fibra' });
         toast('Nodo agregado.', 'success');
+      };
+
+      const saveNodeEdit = async (id) => {
+        try {
+          await verifyAdminRole(userProfile.uid);
+          await db.collection('energy_nodes').doc(id).update({
+            name: editNodeData.name,
+            zone: editNodeData.zone,
+            estado: editNodeData.estado || 'Zulia',
+            type: editNodeData.type
+          });
+          setEditNodeId(null);
+          toast('Nodo actualizado exitosamente.', 'success');
+        } catch (e) {
+          toast('Error al actualizar el nodo: ' + e.message, 'error');
+        }
       };
 
       const toggleNode = async (n) => {
@@ -3598,16 +3616,49 @@ ${alertData.body}`,
               {ldN ? <div style={{ color: 'var(--tx3)', textAlign: 'center', padding: 40 }}>Cargando...</div>
                 : nodes.map(n => {
                   const tc = NODE_TYPES[n.type] || { label: '—', color: '#64748b' };
+                  const isEditing = editNodeId === n.id;
                   return (
                     <div key={n.id} className="card" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, opacity: n.active ? 1 : .5 }}>
-                      <div>
-                        <span className="badge" style={{ background: tc.color + '22', color: tc.color, marginRight: 8 }}>{tc.label}</span>
-                        <span className="fd" style={{ fontWeight: 600, color: 'var(--tx1)' }}>{n.name}</span>
-                        <span style={{ color: 'var(--tx3)', fontSize: '.8rem', marginLeft: 8 }}>{n.zone}</span>
-                      </div>
-                      <button onClick={() => toggleNode(n)} className={n.active ? 'bd' : 'bg'} style={{ padding: '6px 14px', fontSize: '.78rem' }}>
-                        {n.active ? 'Desactivar' : 'Activar'}
-                      </button>
+                      {isEditing ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, alignItems: 'end', flexWrap: 'wrap', width: '100%' }}>
+                          <div>
+                            <label className="lbl">Nombre</label>
+                            <input className="fi" value={editNodeData.name} onChange={e => setEditNodeData({ ...editNodeData, name: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="lbl">Zona</label>
+                            <input className="fi" value={editNodeData.zone} onChange={e => setEditNodeData({ ...editNodeData, zone: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="lbl">Estado</label>
+                            <input className="fi" value={editNodeData.estado} onChange={e => setEditNodeData({ ...editNodeData, estado: e.target.value })} />
+                          </div>
+                          <div>
+                            <label className="lbl">Tipo</label>
+                            <select className="fi" value={editNodeData.type} onChange={e => setEditNodeData({ ...editNodeData, type: e.target.value })}>
+                              {Object.entries(NODE_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, width: '100%', marginTop: 8 }}>
+                            <button className="bg" style={{ padding: '6px 14px', fontSize: '.78rem' }} onClick={() => saveNodeEdit(n.id)}>Guardar</button>
+                            <button className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }} onClick={() => setEditNodeId(null)}>Cancelar</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <span className="badge" style={{ background: tc.color + '22', color: tc.color, marginRight: 8 }}>{tc.label}</span>
+                            <span className="fd" style={{ fontWeight: 600, color: 'var(--tx1)' }}>{n.name}</span>
+                            <span style={{ color: 'var(--tx3)', fontSize: '.8rem', marginLeft: 8 }}>{n.zone} {n.estado && n.estado !== 'Zulia' ? `(${n.estado})` : ''}</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => { setEditNodeId(n.id); setEditNodeData({ name: n.name, zone: n.zone||'', estado: n.estado||'Zulia', type: n.type }); }} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }}>Editar</button>
+                            <button onClick={() => toggleNode(n)} className={n.active ? 'bd' : 'bg'} style={{ padding: '6px 14px', fontSize: '.78rem' }}>
+                              {n.active ? 'Desactivar' : 'Activar'}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   );
                 })}
