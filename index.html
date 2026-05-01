@@ -590,6 +590,32 @@
     } catch (e) { console.error('Firebase error:', e); }
 
     // ═══════════════════════════════════════════════════
+    // 🛡️ SEGURIDAD — Advertencia de consola
+    // ═══════════════════════════════════════════════════
+    console.log('%c⚠️ ADVERTENCIA DE SEGURIDAD', 'color:#ef4444;font-size:20px;font-weight:bold');
+    console.log('%cEsta consola es una herramienta para desarrolladores. Si alguien te pidió que copies o pegues algo aquí, es probable que sea una estafa. Nunca compartas información de esta consola.', 'color:#f59e0b;font-size:14px');
+    console.log('%cAIRTEK Energía — Sistema protegido.', 'color:#10b981;font-size:12px');
+
+    // Verificar rol desde Firestore (para operaciones críticas)
+    const verifyAdminRole = async () => {
+      if (!auth?.currentUser) return false;
+      try {
+        let snap = await db.collection('airtek_users').doc(auth.currentUser.uid).get();
+        if (!snap.exists) snap = await db.collection('energy_users').doc(auth.currentUser.uid).get();
+        if (!snap.exists) return false;
+        const data = snap.data();
+        const role = (data.apps && data.apps.nodos) || data.role || 'tecnico';
+        return role === 'admin';
+      } catch { return false; }
+    };
+
+    // Sanitizar texto para prevenir inyección
+    const sanitize = (str) => {
+      if (typeof str !== 'string') return str;
+      return str.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').trim();
+    };
+
+    // ═══════════════════════════════════════════════════
     // 📧 EMAILJS CONFIG — configura con tus credenciales
     // ═══════════════════════════════════════════════════
     const EMAILJS_SERVICE_ID = 'service_5h5jm6b';
@@ -707,7 +733,7 @@
     }
 
     function RegisterPage({ onBack }) {
-      const [f, setF] = useState({ name: '', email: '', pass: '', pass2: '' }); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState(false);
+      const [f, setF] = useState({ name: '', email: '', pass: '', pass2: '', role: 'tecnico' }); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState(false);
       const go = async () => {
         setErr('');
         if (!f.name || !f.email || !f.pass) { setErr('Completa todos los campos.'); return; }
@@ -715,10 +741,11 @@
         if (f.pass.length < 6) { setErr('La contraseña debe tener al menos 6 caracteres.'); return; }
         setLoading(true);
         try {
+          const selectedRole = f.role || 'tecnico';
           const cred = await auth.createUserWithEmailAndPassword(f.email, f.pass);
-          const profile = { name: f.name, email: f.email.toLowerCase(), role: 'tecnico', approved: false, createdAt: TS() };
+          const profile = { name: sanitize(f.name), email: f.email.toLowerCase(), role: selectedRole, approved: false, createdAt: TS() };
           // Escribir en colección unificada (nueva) y en energy_users (legacy)
-          await db.collection('airtek_users').doc(cred.user.uid).set({ ...profile, apps: { nodos: 'tecnico', pm: null, almacen: null } });
+          await db.collection('airtek_users').doc(cred.user.uid).set({ ...profile, apps: { nodos: selectedRole, pm: null, almacen: null } });
           await db.collection('energy_users').doc(cred.user.uid).set(profile);
           await auth.signOut(); setDone(true);
         } catch (e) {
@@ -751,6 +778,13 @@
                   <input className="fi" type={type} value={f[k]} onChange={e => setF({ ...f, [k]: e.target.value })} placeholder={ph} />
                 </div>
               ))}
+              <div style={{ marginBottom: 13 }}>
+                <label className="lbl">Tipo de Cuenta</label>
+                <select className="fi" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
+                  <option value="tecnico">Técnico (registro de inspecciones y equipos)</option>
+                  <option value="directivo">Directivo (solo lectura y reportes)</option>
+                </select>
+              </div>
               <button className="bp" style={{ width: '100%', marginTop: 6 }} onClick={go} disabled={loading}>{loading ? 'Registrando...' : 'Enviar Solicitud'}</button>
             </div>
           </div>
@@ -3251,31 +3285,45 @@ ${alertData.body}`,
       const [bulkParsed, setBulkParsed] = useState([]);
       const [bulkLoading, setBulkLoading] = useState(false);
 
-      useEffect(() => {
-        // Cargar usuarios: mezcla de airtek_users (nueva) + energy_users (legacy)
-        // Promise.allSettled: si una falla (ej. permisos), la otra sigue cargando
+      const [userLoadError, setUserLoadError] = useState('');
+
+      // Función para cargar/refrescar usuarios combinando ambas colecciones
+      const loadUsers = () => {
+        setLdU(true);
+        setUserLoadError('');
         Promise.allSettled([
           db.collection('airtek_users').get(),
           db.collection('energy_users').get()
         ]).then(([unifiedResult, legacyResult]) => {
           const map = new Map();
-          // Cargar de airtek_users si se pudo leer
+          let anySuccess = false;
           if (unifiedResult.status === 'fulfilled') {
+            anySuccess = true;
             unifiedResult.value.docs.forEach(d => map.set(d.id, {
               id: d.id, ...d.data(),
               role: (d.data().apps && d.data().apps.nodos) || d.data().role || 'tecnico',
               name: d.data().name || d.data().nombre || ''
             }));
           } else { console.warn('airtek_users no accesible:', unifiedResult.reason?.code); }
-          // Siempre cargar de energy_users (colección original)
           if (legacyResult.status === 'fulfilled') {
+            anySuccess = true;
             legacyResult.value.docs.forEach(d => { if (!map.has(d.id)) map.set(d.id, { id: d.id, ...d.data() }); });
           } else { console.error('energy_users error:', legacyResult.reason); }
+          if (!anySuccess) setUserLoadError('No se pudieron cargar los usuarios. Verifica los permisos de Firestore.');
           setUsers([...map.values()]);
           setLdU(false);
         });
+      };
+
+      useEffect(() => {
+        loadUsers();
+        // Listener en tiempo real para energy_users (legacy) — detecta nuevos registros
+        const u1 = db.collection('energy_users').onSnapshot(snap => {
+          // Refrescar cuando cambie energy_users
+          loadUsers();
+        }, err => console.warn('energy_users listener error:', err.code));
         const n = db.collection('energy_nodes').onSnapshot(s => { setNodes(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLdN(false); });
-        return () => { n(); };
+        return () => { u1(); n(); };
       }, []);
 
       const parseBulk = txt => {
@@ -3319,12 +3367,20 @@ ${alertData.body}`,
         setBulkLoading(false);
       };
 
-      const approve = (uid, val, role) => {
+      const approve = async (uid, val, role) => {
+        // Re-verificar que el usuario actual es admin antes de aprobar
+        const isRealAdmin = await verifyAdminRole();
+        if (!isRealAdmin) { toast('No tienes permisos de administrador.', 'error'); return; }
         // Actualizar en ambas colecciones (la que exista)
         const upd = { approved: val, role };
-        db.collection('energy_users').doc(uid).update(upd).catch(() => { });
-        db.collection('airtek_users').doc(uid).update({ approved: val, 'apps.nodos': role }).catch(() => { });
-        toast(val ? 'Usuario aprobado.' : 'Acceso revocado.', 'success');
+        try {
+          await Promise.allSettled([
+            db.collection('energy_users').doc(uid).update(upd),
+            db.collection('airtek_users').doc(uid).update({ approved: val, 'apps.nodos': role })
+          ]);
+          toast(val ? 'Usuario aprobado.' : 'Acceso revocado.', 'success');
+          loadUsers(); // Refrescar lista
+        } catch (e) { toast('Error al actualizar: ' + e.message, 'error'); }
       };
 
       const addNode = async () => {
@@ -3367,7 +3423,15 @@ ${alertData.body}`,
               {pending.length > 0 && <div style={{ background: 'rgba(245,158,11,.1)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#fcd34d', fontSize: '.85rem' }}>
                 ⚠️ {pending.length} usuario(s) pendiente(s) de aprobación
               </div>}
-              <AddExistingUser nodes={nodes} toast={toast} userProfile={userProfile} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <AddExistingUser nodes={nodes} toast={toast} userProfile={userProfile} />
+                <button className="bs" style={{ padding: '6px 14px', fontSize: '.78rem', flexShrink: 0 }} onClick={loadUsers} disabled={ldU}>
+                  🔄 {ldU ? 'Cargando...' : 'Refrescar'}
+                </button>
+              </div>
+              {userLoadError && <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#fca5a5', fontSize: '.85rem' }}>
+                ❌ {userLoadError}
+              </div>}
               {ldU ? <div style={{ color: 'var(--tx3)', textAlign: 'center', padding: 40 }}>Cargando...</div>
                 : users.map(u => (
                   <div key={u.id} className="card" style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
@@ -3391,6 +3455,7 @@ ${alertData.body}`,
                         }}>
                         <option value="tecnico">Técnico</option>
                         <option value="supervisor">Supervisor</option>
+                        <option value="directivo">Directivo</option>
                         <option value="admin">Admin</option>
                       </select>
                       {!u.approved && <button className="bg" style={{ padding: '6px 14px', fontSize: '.8rem' }} onClick={() => approve(u.id, true, u.role)}>Aprobar</button>}
