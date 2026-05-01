@@ -392,9 +392,14 @@
 
     @media (max-width: 600px) {
       .topbar {
-        padding: 0 12px;
+        padding: 8px 12px;
+        flex-wrap: wrap;
+        height: auto;
+        min-height: 54px;
+        gap: 10px;
+        justify-content: center;
       }
-
+      .tbtn-txt { display: none; }
       .card {
         padding: 13px;
       }
@@ -3110,6 +3115,7 @@ ${alertData.body}`,
       const [sel, setSel] = useState(null);
       const [search, setSearch] = useState('');
       const [fType, setFType] = useState('all');
+      const [fState, setFState] = useState('all');
 
       useEffect(() => {
         const u = db.collection('energy_nodes').where('active', '==', true).onSnapshot(s => {
@@ -3128,9 +3134,12 @@ ${alertData.body}`,
 
       if (sel) return <NodeDetail node={sel} userProfile={userProfile} onBack={() => setSel(null)} toast={toast} />;
 
+      const states = Array.from(new Set(nodes.map(n => n.estado || 'Zulia'))).sort();
+
       const filtered = nodes.filter(n => {
         const ms = n.name.toLowerCase().includes(search.toLowerCase()) || (n.zone || '').toLowerCase().includes(search.toLowerCase());
-        return ms && (fType === 'all' || n.type === fType);
+        const stateMatch = fState === 'all' || (n.estado || 'Zulia') === fState;
+        return ms && (fType === 'all' || n.type === fType) && stateMatch;
       });
 
       return (
@@ -3144,6 +3153,10 @@ ${alertData.body}`,
           {/* Filtros */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             <input className="fi" style={{ maxWidth: 260, flex: 1 }} placeholder="Buscar nodo o zona..." value={search} onChange={e => setSearch(e.target.value)} />
+            <select className="fi" style={{ maxWidth: 140 }} value={fState} onChange={e => setFState(e.target.value)}>
+              <option value="all">Todo el país</option>
+              {states.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {['all', ...Object.keys(NODE_TYPES)].map(t => {
                 const nt = NODE_TYPES[t];
@@ -3278,7 +3291,7 @@ ${alertData.body}`,
       const [nodes, setNodes] = useState([]);
       const [ldU, setLdU] = useState(true);
       const [ldN, setLdN] = useState(true);
-      const [newNode, setNN] = useState({ name: '', zone: '', type: 'fibra' });
+      const [newNode, setNN] = useState({ name: '', zone: '', type: 'fibra', estado: 'Zulia' });
       const [seeding, setSeeding] = useState(false);
       const [selNodeId, setSelNodeId] = useState('');
       const [bulkText, setBulkText] = useState('');
@@ -3569,6 +3582,10 @@ ${alertData.body}`,
                     <input className="fi" value={newNode.zone} onChange={e => setNN({ ...newNode, zone: e.target.value })} placeholder="Maracaibo" />
                   </div>
                   <div>
+                    <label className="lbl">Estado</label>
+                    <input className="fi" value={newNode.estado} onChange={e => setNN({ ...newNode, estado: e.target.value })} placeholder="Zulia" />
+                  </div>
+                  <div>
                     <label className="lbl">Tipo</label>
                     <select className="fi" value={newNode.type} onChange={e => setNN({ ...newNode, type: e.target.value })}>
                       {Object.entries(NODE_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -3680,7 +3697,7 @@ ${alertData.body}`,
                 color: view === 'calc' ? '#3b82f6' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6,
                 cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
               }}>
-              🧮 Materiales
+              🧮 <span className="tbtn-txt">Materiales</span>
             </button>
             <button onClick={() => setView(view === 'autonomia' ? 'nodes' : 'autonomia')}
               style={{
@@ -3689,7 +3706,7 @@ ${alertData.body}`,
                 color: view === 'autonomia' ? '#10b981' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6,
                 cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
               }}>
-              🔋 Autonomía
+              🔋 <span className="tbtn-txt">Autonomía</span>
             </button>
             {userProfile.role === 'admin' && (
               <button onClick={() => setView(view === 'admin' ? 'nodes' : 'admin')}
@@ -3697,7 +3714,7 @@ ${alertData.body}`,
                   background: view === 'admin' ? 'rgba(245,158,11,.15)' : 'none', border: '1px solid', borderColor: view === 'admin' ? 'rgba(245,158,11,.4)' : 'var(--border)',
                   color: view === 'admin' ? '#f59e0b' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
                 }}>
-                Admin
+                ⚙️ <span className="tbtn-txt">Admin</span>
               </button>
             )}
             <div style={{ position: 'relative' }}>
