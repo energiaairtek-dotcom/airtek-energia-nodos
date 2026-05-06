@@ -703,7 +703,7 @@
       );
     }
 
-    function LoginPage({ onRegister }) {
+    function LoginPage({ onRegister, onForgot }) {
       const [email, setEmail] = useState(''); const [pass, setPass] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
       const go = async () => {
         setErr(''); setLoading(true);
@@ -723,7 +723,10 @@
                 <input className="fi" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e => e.key === 'Enter' && go()} />
               </div>
               <div style={{ marginBottom: 22 }}>
-                <label className="lbl">Contraseña</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <label className="lbl">Contraseña</label>
+                  <button onClick={onForgot} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.72rem', fontWeight: 600, marginBottom: 6 }}>¿Olvidaste tu contraseña?</button>
+                </div>
                 <input className="fi" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && go()} />
               </div>
               <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>{loading ? 'Ingresando...' : 'Ingresar'}</button>
@@ -731,6 +734,46 @@
                 <span style={{ color: '#475569', fontSize: '.85rem' }}>¿No tienes cuenta? </span>
                 <button onClick={onRegister} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.85rem', fontWeight: 700 }}>Registrarse</button>
               </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ForgotPasswordPage({ onBack }) {
+      const [email, setEmail] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState(false);
+      const go = async () => {
+        if (!email) { setErr('Ingresa tu correo electrónico.'); return; }
+        setErr(''); setLoading(true);
+        try { await auth.sendPasswordResetEmail(email); setDone(true); }
+        catch (e) { setErr('Error al enviar el correo. Verifica que la dirección sea correcta.'); }
+        setLoading(false);
+      };
+      if (done) return (
+        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div className="card fin" style={{ maxWidth: 400, textAlign: 'center' }}>
+            <div style={{ fontSize: 44, marginBottom: 14 }}>📧</div>
+            <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Correo enviado</h2>
+            <p style={{ color: '#94a3b8', fontSize: '.9rem', marginBottom: 20 }}>Revisa tu bandeja de entrada para restablecer tu contraseña.</p>
+            <button className="bs" onClick={onBack}>Volver al inicio</button>
+          </div>
+        </div>
+      );
+      return (
+        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: '100%', maxWidth: 420 }} className="fin">
+            <div className="card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 20 }}>←</button>
+                <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 700 }}>Recuperar Contraseña</h2>
+              </div>
+              <p style={{ color: '#94a3b8', fontSize: '.85rem', marginBottom: 20 }}>Ingresa tu correo y te enviaremos un enlace para restablecer tu contraseña.</p>
+              {err && <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 14, color: '#fca5a5', fontSize: '.85rem' }}>{err}</div>}
+              <div style={{ marginBottom: 22 }}>
+                <label className="lbl">Correo electrónico</label>
+                <input className="fi" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e => e.key === 'Enter' && go()} />
+              </div>
+              <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>{loading ? 'Enviando...' : 'Enviar enlace'}</button>
             </div>
           </div>
         </div>
@@ -4319,7 +4362,8 @@ ${alertData.body}`,
 
       if (authState === 'unauthenticated') {
         if (authView === 'register') return <RegisterPage onBack={() => setAuthView('login')} />;
-        return <LoginPage onRegister={() => setAuthView('register')} />;
+        if (authView === 'forgot') return <ForgotPasswordPage onBack={() => setAuthView('login')} />;
+        return <LoginPage onRegister={() => setAuthView('register')} onForgot={() => setAuthView('forgot')} />;
       }
 
       if (authState === 'pending') return <PendingPage onLogout={logout} />;
