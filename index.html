@@ -399,7 +399,11 @@
         gap: 10px;
         justify-content: center;
       }
-      .tbtn-txt { display: none; }
+
+      .tbtn-txt {
+        display: none;
+      }
+
       .card {
         padding: 13px;
       }
@@ -703,7 +707,7 @@
       );
     }
 
-    function LoginPage({ onRegister, onForgot }) {
+    function LoginPage({ onRegister }) {
       const [email, setEmail] = useState(''); const [pass, setPass] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
       const go = async () => {
         setErr(''); setLoading(true);
@@ -723,10 +727,7 @@
                 <input className="fi" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e => e.key === 'Enter' && go()} />
               </div>
               <div style={{ marginBottom: 22 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  <label className="lbl">Contraseña</label>
-                  <button onClick={onForgot} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.72rem', fontWeight: 600, marginBottom: 6 }}>¿Olvidaste tu contraseña?</button>
-                </div>
+                <label className="lbl">Contraseña</label>
                 <input className="fi" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && go()} />
               </div>
               <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>{loading ? 'Ingresando...' : 'Ingresar'}</button>
@@ -734,46 +735,6 @@
                 <span style={{ color: '#475569', fontSize: '.85rem' }}>¿No tienes cuenta? </span>
                 <button onClick={onRegister} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.85rem', fontWeight: 700 }}>Registrarse</button>
               </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    function ForgotPasswordPage({ onBack }) {
-      const [email, setEmail] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState(false);
-      const go = async () => {
-        if (!email) { setErr('Ingresa tu correo electrónico.'); return; }
-        setErr(''); setLoading(true);
-        try { await auth.sendPasswordResetEmail(email); setDone(true); }
-        catch (e) { setErr('Error al enviar el correo. Verifica que la dirección sea correcta.'); }
-        setLoading(false);
-      };
-      if (done) return (
-        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div className="card fin" style={{ maxWidth: 400, textAlign: 'center' }}>
-            <div style={{ fontSize: 44, marginBottom: 14 }}>📧</div>
-            <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 700, color: '#f59e0b', marginBottom: 8 }}>Correo enviado</h2>
-            <p style={{ color: '#94a3b8', fontSize: '.9rem', marginBottom: 20 }}>Revisa tu bandeja de entrada para restablecer tu contraseña.</p>
-            <button className="bs" onClick={onBack}>Volver al inicio</button>
-          </div>
-        </div>
-      );
-      return (
-        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ width: '100%', maxWidth: 420 }} className="fin">
-            <div className="card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-                <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 20 }}>←</button>
-                <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 700 }}>Recuperar Contraseña</h2>
-              </div>
-              <p style={{ color: '#94a3b8', fontSize: '.85rem', marginBottom: 20 }}>Ingresa tu correo y te enviaremos un enlace para restablecer tu contraseña.</p>
-              {err && <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 14, color: '#fca5a5', fontSize: '.85rem' }}>{err}</div>}
-              <div style={{ marginBottom: 22 }}>
-                <label className="lbl">Correo electrónico</label>
-                <input className="fi" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e => e.key === 'Enter' && go()} />
-              </div>
-              <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>{loading ? 'Enviando...' : 'Enviar enlace'}</button>
             </div>
           </div>
         </div>
@@ -1121,10 +1082,10 @@
       const [participants, setParticipants] = useState('');
       const [meas, setMeas] = useState({});
       const [saving, setSaving] = useState(false);
-      const [eqAction, setEqA] = useState({ 
-        tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false, 
-        batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '', 
-        batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador' 
+      const [eqAction, setEqA] = useState({
+        tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false,
+        batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '',
+        batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador'
       });
 
       const onBatTypeChange = (val) => {
@@ -1161,7 +1122,7 @@
           if (type === 'instalacion' && eqAction.tag) {
             const isDC = eqAction.type === 'BAT' || eqAction.type === 'ETP';
             await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
-              tag: eqAction.tag, type: eqAction.type, 
+              tag: eqAction.tag, type: eqAction.type,
               voltage: isDC ? '' : eqAction.voltage,
               voltageDC: eqAction.voltageDC || '',
               hasAcIn: !!eqAction.hasAcIn, hasAcOut: !!eqAction.hasAcOut, hasDcOut: !!eqAction.hasDcOut,
@@ -1887,7 +1848,7 @@
               {/* Columnas */}
               {series.map((s, i) => {
                 const val = parseFloat(s[dataKey]) || 0;
-                const bh = Math.max(2, (val / maxVal) * (H-15)); // Evitar que choque con el techo
+                const bh = Math.max(2, (val / maxVal) * (H - 15)); // Evitar que choque con el techo
                 const x = i * 45 + 50;
                 const barWidth = 20;
                 return (
@@ -2022,7 +1983,7 @@ Personal Asistente: ${form.assistants || 'Solo autor'}`,
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
                   <label className="lbl">Nombre de quien Anotó (Obligatorio)</label>
-                  <input className="fi" value={form.recordedBy} onChange={e => setForm({ ...form, recordedBy: e.target.value })} 
+                  <input className="fi" value={form.recordedBy} onChange={e => setForm({ ...form, recordedBy: e.target.value })}
                     placeholder="Escribe el nombre del personal de monitoreo que anota..." />
                 </div>
                 <div style={{ gridColumn: '1/-1' }}>
@@ -2438,7 +2399,13 @@ ${alertData.body}`,
                 </div>
               )}
 
-              {/* Bateria Detalle */}
+              {/* Bateria Detalle - Capacidad y Count también para ETP */}
+              {(f.type === 'BAT' || f.type === 'ETP') && (
+                <div style={{ gridColumn: '1/-1', padding: '8px 12px', background: 'rgba(139,92,246,.06)', border: '1px solid rgba(139,92,246,.2)', borderRadius: 8 }}>
+                  <label className="lbl">Capacidad Banco (Ah) — dejar vacío para borrar</label>
+                  <input className="fi" value={f.batCapacity} onChange={e => setF({ ...f, batCapacity: e.target.value })} placeholder="Ej: 200 (vacío = eliminar)" />
+                </div>
+              )}
               {f.type === 'BAT' && <>
                 <div>
                   <label className="lbl">Capacidad (Ah)</label>
@@ -2506,6 +2473,17 @@ ${alertData.body}`,
               )}
             </div>
 
+            {(f.batCapacity || f.notes) && (
+              <div style={{ marginBottom: 10, padding: '8px 12px', background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                <span style={{ fontSize: '.78rem', color: '#ef4444' }}>
+                  ⚠️ Campos a limpiar: {[f.batCapacity && `batCapacity: "${f.batCapacity}"`, f.notes && `notes: "${f.notes}"`].filter(Boolean).join(' | ')}
+                </span>
+                <button onClick={() => setF({ ...f, batCapacity: '', batCount: '', notes: '' })}
+                  style={{ background: 'rgba(239,68,68,.15)', border: '1px solid rgba(239,68,68,.4)', color: '#ef4444', padding: '3px 10px', borderRadius: 5, cursor: 'pointer', fontSize: '.75rem', whiteSpace: 'nowrap' }}>
+                  🗑 Limpiar
+                </button>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
               <button className="bp" style={{ flex: 1 }} onClick={save} disabled={saving || !f.tag.trim()}>
                 {saving ? 'Guardando...' : '💾 Guardar Cambios'}
@@ -2744,10 +2722,10 @@ ${alertData.body}`,
           doc.text(tagPart, 18, y);
           const tw = doc.getTextWidth(tagPart);
           doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100);
-          
+
           const isAC = eq.type === 'INV' || eq.type === 'ATS';
           const vInfo = isAC ? (eq.voltage ? ` ${eq.voltage}` : '') : (eq.voltageDC ? ` ${eq.voltageDC}VDC` : '');
-          
+
           const infoPart = ` — ${eq.type}${vInfo}${eq.batteryType && eq.batteryType !== 'No aplica' ? ' [' + eq.batteryType + ']' : ''}`;
           doc.text(infoPart, 18 + tw + 1, y);
           y += 5; if (y > 275) { doc.addPage(); y = 25; }
@@ -2772,43 +2750,43 @@ ${alertData.body}`,
           }
           y += 2; if (y > 275) { doc.addPage(); y = 25; }
         });
-        
+
         // ─── GRÁFICA DE CARGAS HISTÓRICAS (Grayscale) ───
         const inspRecs = records.filter(r => r.type === 'inspeccion' && r.measurements && Object.keys(r.measurements).length > 0).slice().reverse();
         if (inspRecs.length > 0) {
           if (y > 230) { doc.addPage(); y = 25; }
           doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
           doc.text('GRÁFICO DE CARGAS (kW)', 15, y); y += 8;
-          
+
           const chartH = 35; const chartW = 170; const startX = 20; const chartY = y + chartH;
           const seriesData = inspRecs.map(r => {
-             let t = 0; Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
-                const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
-                const ld = calcLoad(type, vals);
-                t += ld.ac + ld.dc;
-             });
-             return { label: fmtDate(r.date).slice(0,5), val: t };
+            let t = 0; Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
+              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+              const ld = calcLoad(type, vals);
+              t += ld.ac + ld.dc;
+            });
+            return { label: fmtDate(r.date).slice(0, 5), val: t };
           });
           const maxVal = Math.max(...seriesData.map(s => s.val), 0.5) * 1.2;
-          
+
           doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2);
           doc.line(startX, chartY, startX + chartW, chartY);
           [0, 0.5, 1].forEach(p => {
-             const gy = chartY - (chartH * p);
-             doc.line(startX, gy, startX + chartW, gy);
-             doc.setTextColor(150, 150, 150); doc.setFontSize(7);
-             doc.text((maxVal * p).toFixed(1), startX - 2, gy + 1, { align: 'right' });
+            const gy = chartY - (chartH * p);
+            doc.line(startX, gy, startX + chartW, gy);
+            doc.setTextColor(150, 150, 150); doc.setFontSize(7);
+            doc.text((maxVal * p).toFixed(1), startX - 2, gy + 1, { align: 'right' });
           });
-          
+
           const barW = Math.min(12, (chartW / seriesData.length) - 4);
           seriesData.forEach((s, i) => {
-             const bh = (s.val / maxVal) * chartH;
-             const bx = startX + 10 + i * (chartW / seriesData.length);
-             doc.setFillColor(100, 100, 100); doc.rect(bx - barW / 2, chartY - bh, barW, bh, 'F');
-             doc.setTextColor(0, 0, 0); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-             doc.text(s.val.toFixed(2), bx, chartY - bh - 2, { align: 'center' });
-             doc.setTextColor(120, 120, 120); doc.setFontSize(6); doc.setFont('helvetica', 'normal');
-             doc.text(s.label, bx, chartY + 4, { align: 'center' });
+            const bh = (s.val / maxVal) * chartH;
+            const bx = startX + 10 + i * (chartW / seriesData.length);
+            doc.setFillColor(100, 100, 100); doc.rect(bx - barW / 2, chartY - bh, barW, bh, 'F');
+            doc.setTextColor(0, 0, 0); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
+            doc.text(s.val.toFixed(2), bx, chartY - bh - 2, { align: 'center' });
+            doc.setTextColor(120, 120, 120); doc.setFontSize(6); doc.setFont('helvetica', 'normal');
+            doc.text(s.label, bx, chartY + 4, { align: 'center' });
           });
           y += chartH + 15;
         }
@@ -2819,44 +2797,44 @@ ${alertData.body}`,
           if (y > 240) { doc.addPage(); y = 25; }
           doc.setTextColor(0, 0, 0); doc.setFontSize(11); doc.setFont('helvetica', 'bold');
           doc.text('RESUMEN DE BANCOS Y AUTONOMÍA', 15, y); y += 8;
-          
+
           const allB = new Set();
           Object.keys(lastR.measurements).forEach(tag => { const b = getBankId(tag); if (b) allB.add(b); });
           const bks = Array.from(allB).sort();
-          
+
           let col = 0;
           bks.forEach(bank => {
-             const bLoad = Object.entries(lastR.measurements).reduce((sum, [tag, vals]) => {
-                if (getBankId(tag) !== bank) return sum;
-                const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
-                const ld = calcLoad(type, vals);
-                return { ac: sum.ac + ld.ac, dc: sum.dc + ld.dc };
-             }, { ac: 0, dc: 0 });
-             const batEq = equipment.find(e => e.type === 'BAT' && getBankId(e.tag) === bank);
-             const aut = calcAutonomy(batEq, bLoad.ac, bLoad.dc);
-             
-             const cardX = 15 + col * 92;
-             if (y > 260) { doc.addPage(); y = 25; }
-             
-             // Card Printer Friendly (Border only)
-             doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
-             doc.rect(cardX, y, 88, 24);
-             
-             doc.setTextColor(0, 0, 0); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-             doc.text(`BANCO ${bank}`, cardX + 5, y + 6);
-             
-             doc.setTextColor(100, 100, 100); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-             doc.text(`Carga: ${(bLoad.ac+bLoad.dc).toFixed(2)} kW`, cardX + 5, y + 12);
-             doc.text(`(AC:${bLoad.ac.toFixed(1)} DC:${bLoad.dc.toFixed(1)})`, cardX + 5, y + 17);
-             
-             doc.setTextColor(0, 0, 0); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-             doc.text(fmtHours(aut), cardX + 83, y + 12, { align: 'right' });
-             
-             if (col === 1) { y += 28; col = 0; } else col = 1;
+            const bLoad = Object.entries(lastR.measurements).reduce((sum, [tag, vals]) => {
+              if (getBankId(tag) !== bank) return sum;
+              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+              const ld = calcLoad(type, vals);
+              return { ac: sum.ac + ld.ac, dc: sum.dc + ld.dc };
+            }, { ac: 0, dc: 0 });
+            const batEq = equipment.find(e => e.type === 'BAT' && getBankId(e.tag) === bank);
+            const aut = calcAutonomy(batEq, bLoad.ac, bLoad.dc);
+
+            const cardX = 15 + col * 92;
+            if (y > 260) { doc.addPage(); y = 25; }
+
+            // Card Printer Friendly (Border only)
+            doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
+            doc.rect(cardX, y, 88, 24);
+
+            doc.setTextColor(0, 0, 0); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+            doc.text(`BANCO ${bank}`, cardX + 5, y + 6);
+
+            doc.setTextColor(100, 100, 100); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+            doc.text(`Carga: ${(bLoad.ac + bLoad.dc).toFixed(2)} kW`, cardX + 5, y + 12);
+            doc.text(`(AC:${bLoad.ac.toFixed(1)} DC:${bLoad.dc.toFixed(1)})`, cardX + 5, y + 17);
+
+            doc.setTextColor(0, 0, 0); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+            doc.text(fmtHours(aut), cardX + 83, y + 12, { align: 'right' });
+
+            if (col === 1) { y += 28; col = 0; } else col = 1;
           });
           if (col === 1) y += 28;
         }
-        
+
         doc.save(`${slugify(node.name)}-historial.pdf`);
         toast('PDF generado (Versión impresión)', 'success');
       };
@@ -2915,7 +2893,7 @@ ${alertData.body}`,
           'Observaciones': r.observations || '',
         }));
         const eqRows = equipment.map(e => ({
-          'Tag': e.tag, 'Tipo': e.type, 
+          'Tag': e.tag, 'Tipo': e.type,
           'Tensión AC': e.voltage || '',
           'Tensión DC': e.voltageDC || '',
           'Panel Solar': e.hasSolar ? 'Sí' : 'No', 'Batería': e.batteryType || '',
@@ -2929,15 +2907,15 @@ ${alertData.body}`,
           const row = { 'Fecha': fmtDate(r.date), 'Hora': r.date?.toDate ? r.date.toDate().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : '' };
           let totalNodo = 0;
           Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
-             const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
-             const ld = calcLoad(type, vals);
-             const lTot = ld.ac + ld.dc;
-             totalNodo += lTot;
-             const b = getBankId(tag);
-             if (b) {
-               const k = `Banco ${b} (kW)`;
-               row[k] = parseFloat(((row[k] || 0) + lTot).toFixed(3));
-             }
+            const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+            const ld = calcLoad(type, vals);
+            const lTot = ld.ac + ld.dc;
+            totalNodo += lTot;
+            const b = getBankId(tag);
+            if (b) {
+              const k = `Banco ${b} (kW)`;
+              row[k] = parseFloat(((row[k] || 0) + lTot).toFixed(3));
+            }
           });
           row['TOTAL NODO (kW)'] = totalNodo.toFixed(3);
           return row;
@@ -2964,7 +2942,18 @@ ${alertData.body}`,
 
       const saveEditEq = async (data) => {
         try {
-          await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(editEq.id).update(data);
+          // Si notas o batCapacity vienen vacíos, usar FieldValue.delete() para eliminar el campo de Firestore
+          const updateData = { ...data };
+          if (!updateData.notes || updateData.notes.trim() === '') {
+            updateData.notes = firebase.firestore.FieldValue.delete();
+          }
+          if (!updateData.batCapacity || String(updateData.batCapacity).trim() === '') {
+            updateData.batCapacity = firebase.firestore.FieldValue.delete();
+          }
+          if (!updateData.batCount || String(updateData.batCount).trim() === '') {
+            updateData.batCount = firebase.firestore.FieldValue.delete();
+          }
+          await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(editEq.id).update(updateData);
           toast('Equipo actualizado.', 'success');
           setEditEq(null);
         } catch (e) { toast('Error al guardar.', 'error'); }
@@ -3697,7 +3686,7 @@ ${alertData.body}`,
                             <span style={{ color: 'var(--tx3)', fontSize: '.8rem', marginLeft: 8 }}>{n.zone} {n.estado && n.estado !== 'Zulia' ? `(${n.estado})` : ''}</span>
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            <button onClick={() => { setEditNodeId(n.id); setEditNodeData({ name: n.name, zone: n.zone||'', estado: n.estado||'Zulia', type: n.type }); }} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }}>Editar</button>
+                            <button onClick={() => { setEditNodeId(n.id); setEditNodeData({ name: n.name, zone: n.zone || '', estado: n.estado || 'Zulia', type: n.type }); }} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }}>Editar</button>
                             <button onClick={() => toggleNode(n)} className={n.active ? 'bd' : 'bg'} style={{ padding: '6px 14px', fontSize: '.78rem' }}>
                               {n.active ? 'Desactivar' : 'Activar'}
                             </button>
@@ -3804,6 +3793,15 @@ ${alertData.body}`,
               }}>
               🔋 <span className="tbtn-txt">Autonomía</span>
             </button>
+            <button onClick={() => setView(view === 'etp' ? 'nodes' : 'etp')}
+              style={{
+                background: view === 'etp' ? 'rgba(139,92,246,.15)' : 'none', border: '1px solid',
+                borderColor: view === 'etp' ? 'rgba(139,92,246,.4)' : 'var(--border)',
+                color: view === 'etp' ? '#8b5cf6' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6,
+                cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
+              }}>
+              ⚙️ <span className="tbtn-txt">ETP23006</span>
+            </button>
             {userProfile.role === 'admin' && (
               <button onClick={() => setView(view === 'admin' ? 'nodes' : 'admin')}
                 style={{
@@ -3847,6 +3845,210 @@ ${alertData.body}`,
 
 
 
+
+    // ═══════════════════════════════════════════════════
+    // ⚙️  CALCULADORA ETP23006
+    // ═══════════════════════════════════════════════════
+    function ETPCalc() {
+      const containerRef = useRef(null);
+      const escenario = 1;
+      const [tipoCarga, setTipoCarga] = React.useState('DC');
+      const [cargaW, setCargaW] = React.useState('');
+      const [numBaterias, setNumBaterias] = React.useState('');
+      const [ampBateria, setAmpBateria] = React.useState('');
+      const [userRect, setUserRect] = React.useState(0);
+      const [results, setResults] = React.useState(null);
+
+      React.useEffect(() => {
+        const cW = parseFloat(cargaW) || 0;
+        const nB = parseFloat(numBaterias) || 0;
+        const aB = parseFloat(ampBateria) || 0;
+        const VDC = 4800 / 91.1;
+        const FUENTES = 2;
+        const cargaEfectiva = cW > 5000 ? 5000 : cW;
+        const cargaExcedente = cW > 5000 ? cW - 5000 : 0;
+        const corrienteCargaTotal = cargaEfectiva / VDC;
+        const corrienteBateriasTotal = nB * aB;
+        const Q_total = corrienteBateriasTotal + corrienteCargaTotal;
+        let corrienteCargaA, corrienteBateriasA, corrienteTotalPorFuente;
+        if (escenario === 1) {
+          corrienteCargaA = corrienteCargaTotal / FUENTES;
+          corrienteBateriasA = corrienteBateriasTotal / FUENTES;
+          corrienteTotalPorFuente = Q_total / FUENTES;
+        } else {
+          corrienteCargaA = corrienteCargaTotal;
+          corrienteBateriasA = corrienteBateriasTotal;
+          corrienteTotalPorFuente = Q_total;
+        }
+        const MAX_AMP_70 = (70 * 80) / 121;
+        let autoRect = Math.ceil(corrienteTotalPorFuente / MAX_AMP_70);
+        if (autoRect === 0 && corrienteTotalPorFuente > 0) autoRect = 1;
+        if (autoRect > 3) autoRect = 3;
+        const rectPorFuente = userRect > 0 ? userRect : autoRect;
+        const corrientePorRect = rectPorFuente > 0 ? corrienteTotalPorFuente / rectPorFuente : 0;
+        const percReg = (corrientePorRect * 121) / 80;
+        const consumoAC = ((Math.ceil(percReg) * 20.5) / 121) * rectPorFuente;
+        const consumoACTotal = consumoAC * FUENTES;
+        const totalSistema = escenario === 1 ? Q_total : Q_total * FUENTES;
+        let invPorFuente = tipoCarga === 'AC' && cargaEfectiva > 0 ? Math.min(Math.ceil(cargaEfectiva / 2000), 3) : 0;
+        setResults({ corrienteCargaA, corrienteBateriasA, corrienteTotalPorFuente, corrienteBateriasTotal, totalSistema, consumoAC, consumoACTotal, rectPorFuente: rectPorFuente * FUENTES, corrientePorRect, percReg, invPorFuente, cargaExcedente, autoRect });
+      }, [escenario, tipoCarga, cargaW, numBaterias, ampBateria, userRect]);
+
+      const r = results;
+      const fmt = (v, d=2) => (v||0).toFixed(d);
+      const overloaded = r && r.percReg > 70;
+      const invAlert = r && r.invPorFuente >= 3 && tipoCarga === 'AC' && parseFloat(cargaW) > 6000;
+
+      return (
+        <div className="fin">
+          <div style={{ marginBottom: 20 }}>
+            <h1 className="fd" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 4 }}>⚙️ Calculadora ETP23006</h1>
+            <p style={{ color: 'var(--tx3)', fontSize: '.85rem' }}>Cálculo de rectificadores, inversores y modulación de carga (N+1) para fuentes Huawei.</p>
+          </div>
+
+          {/* Escenario I — Carga Compartida (único) */}
+          <div style={{ marginBottom: 16, background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)', borderRadius: 8, padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: "'Exo 2',sans-serif", fontWeight: 700, fontSize: '.78rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '.06em' }}>⚡ Escenario I – Carga Compartida</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            {/* Parámetros */}
+            <div className="card">
+              <h3 className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 16 }}>1. Demanda de Energía</h3>
+              <div style={{ marginBottom: 12 }}>
+                <label className="lbl">Tipo de Carga</label>
+                <select className="fi" value={tipoCarga} onChange={e => setTipoCarga(e.target.value)}>
+                  <option value="DC">Carga DC (Solo Rectificadores)</option>
+                  <option value="AC">Carga AC (Requiere Inversores)</option>
+                </select>
+              </div>
+              <div>
+                <label className="lbl">Carga Total Requerida (W)</label>
+                <input className="fi" type="number" value={cargaW} onChange={e => { setCargaW(e.target.value); setUserRect(0); }} placeholder="Ej: 5800" />
+              </div>
+            </div>
+            <div className="card">
+              <h3 className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 16 }}>2. Almacenamiento (Baterías)</h3>
+              <div style={{ marginBottom: 12 }}>
+                <label className="lbl">Módulos Pylontech (US/UP)</label>
+                <input className="fi" type="number" value={numBaterias} onChange={e => setNumBaterias(e.target.value)} placeholder="Ej: 6" />
+              </div>
+              <div>
+                <label className="lbl">Amperaje de Carga (Por Batería)</label>
+                <input className="fi" type="number" value={ampBateria} onChange={e => setAmpBateria(e.target.value)} placeholder="Ej: 10" />
+              </div>
+            </div>
+          </div>
+
+          {r && (
+            <>
+              {/* Métricas de Corriente */}
+              <div className="card" style={{ marginBottom: 14 }}>
+                <h3 className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 14 }}>📊 Análisis de Corriente (Por Fuente A/B)</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(160px,1fr))', gap: 10 }}>
+                  {[['Carga Activa (DC)', fmt(r.corrienteCargaA) + ' A', '#3b82f6'],
+                    ['Carga de Baterías', fmt(r.corrienteBateriasA) + ' A', '#8b5cf6'],
+                    ['Entrada AC (por Fuente)', fmt(r.consumoAC) + ' A', '#10b981'],
+                    ['Total Por Fuente', fmt(r.corrienteTotalPorFuente) + ' A', '#f59e0b'],
+                    ['Total Baterías (A+B)', fmt(r.corrienteBateriasTotal) + ' A', '#8b5cf6'],
+                    ['Total Entrada AC (A+B)', fmt(r.consumoACTotal) + ' A', '#10b981'],
+                    ['Total Sistema (A+B)', fmt(r.totalSistema) + ' A', '#ef4444']
+                  ].map(([lbl, val, color]) => (
+                    <div key={lbl} style={{ background: 'var(--bg-deep)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px' }}>
+                      <div style={{ fontSize: '.68rem', color: 'var(--tx3)', marginBottom: 4, fontFamily: "'Exo 2',sans-serif", textTransform: 'uppercase' }}>{lbl}</div>
+                      <div className="fm" style={{ fontSize: '1.1rem', fontWeight: 800, color }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rectificadores */}
+              <div className="card" style={{ marginBottom: 14, borderLeft: `3px solid ${overloaded ? '#ef4444' : '#3b82f6'}` }}>
+                <div style={{ marginBottom: 8, fontSize: '.75rem', color: '#f59e0b', fontStyle: 'italic' }}>*Cálculo para carga máxima compartida de 5.000 W por par de fuentes.</div>
+                <h3 className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 12 }}>⚡ Módulo Rectificador HUAWEI R4875G5 <span style={{ color: 'var(--tx4)', fontWeight: 400 }}>48VDC / 75ADC</span></h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
+                  <div style={{ background: 'var(--bg-deep)', padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <span style={{ color: 'var(--tx3)', fontSize: '.78rem' }}>Sistema Completo: </span>
+                    <span className="fm" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#3b82f6' }}>{r.rectPorFuente}</span>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginBottom: 6 }}>Selecciona configuración (Por Fuente):</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      {[1,2,3].map(n => {
+                        const hAmp = r.corrienteTotalPorFuente / n;
+                        const hPerc = (hAmp * 121) / 80;
+                        const isOver = hPerc > 70;
+                        const isActive = n === (userRect > 0 ? userRect : r.autoRect);
+                        return (
+                          <button key={n} onClick={() => setUserRect(n)}
+                            style={{ padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontFamily: "'Exo 2',sans-serif", fontSize: '.8rem', fontWeight: 700, border: '1px solid', transition: 'all .15s',
+                              background: isActive ? (isOver ? '#ef4444' : '#3b82f6') : 'var(--bg-surface)',
+                              color: isActive ? '#fff' : (isOver ? '#ef4444' : 'var(--tx2)'),
+                              borderColor: isOver ? (isActive ? '#ef4444' : 'rgba(239,68,68,.4)') : (isActive ? '#3b82f6' : 'var(--border)') }}>
+                            {n} {n === 1 ? 'Mód' : 'Móds'}<br />
+                            <span style={{ fontSize: '.7rem', fontWeight: 600 }}>{Math.ceil(hPerc)}%</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  {[['Corriente por Módulo', fmt(r.corrientePorRect, 3) + ' A'],
+                    ['Carga de Trabajo', fmt(r.percReg, 3) + '% ≈ ' + Math.ceil(r.percReg) + '%'],
+                    ['Entrada AC (por Fuente)', fmt(r.consumoAC) + ' A']
+                  ].map(([lbl, val]) => (
+                    <div key={lbl} style={{ background: 'var(--bg-deep)', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: '.65rem', color: 'var(--tx3)', marginBottom: 2 }}>{lbl}</div>
+                      <div className="fm" style={{ fontSize: '.95rem', fontWeight: 700, color: overloaded ? '#ef4444' : '#3b82f6' }}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+                {overloaded && (
+                  <div style={{ marginTop: 10, background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '8px 12px', color: '#fca5a5', fontSize: '.82rem' }}>
+                    ⚠️ <strong>Advertencia:</strong> Esta configuración supera el límite de trabajo recomendado del 70%.
+                  </div>
+                )}
+              </div>
+
+              {/* Inversores */}
+              {tipoCarga === 'AC' && parseFloat(cargaW) > 0 && (
+                <div className="card" style={{ marginBottom: 14, borderLeft: '3px solid #10b981' }}>
+                  <h3 className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>🔄 Módulo Inversor HUAWEI I23003G1 <span style={{ color: 'var(--tx4)', fontWeight: 400 }}>3KVA / 230VAC</span></h3>
+                  <div style={{ background: 'var(--bg-deep)', display: 'inline-flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 8 }}>
+                    <span style={{ color: 'var(--tx3)', fontSize: '.82rem' }}>Unidades por Fuente:</span>
+                    <span className="fm" style={{ fontSize: '1.3rem', fontWeight: 800, color: '#10b981' }}>{r.invPorFuente}</span>
+                  </div>
+                  {invAlert && (
+                    <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '8px 12px', color: '#fca5a5', fontSize: '.82rem' }}>
+                      ⚠️ <strong>Límite Superado:</strong> ETP23006 admite máx. 3 inversores. Carga AC excede soporte nominal.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Chasis */}
+              <div className="card" style={{ borderLeft: `3px solid ${r.cargaExcedente > 0 ? '#ef4444' : '#10b981'}` }}>
+                <h3 className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>🖥️ Chasis HUAWEI ETP23006-C3A1</h3>
+                <div style={{ background: 'var(--bg-deep)', display: 'inline-flex', alignItems: 'center', gap: 10, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 8 }}>
+                  <span style={{ color: 'var(--tx3)', fontSize: '.82rem' }}>Sistemas Requeridos:</span>
+                  <span className="fm" style={{ fontSize: '1rem', fontWeight: 800, color: '#10b981' }}>1 Par (Fuentes A y B)</span>
+                </div>
+                {r.cargaExcedente > 0 ? (
+                  <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '8px 12px', color: '#fca5a5', fontSize: '.82rem' }}>
+                    ⚠️ <strong>Límite Superado (5.000 W):</strong> La carga excedente de {r.cargaExcedente} W debe distribuirse en otro par de fuentes.
+                  </div>
+                ) : (
+                  <div style={{ background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.2)', borderRadius: 6, padding: '8px 12px', color: '#6ee7b7', fontSize: '.82rem' }}>
+                    ✅ Implementación N+1 para redundancia física garantizada ante fallos catastróficos.
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
 
     // ═══════════════════════════════════════════════════
     // 🔋 CALCULADORA DE AUTONOMÍA STANDALONE
@@ -3997,7 +4199,7 @@ ${alertData.body}`,
               <div style={{ fontSize: '.75rem', color: 'var(--tx3)' }}>Ingresa los requerimientos para estimar la cantidad de unidades necesarias (para sistemas a 48V).</div>
             </div>
           </div>
-          
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 20 }}>
             <div>
               <label className="lbl">Carga (Watts)</label>
@@ -4362,8 +4564,7 @@ ${alertData.body}`,
 
       if (authState === 'unauthenticated') {
         if (authView === 'register') return <RegisterPage onBack={() => setAuthView('login')} />;
-        if (authView === 'forgot') return <ForgotPasswordPage onBack={() => setAuthView('login')} />;
-        return <LoginPage onRegister={() => setAuthView('register')} onForgot={() => setAuthView('forgot')} />;
+        return <LoginPage onRegister={() => setAuthView('register')} />;
       }
 
       if (authState === 'pending') return <PendingPage onLogout={logout} />;
@@ -4375,6 +4576,7 @@ ${alertData.body}`,
             {appView === 'nodes' && <NodeList userProfile={userProfile} toast={toast} />}
             {appView === 'calc' && <MaterialesCalc />}
             {appView === 'autonomia' && <AutonomiaWrapper />}
+            {appView === 'etp' && <ETPCalc />}
             {appView === 'admin' && userProfile.role === 'admin' && <AdminPanel userProfile={userProfile} toast={toast} />}
             {appView === 'admin' && userProfile.role !== 'admin' && <NodeList userProfile={userProfile} toast={toast} />}
           </div>
