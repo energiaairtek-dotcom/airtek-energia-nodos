@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!-- 
+  AIRTEK ENERGÍA NODOS V7 - SECURITY HARDENED
+  Versión preparada para auditoría de Ciberseguridad.
+  - Sanitización de entradas mejorada.
+  - Validación de roles asíncrona.
+  - Prevención de fugas de datos en consola.
+-->
 <html lang="es">
 
 <head>
@@ -604,6 +611,7 @@
     console.log('%c⚠️ ADVERTENCIA DE SEGURIDAD', 'color:#ef4444;font-size:20px;font-weight:bold');
     console.log('%cEsta consola es una herramienta para desarrolladores. Si alguien te pidió que copies o pegues algo aquí, es probable que sea una estafa. Nunca compartas información de esta consola.', 'color:#f59e0b;font-size:14px');
     console.log('%cAIRTEK Energía — Sistema protegido.', 'color:#10b981;font-size:12px');
+    console.log('%cSeguridad: Validación de roles activa. Sanitización XSS habilitada.', 'color:#94a3b8;font-size:10px');
 
     // Verificar rol desde Firestore (para operaciones críticas)
     const verifyAdminRole = async () => {
@@ -618,10 +626,19 @@
       } catch { return false; }
     };
 
-    // Sanitizar texto para prevenir inyección
+    // 🛡️ SEGURIDAD - Función de sanitización mejorada (Prevención XSS)
     const sanitize = (str) => {
       if (typeof str !== 'string') return str;
-      return str.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').trim();
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#x27;',
+        "/": '&#x2F;',
+      };
+      const reg = /[&<>"'/]/ig;
+      return str.replace(reg, (match) => (map[match])).trim();
     };
 
     // ═══════════════════════════════════════════════════
@@ -1555,6 +1572,16 @@
               {isAdmin && (
                 <button onClick={openEditRecord} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem', color: 'var(--amber)', borderColor: 'rgba(245,158,11,.3)' }}>✏️ Registro</button>
               )}
+              {isAdmin && (
+                <button onClick={async () => {
+                  if (window.confirm('¿Eliminar este registro permanentemente?')) {
+                    try {
+                      await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).delete();
+                      onBack();
+                    } catch (e) { alert('Error: ' + e.message); }
+                  }
+                }} className="bd" style={{ padding: '6px 10px', color: '#ef4444', borderColor: 'rgba(239,68,68,.3)' }}>🗑️</button>
+              )}
             </div>
           </div>
 
@@ -2204,6 +2231,16 @@ ${alertData.body}`,
                     {canWrite && <button className="bg" style={{ padding: '4px 12px', fontSize: '.74rem', flexShrink: 0 }} onClick={() => resolve(a.id)}>
                       ✓ Resolver
                     </button>}
+                    {userProfile?.role === 'admin' && (
+                      <button onClick={async () => {
+                        if (window.confirm('¿Eliminar esta alerta permanentemente?')) {
+                          try {
+                            await db.collection('energy_nodes').doc(nodeId).collection('node_alerts').doc(a.id).delete();
+                            toast('Alerta eliminada.', 'success');
+                          } catch (e) { toast('Error: ' + e.message, 'error'); }
+                        }
+                      }} className="bd" style={{ padding: '4px 9px', marginLeft: 6 }}>🗑️</button>
+                    )}
                   </div>
                   <p style={{ color: '#cbd5e1', fontSize: '.88rem', lineHeight: 1.6, marginBottom: 8 }}>{a.body}</p>
                   <div style={{ fontSize: '.72rem', color: 'var(--tx4)' }}>
@@ -2243,7 +2280,7 @@ ${alertData.body}`,
     // ═══════════════════════════════════════════════════
     // ✏️  MODAL EDICIÓN DE EQUIPO
     // ═══════════════════════════════════════════════════
-    function EditEqModal({ eq, onSave, onClose, userProfile }) {
+    function EditEqModal({ eq, onSave, onDelete, onClose, userProfile }) {
       const [f, setF] = useState({
         tag: eq.tag || '',
         type: eq.type || 'INV',
@@ -2489,6 +2526,15 @@ ${alertData.body}`,
                 {saving ? 'Guardando...' : '💾 Guardar Cambios'}
               </button>
               <button className="bs" onClick={onClose} disabled={saving}>Cancelar</button>
+              {userProfile?.role === 'admin' && (
+                <button className="bd" style={{ background: '#ef4444', color: '#fff', border: 'none', marginLeft: 'auto' }}
+                  onClick={async () => {
+                    if (window.confirm('¿Eliminar este equipo permanentemente?')) {
+                      await onDelete(eq.id);
+                      onClose();
+                    }
+                  }}>🗑️</button>
+              )}
             </div>
           </div>
         </div>
@@ -2962,7 +3008,15 @@ ${alertData.body}`,
       return (
         <div className="fin">
           {qrOpen && <QRModal node={node} onClose={() => setQrOpen(false)} />}
-          {editEq && <EditEqModal eq={editEq} userProfile={userProfile} onSave={saveEditEq} onClose={() => setEditEq(null)} />}
+          {editEq && <EditEqModal eq={editEq} userProfile={userProfile} onSave={saveEditEq} onClose={() => setEditEq(null)} 
+            onDelete={async (id) => {
+              try {
+                await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(id).delete();
+                toast('Equipo eliminado.', 'success');
+                setEditEq(null);
+              } catch (e) { toast('Error: ' + e.message, 'error'); }
+            }} 
+          />}
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
@@ -3768,13 +3822,22 @@ ${alertData.body}`,
       return (
         <div className="topbar">
           {pwModal && <ChangePasswordModal onClose={() => setPwModal(false)} toast={toast} />}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, background: '#f59e0b', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, boxShadow: '0 0 16px rgba(245,158,11,.25)' }}>⚡</div>
+          <div onClick={() => setView('nodes')} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+            <div style={{ width: 32, height: 32, background: '#f59e0b', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, boxShadow: '0 0 16px rgba(245, 158, 11, 0.25)' }}>⚡</div>
             <span className="fd" style={{ fontWeight: 800, fontSize: '1.05rem', color: '#f59e0b', letterSpacing: '.02em' }}>AIRTEK</span>
             <span style={{ color: 'var(--border-bright)', fontSize: 18 }}>|</span>
             <span className="fd" style={{ fontSize: '.82rem', color: 'var(--tx3)', fontWeight: 600 }}>Energía</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button onClick={() => setView('nodes')}
+              style={{
+                background: view === 'nodes' ? 'rgba(59,130,246,.15)' : 'none', border: '1px solid',
+                borderColor: view === 'nodes' ? 'rgba(59,130,246,.4)' : 'var(--border)',
+                color: view === 'nodes' ? '#3b82f6' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6,
+                cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
+              }}>
+              🏠 <span className="tbtn-txt">Inicio</span>
+            </button>
             <button onClick={() => setView(view === 'calc' ? 'nodes' : 'calc')}
               style={{
                 background: view === 'calc' ? 'rgba(59,130,246,.15)' : 'none', border: '1px solid',
