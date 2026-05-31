@@ -443,11 +443,12 @@
       ETP: { label: 'ETP / PSU Huawei', color: '#10b981', bg: 'rgba(16,185,129,.12)' },
       ATS: { label: 'Transferencia Automática', color: '#3b82f6', bg: 'rgba(59,130,246,.12)' },
       BAT: { label: 'Banco de Baterías', color: '#8b5cf6', bg: 'rgba(139,92,246,.12)' },
+      GEN: { label: 'Planta Eléctrica', color: '#eab308', bg: 'rgba(234,179,8,.12)' },
       OTR: { label: 'Otro', color: '#64748b', bg: 'rgba(100,116,139,.12)' },
     };
 
     // Orden canónico de tipos para mostrar equipos
-    const EQ_ORDER = { INV: 0, ETP: 1, ATS: 2, BAT: 3, OTR: 4 };
+    const EQ_ORDER = { INV: 0, ETP: 1, ATS: 2, BAT: 3, GEN: 4, OTR: 5 };
 
     // Extrae identificador de banco del tag
     // INV06-LFP00→LFP00 | BAT00-LFP→LFP00 | ETP02-AC-PV-NMC02→NMC02
@@ -553,6 +554,7 @@
 
     const REC_TYPES = {
       inspeccion: { label: 'Inspección', color: '#10b981', icon: '🔍' },
+      inspeccion_gen: { label: 'Insp. Planta Eléctrica', color: '#eab308', icon: '🔋' },
       instalacion: { label: 'Instalación', color: '#3b82f6', icon: '⚡' },
       reemplazo: { label: 'Reemplazo / Retiro', color: '#f59e0b', icon: '🔄' },
       correctivo: { label: 'Mant. Correctivo', color: '#ef4444', icon: '🔧' },
@@ -1148,6 +1150,7 @@
               batCellType: eqAction.batCellType || 'No aplica',
               batSoH: eqAction.batSoH || '', batDoD: eqAction.batDoD || '', batSerials: eqAction.batSerials || [],
               solarRegPercentage: eqAction.solarRegPercentage || '', invMode: eqAction.invMode || '',
+              capacity: eqAction.capacity || '', phases: eqAction.phases || '',
               active: true, installedAt: new Date(date), installedBy: userProfile.name, serial: eqAction.serial || '', notes: eqAction.notes
             });
           }
@@ -1401,6 +1404,20 @@
                     </div>
                   ))}
                 </>}
+                {eqAction.type === 'GEN' && <>
+                  <div>
+                    <label className="lbl">Capacidad de la Planta (KVA)</label>
+                    <input className="fi" type="number" step="any" value={eqAction.capacity || ''} onChange={e => setEqA({ ...eqAction, capacity: e.target.value })} placeholder="Ej: 150" />
+                  </div>
+                  <div>
+                    <label className="lbl">Fases</label>
+                    <select className="fi" value={eqAction.phases || ''} onChange={e => setEqA({ ...eqAction, phases: e.target.value })}>
+                      <option value="">-- Selecciona --</option>
+                      <option value="Monofásica">Monofásica</option>
+                      <option value="Trifásica">Trifásica</option>
+                    </select>
+                  </div>
+                </>}
                 <div style={{ gridColumn: '1/-1' }}>
                   <label className="lbl">Serial del Equipo Principal (Opcional)</label>
                   <input className="fi fm" value={eqAction.serial || ''} onChange={e => setEqA({ ...eqAction, serial: e.target.value })} placeholder="SN del equipo" />
@@ -1645,7 +1662,7 @@
             // Crear objetos de equipo ficticios desde los tags medidos
             const fakeEqs = sortEquipment(measTags.map(tag => {
               const t = tag.toUpperCase();
-              const type = t.startsWith('INV') ? 'INV' : t.startsWith('ETP') ? 'ETP' : t.startsWith('ATS') ? 'ATS' : t.startsWith('BAT') ? 'BAT' : 'OTR';
+              const type = t.startsWith('INV') ? 'INV' : t.startsWith('ETP') ? 'ETP' : t.startsWith('ATS') ? 'ATS' : t.startsWith('BAT') ? 'BAT' : t.startsWith('GEN') ? 'GEN' : 'OTR';
               return { id: tag, tag, type, active: true };
             }));
             const groups = groupByBank(fakeEqs);
@@ -1657,7 +1674,7 @@
 
             const MeasCard = ({ tag, highlight }) => {
               const vals = meas[tag] || {};
-              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : tag.toUpperCase().startsWith('ATS') ? 'ATS' : tag.toUpperCase().startsWith('BAT') ? 'BAT' : 'OTR';
+              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : tag.toUpperCase().startsWith('ATS') ? 'ATS' : tag.toUpperCase().startsWith('BAT') ? 'BAT' : tag.toUpperCase().startsWith('GEN') ? 'GEN' : 'OTR';
               const ti = EQ_TYPES[type] || EQ_TYPES.OTR;
               const load = calcLoad(type, vals);
               return (
@@ -2490,6 +2507,21 @@ ${alertData.body}`,
                 </div>
               )}
 
+              {f.type === 'GEN' && <>
+                <div>
+                  <label className="lbl">Capacidad de la Planta (KVA)</label>
+                  <input className="fi" type="number" step="any" value={f.capacity || ''} onChange={e => setF({ ...f, capacity: e.target.value })} placeholder="Ej: 150" />
+                </div>
+                <div>
+                  <label className="lbl">Fases</label>
+                  <select className="fi" value={f.phases || ''} onChange={e => setF({ ...f, phases: e.target.value })}>
+                    <option value="">-- Selecciona --</option>
+                    <option value="Monofásica">Monofásica</option>
+                    <option value="Trifásica">Trifásica</option>
+                  </select>
+                </div>
+              </>}
+
               <div style={{ gridColumn: '1/-1' }}>
                 <label className="lbl">Serial Principal (opcional)</label>
                 <input className="fi fm" value={f.serial} onChange={e => setF({ ...f, serial: e.target.value })} placeholder="SN del equipo" />
@@ -2711,6 +2743,190 @@ ${alertData.body}`,
     }
 
     // ═══════════════════════════════════════════════════
+    // 🔋 COMPONENTES DE PLANTA ELÉCTRICA
+    // ═══════════════════════════════════════════════════
+    function PlantRecordForm({ nodeId, nodeName, plantEq, userProfile, onSave, onCancel, toast }) {
+      const [f, setF] = useState({
+        tag: plantEq ? plantEq.tag : '',
+        horometer: plantEq ? plantEq.horometer : '',
+        vLL: '', vLN: '', iL1: '', iL2: '', iL3: '', iN: '',
+        outLL: '', outLN: '', hz: '',
+        oilPressure: '', oilLevel: '', batVolt: '',
+        fuelReserve: '', autonomy: '',
+        tempA: '', tempC: '', tempN: '', tempATS: '',
+        assistants: ''
+      });
+      const [saving, setSaving] = useState(false);
+
+      const save = async () => {
+        if (!f.vLL || !f.vLN || !f.hz) {
+          toast('Completa al menos el Voltaje y los Hz de Salida.', 'error');
+          return;
+        }
+        setSaving(true);
+        try {
+          const recId = db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc().id;
+          
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(recId).set({
+            date: firebase.firestore.FieldValue.serverTimestamp(),
+            type: 'inspeccion_gen',
+            shift: new Date().getHours() < 18 && new Date().getHours() >= 6 ? 'dia' : 'noche',
+            technicianName: userProfile.name,
+            technicianId: userProfile.uid,
+            equipmentTag: plantEq.tag,
+            participants: f.assistants || null,
+            measurements: {
+              [plantEq.tag]: {
+                vLL: f.vLL, vLN: f.vLN,
+                iL1: f.iL1, iL2: f.iL2, iL3: f.iL3, iN: f.iN,
+                outLL: f.outLL, outLN: f.outLN, hz: f.hz,
+                oilPressure: f.oilPressure, oilLevel: f.oilLevel, batVolt: f.batVolt,
+                fuelReserve: f.fuelReserve, autonomy: f.autonomy,
+                tempA: f.tempA, tempC: f.tempC, tempN: f.tempN, tempATS: f.tempATS
+              }
+            }
+          });
+
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update({
+            horometer: f.horometer
+          });
+
+          toast('Inspección de Planta guardada', 'success');
+          onSave();
+        } catch (e) {
+          toast('Error al guardar: ' + e.message, 'error');
+        }
+        setSaving(false);
+      };
+
+      return (
+        <div className="card fin">
+          <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 16 }}>🔋 Inspección Planta Eléctrica: {plantEq.tag}</h2>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div style={{ gridColumn: '1/-1', background: 'rgba(234,179,8,.08)', padding: 12, borderRadius: 8, border: '1px solid rgba(234,179,8,.2)' }}>
+              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#eab308', marginBottom: 10 }}>1. DATOS DEL EQUIPO</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div><label className="lbl">Serial</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.serial || '—'}</div></div>
+                <div><label className="lbl">Capacidad (KVA)</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.capacity || '—'}</div></div>
+                <div><label className="lbl">Fases</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.phases || '—'}</div></div>
+                <div><label className="lbl">Horómetro Actual (Horas/Min)</label><input className="fi" value={f.horometer} onChange={e => setF({...f, horometer: e.target.value})} placeholder="Ej: 303 H / 18 M" /></div>
+              </div>
+            </div>
+
+            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#3b82f6', marginBottom: 10 }}>2. PARÁMETROS OPERACIONALES (PRUEBA EN CARGA)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div><label className="lbl">Voltaje L-L (V)</label><input className="fi" value={f.vLL} onChange={e => setF({...f, vLL: e.target.value})} /></div>
+                <div><label className="lbl">Voltaje L-N (V)</label><input className="fi" value={f.vLN} onChange={e => setF({...f, vLN: e.target.value})} /></div>
+                
+                <div><label className="lbl">Corriente L-1 (A)</label><input className="fi" value={f.iL1} onChange={e => setF({...f, iL1: e.target.value})} /></div>
+                <div><label className="lbl">Corriente L-2 (A)</label><input className="fi" value={f.iL2} onChange={e => setF({...f, iL2: e.target.value})} /></div>
+                <div><label className="lbl">Corriente L-3 (A)</label><input className="fi" value={f.iL3} onChange={e => setF({...f, iL3: e.target.value})} /></div>
+                <div><label className="lbl">Corriente Neutro (A)</label><input className="fi" value={f.iN} onChange={e => setF({...f, iN: e.target.value})} /></div>
+
+                <div><label className="lbl">Salida Generación L-L (V)</label><input className="fi" value={f.outLL} onChange={e => setF({...f, outLL: e.target.value})} /></div>
+                <div><label className="lbl">Salida Generación L-N (V)</label><input className="fi" value={f.outLN} onChange={e => setF({...f, outLN: e.target.value})} /></div>
+                <div style={{ gridColumn: '1/-1' }}><label className="lbl">Frecuencia (Hz)</label><input className="fi" value={f.hz} onChange={e => setF({...f, hz: e.target.value})} /></div>
+              </div>
+            </div>
+
+            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#10b981', marginBottom: 10 }}>3. ESTADO DEL MOTOR Y FLUIDOS</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div><label className="lbl">Presión de Aceite (bar/Psi)</label><input className="fi" value={f.oilPressure} onChange={e => setF({...f, oilPressure: e.target.value})} /></div>
+                <div><label className="lbl">Voltaje de Batería (V)</label><input className="fi" value={f.batVolt} onChange={e => setF({...f, batVolt: e.target.value})} /></div>
+                <div style={{ gridColumn: '1/-1' }}><label className="lbl">Nivel de Aceite Motor (Observaciones)</label><input className="fi" value={f.oilLevel} onChange={e => setF({...f, oilLevel: e.target.value})} placeholder="Ej: Rango óptimo, o 'Le faltan 2 litros'" /></div>
+                
+                <div><label className="lbl">Reserva Combustible (L)</label><input className="fi" type="number" value={f.fuelReserve} onChange={e => setF({...f, fuelReserve: e.target.value})} /></div>
+                <div><label className="lbl">Autonomía estimada (Horas)</label><input className="fi" type="number" value={f.autonomy} onChange={e => setF({...f, autonomy: e.target.value})} /></div>
+              </div>
+            </div>
+
+            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#ef4444', marginBottom: 10 }}>4. MONITOREO TÉRMICO (ºC)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div><label className="lbl">Punto A</label><input className="fi" type="number" value={f.tempA} onChange={e => setF({...f, tempA: e.target.value})} /></div>
+                <div><label className="lbl">Punto C</label><input className="fi" type="number" value={f.tempC} onChange={e => setF({...f, tempC: e.target.value})} /></div>
+                <div><label className="lbl">Neutro</label><input className="fi" type="number" value={f.tempN} onChange={e => setF({...f, tempN: e.target.value})} /></div>
+                <div><label className="lbl">Transferencia (ATS)</label><input className="fi" type="number" value={f.tempATS} onChange={e => setF({...f, tempATS: e.target.value})} /></div>
+              </div>
+            </div>
+
+            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#8b5cf6', marginBottom: 10 }}>5. LOGÍSTICA</div>
+              <div>
+                <label className="lbl">Personal Asistente</label>
+                <input className="fi" value={f.assistants} onChange={e => setF({...f, assistants: e.target.value})} placeholder="Ej: Julio Ríos - Alvaro Telles" />
+              </div>
+            </div>
+
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+            <button className="bp" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Guardando...' : '💾 Guardar Inspección'}</button>
+            <button className="bs" onClick={onCancel} disabled={saving}>Cancelar</button>
+          </div>
+        </div>
+      );
+    }
+
+    function NodePlantas({ nodeId, nodeName, equipment, userProfile, toast, onSubViewChange, setSelRecord }) {
+      const genEqs = sortEquipment(equipment.filter(e => e.type === 'GEN' && e.active !== false));
+      const [viewForm, setViewForm] = useState(false);
+      const [selPlant, setSelPlant] = useState(null);
+
+      const handleInspect = (eq) => {
+        setSelPlant(eq);
+        setViewForm(true);
+      };
+
+      if (viewForm && selPlant) {
+        return <PlantRecordForm nodeId={nodeId} nodeName={nodeName} plantEq={selPlant} userProfile={userProfile} onSave={() => setViewForm(false)} onCancel={() => setViewForm(false)} toast={toast} />;
+      }
+
+      return (
+        <div className="fin">
+          {genEqs.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 50 }}>
+              <div style={{ fontSize: 38, marginBottom: 10 }}>🔋</div>
+              <p style={{ color: 'var(--tx3)', marginBottom: 14 }}>No hay Plantas Eléctricas registradas en este nodo.</p>
+              <button className="bp" onClick={() => onSubViewChange('newRecord')}>+ Añadir Equipo Planta</button>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: '.72rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12, fontFamily: "'Exo 2',sans-serif" }}>
+                🔋 Plantas Eléctricas Registradas
+              </div>
+              {genEqs.map(eq => (
+                <div key={eq.id} className="card" style={{ marginBottom: 12, borderLeft: '4px solid #eab308' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span className="badge" style={{ background: 'rgba(234,179,8,.15)', color: '#eab308' }}>GEN</span>
+                        <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)' }}>{eq.tag}</span>
+                      </div>
+                      <div style={{ fontSize: '.8rem', color: 'var(--tx3)' }}>
+                        {eq.serial && <span style={{ marginRight: 12 }}><b>Serial:</b> {eq.serial}</span>}
+                        {eq.capacity && <span style={{ marginRight: 12 }}><b>Capacidad:</b> {eq.capacity} KVA</span>}
+                        {eq.phases && <span style={{ marginRight: 12 }}><b>Fases:</b> {eq.phases}</span>}
+                        {eq.horometer && <span><b>Horómetro:</b> {eq.horometer}</span>}
+                      </div>
+                      {eq.notes && <div style={{ marginTop: 4, fontSize: '.78rem', color: 'var(--tx4)' }}>{eq.notes}</div>}
+                    </div>
+                    <button className="bp" style={{ padding: '6px 14px', fontSize: '.8rem' }} onClick={() => handleInspect(eq)}>
+                      📋 Inspeccionar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════
     // 🏭 DETALLE DE NODO
     // ═══════════════════════════════════════════════════
     function NodeDetail({ node, userProfile, onBack, toast }) {
@@ -2896,7 +3112,7 @@ ${alertData.body}`,
           // Reconstruir grupos ordenados
           const fakeEqs = sortEquipment(Object.keys(meas).map(tag => {
             const t = tag.toUpperCase();
-            const type = t.startsWith('INV') ? 'INV' : t.startsWith('ETP') ? 'ETP' : t.startsWith('ATS') ? 'ATS' : t.startsWith('BAT') ? 'BAT' : 'OTR';
+            const type = t.startsWith('INV') ? 'INV' : t.startsWith('ETP') ? 'ETP' : t.startsWith('ATS') ? 'ATS' : t.startsWith('BAT') ? 'BAT' : t.startsWith('GEN') ? 'GEN' : 'OTR';
             return { id: tag, tag, type, active: true };
           }));
           const groups = groupByBank(fakeEqs);
@@ -2999,6 +3215,11 @@ ${alertData.body}`,
           if (!updateData.batCount || String(updateData.batCount).trim() === '') {
             updateData.batCount = firebase.firestore.FieldValue.delete();
           }
+          // For GEN: preserve capacity and phases
+          if (editEq.type === 'GEN') {
+            if (!updateData.capacity || String(updateData.capacity).trim() === '') updateData.capacity = firebase.firestore.FieldValue.delete();
+            if (!updateData.phases || String(updateData.phases).trim() === '') updateData.phases = firebase.firestore.FieldValue.delete();
+          }
           await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(editEq.id).update(updateData);
           toast('Equipo actualizado.', 'success');
           setEditEq(null);
@@ -3052,7 +3273,7 @@ ${alertData.body}`,
 
           {/* Tabs */}
           <div style={{ borderBottom: '1px solid var(--border)', marginBottom: 16, display: 'flex', overflowX: 'auto' }}>
-            {[['equipos', 'Equipos'], ['historial', 'Historial'], ['cargas', 'Cargas'], ['docs', 'Docs'], ['alertas', 'Alertas'], ['eventos', 'Eventos'], ['exportar', 'Exportar']].map(([k, lbl]) => (
+            {[['equipos', 'Equipos'], ['plantas', 'Plantas Eléctricas'], ['historial', 'Historial'], ['cargas', 'Cargas'], ['docs', 'Docs'], ['alertas', 'Alertas'], ['eventos', 'Eventos'], ['exportar', 'Exportar']].map(([k, lbl]) => (
               <button key={k} className={`tab ${tab === k ? 'on' : ''}`} onClick={() => setTab(k)} style={{ whiteSpace: 'nowrap' }}>{lbl}</button>
             ))}
           </div>
@@ -3095,6 +3316,8 @@ ${alertData.body}`,
                                 {eq.batteryType === 'NMC' ? `${eq.batCount} celdas (${Math.floor(eq.batCount / 7)} bat.)` : `${eq.batCount} bat.`}
                               </span>}
                               {eq.batCellType && eq.batCellType !== 'No aplica' && <span style={{ color: '#64748b', fontSize: '.73rem' }}>{eq.batCellType}</span>}
+                              {eq.type === 'GEN' && eq.capacity && <span style={{ color: '#eab308', fontSize: '.73rem', fontWeight: 700 }}>⚡ {eq.capacity} KVA</span>}
+                              {eq.type === 'GEN' && eq.phases && <span style={{ color: '#eab308', fontSize: '.73rem' }}>{eq.phases === 'Monofásica' ? '1Φ' : '3Φ'} {eq.phases}</span>}
                               <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ color: 'var(--tx4)', fontSize: '.72rem' }}>{fmtDate(eq.installedAt)}</span>
                                 {canWrite && <button onClick={() => setEditEq(eq)}
@@ -3112,6 +3335,9 @@ ${alertData.body}`,
                 })}
             </div>
           )}
+
+          {/* TAB PLANTAS */}
+          {tab === 'plantas' && <NodePlantas nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} toast={toast} onSubViewChange={setSubView} setSelRecord={setSelRecord} />}
 
           {/* TAB CARGAS */}
           {tab === 'cargas' && <LoadChart records={records} equipment={equipment} onExport={exportXLSX} />}
@@ -3863,7 +4089,7 @@ ${alertData.body}`,
                 color: view === 'etp' ? '#8b5cf6' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6,
                 cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
               }}>
-              ⚙️ <span className="tbtn-txt">ETP23006</span>
+              🖥️ <span className="tbtn-txt">ETP23006</span>
             </button>
             {userProfile.role === 'admin' && (
               <button onClick={() => setView(view === 'admin' ? 'nodes' : 'admin')}
@@ -3871,7 +4097,7 @@ ${alertData.body}`,
                   background: view === 'admin' ? 'rgba(245,158,11,.15)' : 'none', border: '1px solid', borderColor: view === 'admin' ? 'rgba(245,158,11,.4)' : 'var(--border)',
                   color: view === 'admin' ? '#f59e0b' : 'var(--tx3)', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: '.78rem', fontFamily: "'Exo 2',sans-serif", fontWeight: 600
                 }}>
-                ⚙️ <span className="tbtn-txt">Admin</span>
+                🛡️ <span className="tbtn-txt">Admin</span>
               </button>
             )}
             <div style={{ position: 'relative' }}>
