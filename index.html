@@ -554,7 +554,7 @@
 
     const REC_TYPES = {
       inspeccion: { label: 'Inspección', color: '#10b981', icon: '🔍' },
-      inspeccion_gen: { label: 'Insp. Planta Eléctrica', color: '#eab308', icon: '🔋' },
+      inspeccion_gen: { label: 'Chequeo de Grupo Electrógeno', color: '#eab308', icon: '🔋' },
       instalacion: { label: 'Instalación', color: '#3b82f6', icon: '⚡' },
       reemplazo: { label: 'Reemplazo / Retiro', color: '#f59e0b', icon: '🔄' },
       correctivo: { label: 'Mant. Correctivo', color: '#ef4444', icon: '🔧' },
@@ -2746,25 +2746,100 @@ ${alertData.body}`,
     // 🔋 COMPONENTES DE PLANTA ELÉCTRICA
     // ═══════════════════════════════════════════════════
     function PlantRecordForm({ nodeId, nodeName, plantEq, userProfile, onSave, onCancel, toast }) {
+      const isTri = plantEq && plantEq.phases && plantEq.phases.toLowerCase().includes('tri');
+
       const [f, setF] = useState({
-        tag: plantEq ? plantEq.tag : '',
         horometer: plantEq ? plantEq.horometer : '',
-        vLL: '', vLN: '', iL1: '', iL2: '', iL3: '', iN: '',
-        outLL: '', outLN: '', hz: '',
-        oilPressure: '', oilLevel: '', batVolt: '',
-        fuelReserve: '', autonomy: '',
-        tempA: '', tempC: '', tempN: '', tempATS: '',
-        assistants: ''
+        
+        voltajeRed: '', voltajeL1L2: '', voltajeL2L3: '', voltajeL1L3: '',
+        voltajeL1N: '', voltajeL2N: '', voltajeLN: '',
+        ampF1: '', ampF2: '', ampF3: '', ampN: '',
+
+        presionAceite: '', obsPresionAceite: '',
+        fluidosStatus: 'OK', obsFluidos: '',
+        manguerasStatus: 'OK', obsMangueras: '',
+        correaStatus: 'OK', obsCorrea: '',
+
+        atsStatus: 'OK', obsATS: '',
+        batVCG: '', batVAT: '', batCTS: '', obsBat: '',
+        cableadoStatus: 'OK', obsCableado: '',
+        puntosCalStatus: 'SI', obsPuntosCal: '',
+        sonoffStatus: 'SI', obsSonoff: '',
+
+        encendidoStatus: 'SI', obsEncendido: '',
+        ruidosStatus: 'SI', obsRuidos: '',
+        surtidoStatus: 'SI', obsSurtido: '',
+        reservaMin: '', obsReserva: '',
+
+        resultado: 'Aprobado – Opera dentro de parámetros.',
+        obsGenerales: '',
+        firmaTecnico: userProfile.name || ''
       });
       const [saving, setSaving] = useState(false);
+      const [odooText, setOdooText] = useState('');
+
+      const generarTextoOdoo = () => {
+        const dateStr = new Date().toLocaleDateString('es-VE');
+        const marcaMod = ((plantEq.brand || '') + ' ' + (plantEq.model || '')).trim();
+
+        let voltajesText = isTri 
+          ? `L1-L2: ${f.voltajeL1L2} V / L2-L3: ${f.voltajeL2L3} V / L1-L3: ${f.voltajeL1L3} V / L-N: ${f.voltajeLN} V`
+          : `L1-L2: ${f.voltajeL1L2} V / L1-N: ${f.voltajeL1N} V / L2-N: ${f.voltajeL2N} V`;
+          
+        let amperajesText = isTri
+          ? `Fase 1: ${f.ampF1} fase 2: ${f.ampF2}   Fase 3: ${f.ampF3} N: ${f.ampN}`
+          : `Fase 1: ${f.ampF1} fase 2: ${f.ampF2}   N: ${f.ampN}`;
+
+        return `CHEQUEO PREVENTIVO
+Fecha: ${dateStr}
+Técnico responsable: ${f.firmaTecnico}
+1. DATOS DEL EQUIPO
+Serial de la planta eléctrica:	${plantEq.serial || '—'}
+Marca / Modelo:	${marcaMod || '—'}
+Horas de servicio (lectura actual):	${f.horometer}
+Autonomía del combustible:	${plantEq.autonomy || '—'}
+2. PARÁMETROS ELÉCTRICOS
+
+
+Voltaje de la red (entrada ATS)	${f.voltajeRed} V
+Voltajes de generación	${voltajesText} 
+Amperaje del nodo	${amperajesText}
+3. COMPONENTES MECÁNICOS Y FLUIDOS
+
+
+Valor de presión de aceite (psi o bar)	${f.presionAceite}	${f.obsPresionAceite}
+Fluidos (nivel y fugas)	[${f.fluidosStatus}]	${f.obsFluidos}
+Mangueras (fisuras, abrasión)	[${f.manguerasStatus}]	${f.obsMangueras}
+Correa única (tensión y desgaste)	[${f.correaStatus}]	${f.obsCorrea}
+4. SISTEMA ELÉCTRICO Y CONTROL
+
+
+ATS (Transferencia automática)	[${f.atsStatus}]	${f.obsATS}
+Batería (voltaje y bornes)	V-CG ${f.batVCG} V-AT ${f.batVAT} C-TS ${f.batCTS}	${f.obsBat}
+Cableado (conexiones sueltas, corrosión)	[${f.cableadoStatus}]	${f.obsCableado}
+Puntos calientes(termografía/contacto)	[${f.puntosCalStatus}]	${f.obsPuntosCal}
+Indicación de Sonoff (o relé remoto)	[${f.sonoffStatus}]	${f.obsSonoff}
+5. PRUEBAS OPERATIVAS
+Prueba de encendido remoto (local o remoto)	[${f.encendidoStatus}]	${f.obsEncendido}
+Ruidos anormales(motor/alternador)	[${f.ruidosStatus}]	${f.obsRuidos}
+Surtido a la planta (suministro de combustible)	[${f.surtidoStatus}]	${f.obsSurtido}
+Reserva de combustible.	${f.reservaMin} 	${f.obsReserva}
+6. RESULTADO FINAL
+[X] ${f.resultado}
+Observaciones generales:
+${f.obsGenerales}`;
+      };
+
+      const copyToClipboard = () => {
+        navigator.clipboard.writeText(odooText).then(() => {
+          toast('Copiado al portapapeles', 'success');
+        });
+      };
 
       const save = async () => {
-        if (!f.vLL || !f.vLN || !f.hz) {
-          toast('Completa al menos el Voltaje y los Hz de Salida.', 'error');
-          return;
-        }
         setSaving(true);
         try {
+          const text = generarTextoOdoo();
           const recId = db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc().id;
           
           await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(recId).set({
@@ -2774,15 +2849,11 @@ ${alertData.body}`,
             technicianName: userProfile.name,
             technicianId: userProfile.uid,
             equipmentTag: plantEq.tag,
-            participants: f.assistants || null,
             measurements: {
               [plantEq.tag]: {
-                vLL: f.vLL, vLN: f.vLN,
-                iL1: f.iL1, iL2: f.iL2, iL3: f.iL3, iN: f.iN,
-                outLL: f.outLL, outLN: f.outLN, hz: f.hz,
-                oilPressure: f.oilPressure, oilLevel: f.oilLevel, batVolt: f.batVolt,
-                fuelReserve: f.fuelReserve, autonomy: f.autonomy,
-                tempA: f.tempA, tempC: f.tempC, tempN: f.tempN, tempATS: f.tempATS
+                odooReport: text,
+                horometer: f.horometer,
+                resultado: f.resultado
               }
             }
           });
@@ -2791,80 +2862,167 @@ ${alertData.body}`,
             horometer: f.horometer
           });
 
-          toast('Inspección de Planta guardada', 'success');
-          onSave();
+          toast('Chequeo de Grupo Electrógeno guardado', 'success');
+          setOdooText(text);
         } catch (e) {
           toast('Error al guardar: ' + e.message, 'error');
         }
         setSaving(false);
       };
 
+      const renderStatusSelect = (field, obsField, options = ['OK', 'Fallo', 'N/A']) => (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select className="fi" value={f[field]} onChange={e => setF({...f, [field]: e.target.value})} style={{ width: '110px' }}>
+            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+          <input className="fi" placeholder="Observaciones..." value={f[obsField]} onChange={e => setF({...f, [obsField]: e.target.value})} />
+        </div>
+      );
+
+      if (odooText) {
+        return (
+          <div className="card fin">
+            <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 16, color: '#10b981' }}>✅ Inspección Guardada Exitosamente</h2>
+            <p style={{ marginBottom: 12, color: 'var(--tx2)' }}>Copia el siguiente texto para pegarlo en la orden de trabajo de Odoo:</p>
+            <textarea className="fi" readOnly value={odooText} style={{ height: '300px', fontFamily: 'monospace', fontSize: '0.85rem', marginBottom: 16, resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="bp" onClick={copyToClipboard} style={{ flex: 1 }}>📋 Copiar al Portapapeles</button>
+              <button className="bs" onClick={onSave}>Cerrar</button>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="card fin">
-          <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 16 }}>🔋 Inspección Planta Eléctrica: {plantEq.tag}</h2>
+          <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 16 }}>🔋 Chequeo Preventivo / Correctivo: {plantEq.tag}</h2>
           
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-            <div style={{ gridColumn: '1/-1', background: 'rgba(234,179,8,.08)', padding: 12, borderRadius: 8, border: '1px solid rgba(234,179,8,.2)' }}>
-              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#eab308', marginBottom: 10 }}>1. DATOS DEL EQUIPO</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div><label className="lbl">Serial</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.serial || '—'}</div></div>
-                <div><label className="lbl">Capacidad (KVA)</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.capacity || '—'}</div></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 20 }}>
+            
+            <div style={{ background: 'var(--bg-surface)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.8rem', fontWeight: 700, color: '#eab308', marginBottom: 12 }}>1. DATOS DEL EQUIPO</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><label className="lbl">Serial de la planta eléctrica</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.serial || '—'}</div></div>
+                <div><label className="lbl">Marca / Modelo</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{((plantEq.brand || '') + ' ' + (plantEq.model || '')).trim() || '—'}</div></div>
                 <div><label className="lbl">Fases</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.phases || '—'}</div></div>
-                <div><label className="lbl">Horómetro Actual (Horas/Min)</label><input className="fi" value={f.horometer} onChange={e => setF({...f, horometer: e.target.value})} placeholder="Ej: 303 H / 18 M" /></div>
+                <div><label className="lbl">Horas de servicio (lectura actual)</label><input className="fi" value={f.horometer} onChange={e => setF({...f, horometer: e.target.value})} placeholder="Ej: 300" /></div>
               </div>
             </div>
 
-            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#3b82f6', marginBottom: 10 }}>2. PARÁMETROS OPERACIONALES (PRUEBA EN CARGA)</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div><label className="lbl">Voltaje L-L (V)</label><input className="fi" value={f.vLL} onChange={e => setF({...f, vLL: e.target.value})} /></div>
-                <div><label className="lbl">Voltaje L-N (V)</label><input className="fi" value={f.vLN} onChange={e => setF({...f, vLN: e.target.value})} /></div>
-                
-                <div><label className="lbl">Corriente L-1 (A)</label><input className="fi" value={f.iL1} onChange={e => setF({...f, iL1: e.target.value})} /></div>
-                <div><label className="lbl">Corriente L-2 (A)</label><input className="fi" value={f.iL2} onChange={e => setF({...f, iL2: e.target.value})} /></div>
-                <div><label className="lbl">Corriente L-3 (A)</label><input className="fi" value={f.iL3} onChange={e => setF({...f, iL3: e.target.value})} /></div>
-                <div><label className="lbl">Corriente Neutro (A)</label><input className="fi" value={f.iN} onChange={e => setF({...f, iN: e.target.value})} /></div>
+            <div style={{ background: 'var(--bg-surface)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.8rem', fontWeight: 700, color: '#3b82f6', marginBottom: 12 }}>2. PARÁMETROS ELÉCTRICOS</div>
+              <div style={{ marginBottom: 10 }}>
+                <label className="lbl">Voltaje de la red (entrada ATS) [V]</label>
+                <input className="fi" value={f.voltajeRed} onChange={e => setF({...f, voltajeRed: e.target.value})} placeholder="Ej: 220" />
+              </div>
+              <label className="lbl">Voltajes de generación [V]</label>
+              {isTri ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div><input className="fi" placeholder="L1-L2" value={f.voltajeL1L2} onChange={e => setF({...f, voltajeL1L2: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="L2-L3" value={f.voltajeL2L3} onChange={e => setF({...f, voltajeL2L3: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="L1-L3" value={f.voltajeL1L3} onChange={e => setF({...f, voltajeL1L3: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="L-N Promedio" value={f.voltajeLN} onChange={e => setF({...f, voltajeLN: e.target.value})} /></div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                  <div><input className="fi" placeholder="L1-L2" value={f.voltajeL1L2} onChange={e => setF({...f, voltajeL1L2: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="L1-N" value={f.voltajeL1N} onChange={e => setF({...f, voltajeL1N: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="L2-N" value={f.voltajeL2N} onChange={e => setF({...f, voltajeL2N: e.target.value})} /></div>
+                </div>
+              )}
+              <label className="lbl">Amperaje del nodo [A]</label>
+              {isTri ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                  <div><input className="fi" placeholder="Fase 1" value={f.ampF1} onChange={e => setF({...f, ampF1: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="Fase 2" value={f.ampF2} onChange={e => setF({...f, ampF2: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="Fase 3" value={f.ampF3} onChange={e => setF({...f, ampF3: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="N" value={f.ampN} onChange={e => setF({...f, ampN: e.target.value})} /></div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <div><input className="fi" placeholder="Fase 1" value={f.ampF1} onChange={e => setF({...f, ampF1: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="Fase 2" value={f.ampF2} onChange={e => setF({...f, ampF2: e.target.value})} /></div>
+                  <div><input className="fi" placeholder="N" value={f.ampN} onChange={e => setF({...f, ampN: e.target.value})} /></div>
+                </div>
+              )}
+            </div>
 
-                <div><label className="lbl">Salida Generación L-L (V)</label><input className="fi" value={f.outLL} onChange={e => setF({...f, outLL: e.target.value})} /></div>
-                <div><label className="lbl">Salida Generación L-N (V)</label><input className="fi" value={f.outLN} onChange={e => setF({...f, outLN: e.target.value})} /></div>
-                <div style={{ gridColumn: '1/-1' }}><label className="lbl">Frecuencia (Hz)</label><input className="fi" value={f.hz} onChange={e => setF({...f, hz: e.target.value})} /></div>
+            <div style={{ background: 'var(--bg-surface)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.8rem', fontWeight: 700, color: '#10b981', marginBottom: 12 }}>3. COMPONENTES MECÁNICOS Y FLUIDOS</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                <div>
+                  <label className="lbl">Valor de presión de aceite (psi o bar)</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input className="fi" style={{ width: '110px' }} value={f.presionAceite} onChange={e => setF({...f, presionAceite: e.target.value})} />
+                    <input className="fi" placeholder="Observaciones..." value={f.obsPresionAceite} onChange={e => setF({...f, obsPresionAceite: e.target.value})} />
+                  </div>
+                </div>
+                <div><label className="lbl">Fluidos (nivel y fugas)</label>{renderStatusSelect('fluidosStatus', 'obsFluidos')}</div>
+                <div><label className="lbl">Mangueras (fisuras, abrasión)</label>{renderStatusSelect('manguerasStatus', 'obsMangueras')}</div>
+                <div><label className="lbl">Correa única (tensión y desgaste)</label>{renderStatusSelect('correaStatus', 'obsCorrea')}</div>
               </div>
             </div>
 
-            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#10b981', marginBottom: 10 }}>3. ESTADO DEL MOTOR Y FLUIDOS</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div><label className="lbl">Presión de Aceite (bar/Psi)</label><input className="fi" value={f.oilPressure} onChange={e => setF({...f, oilPressure: e.target.value})} /></div>
-                <div><label className="lbl">Voltaje de Batería (V)</label><input className="fi" value={f.batVolt} onChange={e => setF({...f, batVolt: e.target.value})} /></div>
-                <div style={{ gridColumn: '1/-1' }}><label className="lbl">Nivel de Aceite Motor (Observaciones)</label><input className="fi" value={f.oilLevel} onChange={e => setF({...f, oilLevel: e.target.value})} placeholder="Ej: Rango óptimo, o 'Le faltan 2 litros'" /></div>
-                
-                <div><label className="lbl">Reserva Combustible (L)</label><input className="fi" type="number" value={f.fuelReserve} onChange={e => setF({...f, fuelReserve: e.target.value})} /></div>
-                <div><label className="lbl">Autonomía estimada (Horas)</label><input className="fi" type="number" value={f.autonomy} onChange={e => setF({...f, autonomy: e.target.value})} /></div>
+            <div style={{ background: 'var(--bg-surface)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.8rem', fontWeight: 700, color: '#8b5cf6', marginBottom: 12 }}>4. SISTEMA ELÉCTRICO Y CONTROL</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                <div><label className="lbl">ATS (Transferencia automática)</label>{renderStatusSelect('atsStatus', 'obsATS')}</div>
+                <div>
+                  <label className="lbl">Batería (voltaje y bornes)</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input className="fi" placeholder="V-CG" style={{ width: '80px' }} value={f.batVCG} onChange={e => setF({...f, batVCG: e.target.value})} />
+                    <input className="fi" placeholder="V-AT" style={{ width: '80px' }} value={f.batVAT} onChange={e => setF({...f, batVAT: e.target.value})} />
+                    <input className="fi" placeholder="C-TS" style={{ width: '80px' }} value={f.batCTS} onChange={e => setF({...f, batCTS: e.target.value})} />
+                    <input className="fi" placeholder="Observaciones..." value={f.obsBat} onChange={e => setF({...f, obsBat: e.target.value})} />
+                  </div>
+                </div>
+                <div><label className="lbl">Cableado (conexiones sueltas, corrosión)</label>{renderStatusSelect('cableadoStatus', 'obsCableado')}</div>
+                <div><label className="lbl">Puntos calientes (termografía/contacto)</label>{renderStatusSelect('puntosCalStatus', 'obsPuntosCal', ['SI', 'NO', 'N/A'])}</div>
+                <div><label className="lbl">Indicación de Sonoff (o relé remoto)</label>{renderStatusSelect('sonoffStatus', 'obsSonoff', ['SI', 'NO', 'N/A'])}</div>
               </div>
             </div>
 
-            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#ef4444', marginBottom: 10 }}>4. MONITOREO TÉRMICO (ºC)</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div><label className="lbl">Punto A</label><input className="fi" type="number" value={f.tempA} onChange={e => setF({...f, tempA: e.target.value})} /></div>
-                <div><label className="lbl">Punto C</label><input className="fi" type="number" value={f.tempC} onChange={e => setF({...f, tempC: e.target.value})} /></div>
-                <div><label className="lbl">Neutro</label><input className="fi" type="number" value={f.tempN} onChange={e => setF({...f, tempN: e.target.value})} /></div>
-                <div><label className="lbl">Transferencia (ATS)</label><input className="fi" type="number" value={f.tempATS} onChange={e => setF({...f, tempATS: e.target.value})} /></div>
+            <div style={{ background: 'var(--bg-surface)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.8rem', fontWeight: 700, color: '#ef4444', marginBottom: 12 }}>5. PRUEBAS OPERATIVAS</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                <div><label className="lbl">Prueba de encendido remoto (local o remoto)</label>{renderStatusSelect('encendidoStatus', 'obsEncendido', ['SI', 'NO', 'N/A'])}</div>
+                <div><label className="lbl">Ruidos anormales (motor/alternador)</label>{renderStatusSelect('ruidosStatus', 'obsRuidos', ['SI', 'NO', 'N/A'])}</div>
+                <div><label className="lbl">Surtido a la planta (suministro de combustible)</label>{renderStatusSelect('surtidoStatus', 'obsSurtido', ['SI', 'NO', 'N/A'])}</div>
+                <div>
+                  <label className="lbl">Reserva de combustible.</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input className="fi" style={{ width: '110px' }} value={f.reservaMin} onChange={e => setF({...f, reservaMin: e.target.value})} />
+                    <input className="fi" placeholder="Observaciones..." value={f.obsReserva} onChange={e => setF({...f, obsReserva: e.target.value})} />
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
-              <div className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: '#8b5cf6', marginBottom: 10 }}>5. LOGÍSTICA</div>
-              <div>
-                <label className="lbl">Personal Asistente</label>
-                <input className="fi" value={f.assistants} onChange={e => setF({...f, assistants: e.target.value})} placeholder="Ej: Julio Ríos - Alvaro Telles" />
+            <div style={{ background: 'var(--bg-surface)', padding: 14, borderRadius: 8, border: '1px solid var(--border)' }}>
+              <div className="fd" style={{ fontSize: '.8rem', fontWeight: 700, color: '#f97316', marginBottom: 12 }}>6. RESULTADO FINAL</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                <div>
+                  <label className="lbl">Resultado</label>
+                  <select className="fi" value={f.resultado} onChange={e => setF({...f, resultado: e.target.value})}>
+                    <option value="Aprobado – Opera dentro de parámetros.">Aprobado – Opera dentro de parámetros.</option>
+                    <option value="Observado – Requiere mantenimiento menor (ver notas).">Observado – Requiere mantenimiento menor (ver notas).</option>
+                    <option value="Rechazado – No opera / requiere reparación mayor.">Rechazado – No opera / requiere reparación mayor.</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="lbl">Observaciones generales</label>
+                  <textarea className="fi" value={f.obsGenerales} onChange={e => setF({...f, obsGenerales: e.target.value})} style={{ minHeight: '80px', resize: 'vertical' }}></textarea>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div><label className="lbl">Firma del técnico</label><input className="fi" value={f.firmaTecnico} onChange={e => setF({...f, firmaTecnico: e.target.value})} /></div>
+                </div>
               </div>
             </div>
 
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-            <button className="bp" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Guardando...' : '💾 Guardar Inspección'}</button>
+            <button className="bp" style={{ flex: 1 }} onClick={save} disabled={saving}>{saving ? 'Guardando...' : '💾 Guardar y Generar Reporte'}</button>
             <button className="bs" onClick={onCancel} disabled={saving}>Cancelar</button>
           </div>
         </div>
@@ -4879,3 +5037,4 @@ ${alertData.body}`,
 </body>
 
 </html>
+
