@@ -971,7 +971,52 @@
       DC_load: 'DC Load', AC_load: 'AC Load', I_panel: 'Ipaneles',
       L1: 'L1', L2: 'L2', N: 'N',
       V_banco: 'V Banco', I_banco: 'I Banco',
-      libre: 'Notas'
+      libre: 'Notas',
+      horometer: 'Horómetro',
+      autonomia: 'Autonomía',
+      voltajeRed: 'Voltaje Red (ATS)',
+      voltajeL1L2: 'Voltaje L1-L2',
+      voltajeL2L3: 'Voltaje L2-L3',
+      voltajeL1L3: 'Voltaje L1-L3',
+      voltajeL1N: 'Voltaje L1-N',
+      voltajeL2N: 'Voltaje L2-N',
+      voltajeLN: 'Voltaje L-N',
+      ampF1: 'Amperaje Fase 1',
+      ampF2: 'Amperaje Fase 2',
+      ampF3: 'Amperaje Fase 3',
+      ampN: 'Amperaje Neutro',
+      presionAceite: 'Presión Aceite',
+      obsPresionAceite: 'Obs Presión Aceite',
+      fluidosStatus: 'Estado Fluidos',
+      obsFluidos: 'Obs Fluidos',
+      manguerasStatus: 'Estado Mangueras',
+      obsMangueras: 'Obs Mangueras',
+      correaStatus: 'Estado Correa',
+      obsCorrea: 'Obs Correa',
+      atsStatus: 'Estado ATS',
+      obsATS: 'Obs ATS',
+      batVCG: 'Bat V-CG',
+      batVAT: 'Bat V-AT',
+      batCTS: 'Bat C-TS',
+      obsBat: 'Obs Batería',
+      cableadoStatus: 'Estado Cableado',
+      obsCableado: 'Obs Cableado',
+      puntosCalStatus: 'Puntos Calientes',
+      obsPuntosCal: 'Obs Puntos Calientes',
+      sonoffStatus: 'Estado Sonoff',
+      obsSonoff: 'Obs Sonoff',
+      encendidoStatus: 'Encendido Remoto',
+      obsEncendido: 'Obs Encendido',
+      ruidosStatus: 'Ruidos Anormales',
+      obsRuidos: 'Obs Ruidos',
+      surtidoStatus: 'Surtido Combustible',
+      obsSurtido: 'Obs Surtido',
+      reservaMin: 'Reserva Combustible',
+      reservaAutonomia: 'Autonomía de la Reserva',
+      obsReserva: 'Obs Reserva',
+      resultado: 'Resultado',
+      obsGenerales: 'Observaciones Generales',
+      firmaTecnico: 'Firma Técnico'
     };
     const FIELD_UNITS = {
       L1_carga: '%', L1_pot: 'kW', L2_carga: '%', L2_pot: 'kW',
@@ -980,6 +1025,21 @@
       DC_load: 'kW', AC_load: 'kW', I_bat: 'Acc', I_panel: 'A',
       L1: 'A', L2: 'A', N: 'A',
       V_banco: 'VDC', I_banco: 'A',
+      horometer: 'H',
+      voltajeRed: 'V',
+      voltajeL1L2: 'V',
+      voltajeL2L3: 'V',
+      voltajeL1L3: 'V',
+      voltajeL1N: 'V',
+      voltajeL2N: 'V',
+      voltajeLN: 'V',
+      ampF1: 'A',
+      ampF2: 'A',
+      ampF3: 'A',
+      ampN: 'A',
+      presionAceite: 'psi/bar',
+      batVCG: 'V',
+      batVAT: 'V'
     };
 
     function generateReportText({ nodeName, date, shift, technicianName, measurements, observations, equipment }) {
@@ -1479,7 +1539,7 @@
     // ═══════════════════════════════════════════════════
     // 🔎 DETALLE DE REGISTRO
     // ═══════════════════════════════════════════════════
-    function RecordDetail({ record, onBack, nodeId, equipment, userProfile }) {
+    function RecordDetail({ record, onBack, nodeId, equipment, userProfile, toast }) {
       const rt = REC_TYPES[record.type] || { label: record.type, icon: '📋', color: '#64748b' };
       const [editMeas, setEditMeas] = React.useState(false);
       const [measEdit, setMeasEdit] = React.useState(null); // snapshot editable
@@ -1741,6 +1801,19 @@
                 {record.equipmentAction.batteryType && record.equipmentAction.batteryType !== 'No aplica' && <II label="Batería" value={record.equipmentAction.batteryType} />}
                 {record.equipmentAction.notes && <II label="Notas" value={record.equipmentAction.notes} />}
               </div>
+            </div>
+          )}
+          {record.odooReport && (
+            <div className="card" style={{ marginTop: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <h3 className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.1em' }}>Reporte de Inspección (Odoo)</h3>
+                <button className="bp" style={{ padding: '4px 10px', fontSize: '.72rem' }} onClick={() => {
+                  navigator.clipboard.writeText(record.odooReport).then(() => {
+                    if (toast) toast('Copiado al portapapeles', 'success');
+                  });
+                }}>📋 Copiar Reporte</button>
+              </div>
+              <textarea className="fi" readOnly value={record.odooReport} style={{ height: '220px', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }} />
             </div>
           )}
         </div>
@@ -2750,6 +2823,7 @@ ${alertData.body}`,
 
       const [f, setF] = useState({
         horometer: plantEq ? plantEq.horometer : '',
+        autonomia: '',
         
         voltajeRed: '', voltajeL1L2: '', voltajeL2L3: '', voltajeL1L3: '',
         voltajeL1N: '', voltajeL2N: '', voltajeLN: '',
@@ -2769,7 +2843,7 @@ ${alertData.body}`,
         encendidoStatus: 'SI', obsEncendido: '',
         ruidosStatus: 'SI', obsRuidos: '',
         surtidoStatus: 'SI', obsSurtido: '',
-        reservaMin: '', obsReserva: '',
+        reservaMin: '', reservaAutonomia: '', obsReserva: '',
 
         resultado: 'Aprobado – Opera dentro de parámetros.',
         obsGenerales: '',
@@ -2797,7 +2871,7 @@ Técnico responsable: ${f.firmaTecnico}
 Serial de la planta eléctrica:	${plantEq.serial || '—'}
 Marca / Modelo:	${marcaMod || '—'}
 Horas de servicio (lectura actual):	${f.horometer}
-Autonomía del combustible:	${plantEq.autonomy || '—'}
+Autonomía del combustible:	${f.autonomia || '—'}
 2. PARÁMETROS ELÉCTRICOS
 
 
@@ -2823,7 +2897,7 @@ Indicación de Sonoff (o relé remoto)	[${f.sonoffStatus}]	${f.obsSonoff}
 Prueba de encendido remoto (local o remoto)	[${f.encendidoStatus}]	${f.obsEncendido}
 Ruidos anormales(motor/alternador)	[${f.ruidosStatus}]	${f.obsRuidos}
 Surtido a la planta (suministro de combustible)	[${f.surtidoStatus}]	${f.obsSurtido}
-Reserva de combustible.	${f.reservaMin} 	${f.obsReserva}
+Reserva de combustible.	${f.reservaMin} Autonomía: ${f.reservaAutonomia}	${f.obsReserva}
 6. RESULTADO FINAL
 [X] ${f.resultado}
 Observaciones generales:
@@ -2849,11 +2923,54 @@ ${f.obsGenerales}`;
             technicianName: userProfile.name,
             technicianId: userProfile.uid,
             equipmentTag: plantEq.tag,
+            odooReport: text,
             measurements: {
               [plantEq.tag]: {
-                odooReport: text,
                 horometer: f.horometer,
-                resultado: f.resultado
+                autonomia: f.autonomia,
+                voltajeRed: f.voltajeRed,
+                voltajeL1L2: f.voltajeL1L2,
+                voltajeL2L3: f.voltajeL2L3,
+                voltajeL1L3: f.voltajeL1L3,
+                voltajeL1N: f.voltajeL1N,
+                voltajeL2N: f.voltajeL2N,
+                voltajeLN: f.voltajeLN,
+                ampF1: f.ampF1,
+                ampF2: f.ampF2,
+                ampF3: f.ampF3,
+                ampN: f.ampN,
+                presionAceite: f.presionAceite,
+                obsPresionAceite: f.obsPresionAceite,
+                fluidosStatus: f.fluidosStatus,
+                obsFluidos: f.obsFluidos,
+                manguerasStatus: f.manguerasStatus,
+                obsMangueras: f.obsMangueras,
+                correaStatus: f.correaStatus,
+                obsCorrea: f.obsCorrea,
+                atsStatus: f.atsStatus,
+                obsATS: f.obsATS,
+                batVCG: f.batVCG,
+                batVAT: f.batVAT,
+                batCTS: f.batCTS,
+                obsBat: f.obsBat,
+                cableadoStatus: f.cableadoStatus,
+                obsCableado: f.obsCableado,
+                puntosCalStatus: f.puntosCalStatus,
+                obsPuntosCal: f.obsPuntosCal,
+                sonoffStatus: f.sonoffStatus,
+                obsSonoff: f.obsSonoff,
+                encendidoStatus: f.encendidoStatus,
+                obsEncendido: f.obsEncendido,
+                ruidosStatus: f.ruidosStatus,
+                obsRuidos: f.obsRuidos,
+                surtidoStatus: f.surtidoStatus,
+                obsSurtido: f.obsSurtido,
+                reservaMin: f.reservaMin,
+                reservaAutonomia: f.reservaAutonomia,
+                obsReserva: f.obsReserva,
+                resultado: f.resultado,
+                obsGenerales: f.obsGenerales,
+                firmaTecnico: f.firmaTecnico
               }
             }
           });
@@ -2906,6 +3023,7 @@ ${f.obsGenerales}`;
                 <div><label className="lbl">Marca / Modelo</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{((plantEq.brand || '') + ' ' + (plantEq.model || '')).trim() || '—'}</div></div>
                 <div><label className="lbl">Fases</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.phases || '—'}</div></div>
                 <div><label className="lbl">Horas de servicio (lectura actual)</label><input className="fi" value={f.horometer} onChange={e => setF({...f, horometer: e.target.value})} placeholder="Ej: 300" /></div>
+                <div><label className="lbl">Autonomía del combustible</label><input className="fi" value={f.autonomia} onChange={e => setF({...f, autonomia: e.target.value})} placeholder="Ej: 48 horas" /></div>
               </div>
             </div>
 
@@ -2991,7 +3109,8 @@ ${f.obsGenerales}`;
                 <div>
                   <label className="lbl">Reserva de combustible.</label>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <input className="fi" style={{ width: '110px' }} value={f.reservaMin} onChange={e => setF({...f, reservaMin: e.target.value})} />
+                    <input className="fi" placeholder="Reserva..." style={{ width: '110px' }} value={f.reservaMin} onChange={e => setF({...f, reservaMin: e.target.value})} />
+                    <input className="fi" placeholder="Autonomía de reserva..." style={{ width: '180px' }} value={f.reservaAutonomia} onChange={e => setF({...f, reservaAutonomia: e.target.value})} />
                     <input className="fi" placeholder="Observaciones..." value={f.obsReserva} onChange={e => setF({...f, obsReserva: e.target.value})} />
                   </div>
                 </div>
@@ -3358,7 +3477,7 @@ ${f.obsGenerales}`;
       const canWrite = userProfile.role === 'tecnico' || userProfile.role === 'admin' || userProfile.role === 'supervisor';
 
       if (subView === 'newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={() => setSubView('main')} onCancel={() => setSubView('main')} toast={toast} />;
-      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} equipment={equipment} userProfile={userProfile} onBack={() => setSubView('main')} />;
+      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} equipment={equipment} userProfile={userProfile} onBack={() => setSubView('main')} toast={toast} />;
 
       const saveEditEq = async (data) => {
         try {
@@ -5037,4 +5156,3 @@ ${f.obsGenerales}`;
 </body>
 
 </html>
-
