@@ -1539,7 +1539,7 @@
     // ═══════════════════════════════════════════════════
     // 🔎 DETALLE DE REGISTRO
     // ═══════════════════════════════════════════════════
-    function RecordDetail({ record, onBack, nodeId, equipment, userProfile, toast }) {
+    function RecordDetail({ record, onBack, nodeId, nodeName, equipment, userProfile, toast }) {
       const rt = REC_TYPES[record.type] || { label: record.type, icon: '📋', color: '#64748b' };
       const [editMeas, setEditMeas] = React.useState(false);
       const [measEdit, setMeasEdit] = React.useState(null); // snapshot editable
@@ -1548,6 +1548,18 @@
       const [saving, setSaving] = React.useState(false);
 
       const isAdmin = userProfile?.role === 'admin';
+
+      const odooReportText = record.odooReport || (record.type === 'inspeccion' && record.measurements && Object.keys(record.measurements).length > 0
+        ? generateReportText({
+            nodeName: nodeName || 'Nodo',
+            date: record.date?.toDate ? record.date.toDate() : new Date(record.date),
+            shift: record.shift,
+            technicianName: record.technicianName,
+            measurements: record.measurements,
+            observations: record.observations,
+            equipment: equipment || []
+          })
+        : null);
 
       const openEdit = () => {
         // Deep clone measurements
@@ -1803,17 +1815,17 @@
               </div>
             </div>
           )}
-          {record.odooReport && (
+          {odooReportText && (
             <div className="card" style={{ marginTop: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <h3 className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.1em' }}>Reporte de Inspección (Odoo)</h3>
                 <button className="bp" style={{ padding: '4px 10px', fontSize: '.72rem' }} onClick={() => {
-                  navigator.clipboard.writeText(record.odooReport).then(() => {
+                  navigator.clipboard.writeText(odooReportText).then(() => {
                     if (toast) toast('Copiado al portapapeles', 'success');
                   });
                 }}>📋 Copiar Reporte</button>
               </div>
-              <textarea className="fi" readOnly value={record.odooReport} style={{ height: '220px', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }} />
+              <textarea className="fi" readOnly value={odooReportText} style={{ height: '220px', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }} />
             </div>
           )}
         </div>
@@ -3477,7 +3489,7 @@ ${f.obsGenerales}`;
       const canWrite = userProfile.role === 'tecnico' || userProfile.role === 'admin' || userProfile.role === 'supervisor';
 
       if (subView === 'newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={() => setSubView('main')} onCancel={() => setSubView('main')} toast={toast} />;
-      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} equipment={equipment} userProfile={userProfile} onBack={() => setSubView('main')} toast={toast} />;
+      if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onBack={() => setSubView('main')} toast={toast} />;
 
       const saveEditEq = async (data) => {
         try {
