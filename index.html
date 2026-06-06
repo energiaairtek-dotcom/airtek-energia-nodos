@@ -727,13 +727,68 @@
     }
 
     function LoginPage({ onRegister }) {
-      const [email, setEmail] = useState(''); const [pass, setPass] = useState(''); const [loading, setLoading] = useState(false); const [err, setErr] = useState('');
+      const [email, setEmail] = useState('');
+      const [pass, setPass] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [err, setErr] = useState('');
+      const [showPass, setShowPass] = useState(false);
+      const [forgotMode, setForgotMode] = useState(false);
+      const [forgotEmail, setForgotEmail] = useState('');
+      const [forgotMsg, setForgotMsg] = useState('');
+
       const go = async () => {
         setErr(''); setLoading(true);
         try { await auth.signInWithEmailAndPassword(email, pass); }
         catch { setErr('Credenciales incorrectas. Verifica e intenta de nuevo.'); }
         setLoading(false);
       };
+
+      const handleResetPassword = async () => {
+        if (!forgotEmail) {
+          setErr('Escribe tu correo electrónico.');
+          return;
+        }
+        setErr('');
+        setForgotMsg('');
+        setLoading(true);
+        try {
+          await auth.sendPasswordResetEmail(forgotEmail);
+          setForgotMsg('Se ha enviado un enlace de restablecimiento a tu correo.');
+        } catch (e) {
+          setErr('Error al enviar el correo. Verifica que el correo esté registrado.');
+        }
+        setLoading(false);
+      };
+
+      if (forgotMode) {
+        return (
+          <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div style={{ width: '100%', maxWidth: 420 }} className="fin">
+              <AuthLogo />
+              <div className="card" style={{ boxShadow: '0 0 40px rgba(245,158,11,.08)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                  <button onClick={() => { setForgotMode(false); setErr(''); setForgotMsg(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 20 }}>←</button>
+                  <h2 className="fd" style={{ fontSize: '1.15rem', fontWeight: 700 }}>Recuperar Cuenta</h2>
+                </div>
+                {err && <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16, color: '#fca5a5', fontSize: '.85rem' }}>{err}</div>}
+                {forgotMsg && <div style={{ background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.3)', borderRadius: 6, padding: '10px 14px', marginBottom: 16, color: '#a7f3d0', fontSize: '.85rem' }}>{forgotMsg}</div>}
+                
+                <p style={{ color: 'var(--tx2)', fontSize: '.85rem', marginBottom: 20, lineHeight: 1.6 }}>
+                  Ingresa tu correo electrónico registrado y te enviaremos las instrucciones para restablecer tu contraseña.
+                </p>
+
+                <div style={{ marginBottom: 22 }}>
+                  <label className="lbl">Correo electrónico</label>
+                  <input className="fi" type="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e => e.key === 'Enter' && handleResetPassword()} />
+                </div>
+
+                <button className="bp" style={{ width: '100%' }} onClick={handleResetPassword} disabled={loading}>{loading ? 'Enviando...' : 'Enviar enlace'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div style={{ width: '100%', maxWidth: 420 }} className="fin">
@@ -746,8 +801,47 @@
                 <input className="fi" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="correo@airtek.com" onKeyDown={e => e.key === 'Enter' && go()} />
               </div>
               <div style={{ marginBottom: 22 }}>
-                <label className="lbl">Contraseña</label>
-                <input className="fi" type="password" value={pass} onChange={e => setPass(e.target.value)} placeholder="••••••••" onKeyDown={e => e.key === 'Enter' && go()} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label className="lbl" style={{ marginBottom: 0 }}>Contraseña</label>
+                  <button 
+                    onClick={() => { setForgotMode(true); setErr(''); setForgotMsg(''); }} 
+                    style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', fontSize: '.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', padding: 0 }}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    className="fi" 
+                    type={showPass ? "text" : "password"} 
+                    value={pass} 
+                    onChange={e => setPass(e.target.value)} 
+                    placeholder="••••••••" 
+                    onKeyDown={e => e.key === 'Enter' && go()} 
+                    style={{ paddingRight: '40px' }}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPass(!showPass)} 
+                    style={{ 
+                      position: 'absolute', 
+                      right: '12px', 
+                      top: '50%', 
+                      transform: 'translateY(-50%)', 
+                      background: 'none', 
+                      border: 'none', 
+                      cursor: 'pointer', 
+                      color: 'var(--tx3)',
+                      fontSize: '1.1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      outline: 'none'
+                    }}
+                  >
+                    {showPass ? '👁️' : '🙈'}
+                  </button>
+                </div>
               </div>
               <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>{loading ? 'Ingresando...' : 'Ingresar'}</button>
               <div style={{ textAlign: 'center', marginTop: 16 }}>
@@ -1167,6 +1261,35 @@
         batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador'
       });
 
+      // Cargar borrador de localStorage al montar
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem(`energy_draft_${nodeId}_general`);
+          if (saved) {
+            const draft = JSON.parse(saved);
+            if (draft.type) setType(draft.type);
+            if (draft.date) setDate(draft.date);
+            if (draft.shift) setShift(draft.shift);
+            if (draft.obs) setObs(draft.obs);
+            if (draft.participants) setParticipants(draft.participants);
+            if (draft.meas) setMeas(draft.meas);
+            if (draft.eqAction) setEqA(draft.eqAction);
+          }
+        } catch (e) {
+          console.warn("Error al cargar borrador general:", e);
+        }
+      }, [nodeId]);
+
+      // Guardar borrador en localStorage automáticamente ante cambios
+      useEffect(() => {
+        try {
+          const draft = { type, date, shift, obs, participants, meas, eqAction };
+          localStorage.setItem(`energy_draft_${nodeId}_general`, JSON.stringify(draft));
+        } catch (e) {
+          console.warn("Error al guardar borrador general:", e);
+        }
+      }, [type, date, shift, obs, participants, meas, eqAction, nodeId]);
+
       const onBatTypeChange = (val) => {
         let vdc = '';
         if (val === 'LFP') vdc = '48';
@@ -1219,6 +1342,7 @@
             if (eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({ active: false, retiredAt: new Date(date) });
           }
           toast('Registro guardado exitosamente.', 'success');
+          localStorage.removeItem(`energy_draft_${nodeId}_general`);
           // Verificar alarmas de conductores ATS
           if (type === 'inspeccion') {
             const alarms = checkAtsAlarms(cleanMeas, active);
@@ -2864,6 +2988,28 @@ ${alertData.body}`,
       const [saving, setSaving] = useState(false);
       const [odooText, setOdooText] = useState('');
 
+      // Cargar borrador de localStorage al montar
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
+          if (saved) {
+            const draft = JSON.parse(saved);
+            setF(prev => ({ ...prev, ...draft }));
+          }
+        } catch (e) {
+          console.warn("Error al cargar borrador de planta:", e);
+        }
+      }, [nodeId, plantEq.tag]);
+
+      // Guardar borrador en localStorage automáticamente ante cualquier cambio en f
+      useEffect(() => {
+        try {
+          localStorage.setItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`, JSON.stringify(f));
+        } catch (e) {
+          console.warn("Error al guardar borrador de planta:", e);
+        }
+      }, [f, nodeId, plantEq.tag]);
+
       const generarTextoOdoo = () => {
         const dateStr = new Date().toLocaleDateString('es-VE');
         const marcaMod = ((plantEq.brand || '') + ' ' + (plantEq.model || '')).trim();
@@ -2992,6 +3138,7 @@ ${f.obsGenerales}`;
           });
 
           toast('Chequeo de Grupo Electrógeno guardado', 'success');
+          localStorage.removeItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
           setOdooText(text);
         } catch (e) {
           toast('Error al guardar: ' + e.message, 'error');
