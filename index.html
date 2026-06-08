@@ -1258,7 +1258,8 @@
       const [eqAction, setEqA] = useState({
         tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false,
         batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '',
-        batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador'
+        batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador',
+        capacity: '', phases: '', horometer: '', lastMaintenanceHorometer: '', maintenanceInterval: 250
       });
 
       // Cargar borrador de localStorage al montar
@@ -1334,6 +1335,9 @@
               batSoH: eqAction.batSoH || '', batDoD: eqAction.batDoD || '', batSerials: eqAction.batSerials || [],
               solarRegPercentage: eqAction.solarRegPercentage || '', invMode: eqAction.invMode || '',
               capacity: eqAction.capacity || '', phases: eqAction.phases || '',
+              horometer: eqAction.type === 'GEN' ? (parseFloat(eqAction.horometer) || 0) : '',
+              lastMaintenanceHorometer: eqAction.type === 'GEN' ? (parseFloat(eqAction.lastMaintenanceHorometer) || parseFloat(eqAction.horometer) || 0) : 0,
+              maintenanceInterval: eqAction.type === 'GEN' ? (parseFloat(eqAction.maintenanceInterval) || 250) : 250,
               active: true, installedAt: new Date(date), installedBy: userProfile.name, serial: eqAction.serial || '', notes: eqAction.notes
             });
           }
@@ -1600,6 +1604,18 @@
                       <option value="Monofásica">Monofásica</option>
                       <option value="Trifásica">Trifásica</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="lbl">Horómetro Inicial (H)</label>
+                    <input className="fi" type="number" step="any" value={eqAction.horometer || ''} onChange={e => setEqA({ ...eqAction, horometer: e.target.value })} placeholder="Ej: 100" />
+                  </div>
+                  <div>
+                    <label className="lbl">Horómetro Último Mantenimiento (H)</label>
+                    <input className="fi" type="number" step="any" value={eqAction.lastMaintenanceHorometer || ''} onChange={e => setEqA({ ...eqAction, lastMaintenanceHorometer: e.target.value })} placeholder="Ej: 0" />
+                  </div>
+                  <div>
+                    <label className="lbl">Intervalo de Mantenimiento (H)</label>
+                    <input className="fi" type="number" step="any" value={eqAction.maintenanceInterval !== undefined ? eqAction.maintenanceInterval : 250} onChange={e => setEqA({ ...eqAction, maintenanceInterval: e.target.value })} placeholder="Ej: 250" />
                   </div>
                 </>}
                 <div style={{ gridColumn: '1/-1' }}>
@@ -2529,6 +2545,10 @@ ${alertData.body}`,
         serial: eq.serial || '',
         notes: eq.notes || '',
         active: eq.active !== false,
+        lastMaintenanceHorometer: eq.lastMaintenanceHorometer || 0,
+        maintenanceInterval: eq.maintenanceInterval || 250,
+        capacity: eq.capacity || '',
+        phases: eq.phases || '',
       });
 
       useEffect(() => {
@@ -2554,6 +2574,10 @@ ${alertData.body}`,
           serial: eq.serial || '',
           notes: eq.notes || '',
           active: eq.active !== false,
+          lastMaintenanceHorometer: eq.lastMaintenanceHorometer || 0,
+          maintenanceInterval: eq.maintenanceInterval || 250,
+          capacity: eq.capacity || '',
+          phases: eq.phases || '',
         });
       }, [eq]);
 
@@ -2728,6 +2752,14 @@ ${alertData.body}`,
                     <option value="Monofásica">Monofásica</option>
                     <option value="Trifásica">Trifásica</option>
                   </select>
+                </div>
+                <div>
+                  <label className="lbl">Horómetro del último mantenimiento (H)</label>
+                  <input className="fi" type="number" value={f.lastMaintenanceHorometer || 0} onChange={e => setF({ ...f, lastMaintenanceHorometer: parseFloat(e.target.value) || 0 })} placeholder="Ej: 300" />
+                </div>
+                <div>
+                  <label className="lbl">Intervalo de mantenimiento (H)</label>
+                  <input className="fi" type="number" value={f.maintenanceInterval || 250} onChange={e => setF({ ...f, maintenanceInterval: parseFloat(e.target.value) || 250 })} placeholder="Ej: 250" />
                 </div>
               </>}
 
@@ -2959,6 +2991,7 @@ ${alertData.body}`,
 
       const [f, setF] = useState({
         horometer: plantEq ? plantEq.horometer : '',
+        mantenimientoRealizado: false,
         autonomia: '',
         
         voltajeRed: '', voltajeL1L2: '', voltajeL2L3: '', voltajeL1L3: '',
@@ -3058,6 +3091,7 @@ Surtido a la planta (suministro de combustible)	[${f.surtidoStatus}]	${f.obsSurt
 Reserva de combustible.	${f.reservaMin} Autonomía: ${f.reservaAutonomia}	${f.obsReserva}
 6. RESULTADO FINAL
 [X] ${f.resultado}
+Mantenimiento de ${plantEq.maintenanceInterval || 250} horas realizado: ${f.mantenimientoRealizado ? 'SÍ' : 'NO'}
 Observaciones generales:
 ${f.obsGenerales}`;
       };
@@ -3133,9 +3167,13 @@ ${f.obsGenerales}`;
             }
           });
 
-          await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update({
+          const equipUpdate = {
             horometer: f.horometer
-          });
+          };
+          if (f.mantenimientoRealizado) {
+            equipUpdate.lastMaintenanceHorometer = parseFloat(f.horometer) || 0;
+          }
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update(equipUpdate);
 
           toast('Chequeo de Grupo Electrógeno guardado', 'success');
           localStorage.removeItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
@@ -3183,6 +3221,38 @@ ${f.obsGenerales}`;
                 <div><label className="lbl">Fases</label><div className="fi" style={{ background: 'var(--bg-deep)', color: 'var(--tx3)' }}>{plantEq.phases || '—'}</div></div>
                 <div><label className="lbl">Horas de servicio (lectura actual)</label><input className="fi" value={f.horometer} onChange={e => setF({...f, horometer: e.target.value})} placeholder="Ej: 300" /></div>
                 <div><label className="lbl">Autonomía del combustible</label><input className="fi" value={f.autonomia} onChange={e => setF({...f, autonomia: e.target.value})} placeholder="Ej: 48 horas" /></div>
+                {(() => {
+                  const interval = parseFloat(plantEq.maintenanceInterval) || 250;
+                  const lastMaint = parseFloat(plantEq.lastMaintenanceHorometer) || 0;
+                  const currentH = parseFloat(f.horometer) || 0;
+                  const elapsed = Math.max(0, currentH - lastMaint);
+                  const remaining = interval - elapsed;
+                  return (
+                    <div style={{ gridColumn: '1/-1', background: 'var(--bg-surface)', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', marginTop: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontSize: '.78rem', color: 'var(--tx2)', fontWeight: 600, fontFamily: "'Exo 2',sans-serif" }}>CONTROL DE MANTENIMIENTO ({interval}H)</span>
+                        <span style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>Último: {lastMaint} H</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                        <span style={{ 
+                          fontSize: '.88rem', 
+                          fontWeight: 700, 
+                          color: remaining <= 0 ? 'var(--red)' : remaining <= 20 ? 'var(--amber)' : 'var(--green)' 
+                        }}>
+                          {remaining <= 0 
+                            ? `🚨 VENCIDO (Excedido por ${Math.abs(remaining)} H)` 
+                            : remaining <= 20 
+                              ? `⚠️ PRÓXIMO (Quedan ${remaining} H)` 
+                              : `✅ OK (Quedan ${remaining} H)`}
+                        </span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx2)', fontSize: '.84rem', cursor: 'pointer', userSelect: 'none' }}>
+                          <input type="checkbox" checked={f.mantenimientoRealizado} onChange={e => setF({ ...f, mantenimientoRealizado: e.target.checked })} style={{ width: 16, height: 16 }} />
+                          ¿Registrar Mantenimiento de {interval}H Realizado? (Reinicia el contador a {currentH || '0'} H)
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -3334,28 +3404,50 @@ ${f.obsGenerales}`;
               <div style={{ fontSize: '.72rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12, fontFamily: "'Exo 2',sans-serif" }}>
                 🔋 Plantas Eléctricas Registradas
               </div>
-              {genEqs.map(eq => (
-                <div key={eq.id} className="card" style={{ marginBottom: 12, borderLeft: '4px solid #eab308' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                        <span className="badge" style={{ background: 'rgba(234,179,8,.15)', color: '#eab308' }}>GEN</span>
-                        <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)' }}>{eq.tag}</span>
+              {genEqs.map(eq => {
+                const interval = parseFloat(eq.maintenanceInterval) || 250;
+                const lastMaint = parseFloat(eq.lastMaintenanceHorometer) || 0;
+                const currentH = parseFloat(eq.horometer) || 0;
+                const elapsed = Math.max(0, currentH - lastMaint);
+                const remaining = interval - elapsed;
+
+                return (
+                  <div key={eq.id} className="card" style={{ marginBottom: 12, borderLeft: '4px solid #eab308' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span className="badge" style={{ background: 'rgba(234,179,8,.15)', color: '#eab308' }}>GEN</span>
+                          <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)' }}>{eq.tag}</span>
+                          <span className="badge" style={{
+                            background: remaining <= 0 ? 'rgba(239,68,68,.15)' : remaining <= 20 ? 'rgba(245,158,11,.15)' : 'rgba(16,185,129,.15)',
+                            color: remaining <= 0 ? '#ef4444' : remaining <= 20 ? '#f59e0b' : '#10b981'
+                          }}>
+                            {remaining <= 0 
+                              ? '🚨 Mantenimiento Vencido' 
+                              : remaining <= 20 
+                                ? '⚠️ Mantenimiento Próximo' 
+                                : '✅ Operativo'}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '.8rem', color: 'var(--tx3)' }}>
+                          {eq.serial && <span style={{ marginRight: 12 }}><b>Serial:</b> {eq.serial}</span>}
+                          {eq.capacity && <span style={{ marginRight: 12 }}><b>Capacidad:</b> {eq.capacity} KVA</span>}
+                          {eq.phases && <span style={{ marginRight: 12 }}><b>Fases:</b> {eq.phases}</span>}
+                          {eq.horometer && <span style={{ marginRight: 12 }}><b>Horómetro:</b> {eq.horometer} H</span>}
+                          <span><b>Próx. Mantenimiento:</b> <span style={{
+                            color: remaining <= 0 ? '#ef4444' : remaining <= 20 ? '#f59e0b' : '#10b981',
+                            fontWeight: 600
+                          }}>{remaining} H</span> (de {interval}H)</span>
+                        </div>
+                        {eq.notes && <div style={{ marginTop: 4, fontSize: '.78rem', color: 'var(--tx4)' }}>{eq.notes}</div>}
                       </div>
-                      <div style={{ fontSize: '.8rem', color: 'var(--tx3)' }}>
-                        {eq.serial && <span style={{ marginRight: 12 }}><b>Serial:</b> {eq.serial}</span>}
-                        {eq.capacity && <span style={{ marginRight: 12 }}><b>Capacidad:</b> {eq.capacity} KVA</span>}
-                        {eq.phases && <span style={{ marginRight: 12 }}><b>Fases:</b> {eq.phases}</span>}
-                        {eq.horometer && <span><b>Horómetro:</b> {eq.horometer}</span>}
-                      </div>
-                      {eq.notes && <div style={{ marginTop: 4, fontSize: '.78rem', color: 'var(--tx4)' }}>{eq.notes}</div>}
+                      <button className="bp" style={{ padding: '6px 14px', fontSize: '.8rem' }} onClick={() => handleInspect(eq)}>
+                        📋 Inspeccionar
+                      </button>
                     </div>
-                    <button className="bp" style={{ padding: '6px 14px', fontSize: '.8rem' }} onClick={() => handleInspect(eq)}>
-                      📋 Inspeccionar
-                    </button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
