@@ -5169,7 +5169,6 @@ ${f.obsGenerales}`;
       );
     }
 
-
     // ═══════════════════════════════════════════════════
     // 🔋 VISTA STANDALONE DE AUTONOMÍA
     // ═══════════════════════════════════════════════════
@@ -5272,80 +5271,230 @@ ${f.obsGenerales}`;
     // ═══════════════════════════════════════════════════
     // 🧮 CALCULADORA DE MATERIALES
     // ═══════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════
-    // 🧮 CALCULADORA DE MATERIALES (una sola tabla unificada)
-    // ═══════════════════════════════════════════════════
-    const MAT_FUENTES_NEW = [
-      { nombre: 'CABLE ROJO AUTOMOTRIZ #2 AWG', cantidadBase: 1.5, unidad: 'mts', dep: 'fuentes' },
-      { nombre: 'CABLE NEGRO AUTOMOTRIZ #2 AWG', cantidadBase: 1.5, unidad: 'mts', dep: 'fuentes' },
-      { nombre: 'TERMINAL DE OJO #2', cantidadBase: 4, unidad: 'und', dep: 'fuentes' },
-      { nombre: 'TERMINAL DE OJO #{calibre} AWG', cantidadBase: 1, unidad: 'und', dep: 'fuentes', dinamico: true },
-      { nombre: 'TERMINAL AUTOMOTRIZ AISLADO DE ANILLO #10-12 AWG (M6)', cantidadBase: 2, unidad: 'und', dep: 'fuentes' },
-      { nombre: 'TORNILLO 5/16"', cantidadBase: 2, unidad: 'und', dep: 'fuentes' },
-      { nombre: 'ARANDELA 5/16"', cantidadBase: 2, unidad: 'und', dep: 'fuentes' },
-      { nombre: 'TUERCA 5/16"', cantidadBase: 2, unidad: 'und', dep: 'fuentes' },
-      { nombre: 'CHASIS DE FUENTE DE PODER (PSU) HUAWEI ETP23006', cantidadBase: 1, unidad: 'und', dep: 'fuentes' },
-      { nombre: 'MODULO INVERSOR HUAWEI', cantidadBase: 1, unidad: 'und', dep: 'inversores' },
-      { nombre: 'MODULO RECTIFICADOR HUAWEI', cantidadBase: 1, unidad: 'und', dep: 'rectificadores' },
-      { nombre: 'MODULO SOLAR SCC MPPT HUAWEI', cantidadBase: 1, unidad: 'und', dep: 'solares' },
-      { nombre: 'CONECTOR PV HUAWEI PARA MODULO SOLAR', cantidadBase: 2, unidad: 'und', dep: 'solares' },
-    ];
-    const MAT_RACK_NEW = [
-      { nombre: 'RACK PISO STRIG 42U CERRADO', cantidadBase: 1, unidad: 'und', dep: 'racks' },
-      { nombre: 'TERMINAL AUTOMOTRIZ AISLADO DE ANILLO #10-12 AWG (M6)', cantidadBase: 2, unidad: 'und', dep: 'racks' },
-      { nombre: 'BATERIA PYLONTECH US/UP 5000', cantidadBase: 1, unidad: 'und', dep: 'baterias' },
-      { nombre: 'KIT DE CABLES EXTERNOS PYLONTECH US/UP', cantidadBase: 1, unidad: 'und', dep: 'baterias' },
-      { nombre: 'TORNILLO 5/16"', cantidadBase: 2, unidad: 'und', dep: 'baterias' },
-      { nombre: 'ARANDELA 5/16"', cantidadBase: 2, unidad: 'und', dep: 'baterias' },
-      { nombre: 'TUERCA 5/16"', cantidadBase: 2, unidad: 'und', dep: 'baterias' },
-      { nombre: 'BARRA PLETINA DE COBRE 30 CM', cantidadBase: 2, unidad: 'und', dep: 'racks' },
-      { nombre: 'AISLADOR PARA BARRA DE COBRE SM-35', cantidadBase: 4, unidad: 'und', dep: 'racks' },
-      { nombre: 'TORNILLO 5/16"', cantidadBase: 8, unidad: 'und', dep: 'racks' },
-      { nombre: 'ARANDELA 5/16"', cantidadBase: 8, unidad: 'und', dep: 'racks' },
-    ];
-    const MAT_ESC_NEW = [
-      { nombre: 'ACOPLADOR GALVANIZADO PARA BANDEJA', cantidadBase: 1, unidad: 'und', dep: 'soportes' },
-      { nombre: 'SOPORTE RIEL UNISTRURT DE 30CM', cantidadBase: 1, unidad: 'und', dep: 'soportes' },
-      { nombre: 'SOPORTE PARA ANCLAJE DE BANDEJA EN TECHO', cantidadBase: 2, unidad: 'und', dep: 'soportes' },
-      { nombre: 'TUERCA PARA BARRA ROSCADA DE 1/2"', cantidadBase: 8, unidad: 'und', dep: 'soportes' },
-      { nombre: 'ARANDELA PARA BARRA ROSCADA DE 1/2"', cantidadBase: 8, unidad: 'und', dep: 'soportes' },
-      { nombre: 'TORNILLOS PARA RAMPLUG NARANJA', cantidadBase: 4, unidad: 'und', dep: 'soportes' },
-      { nombre: 'RAMPLUG NARANJA 3/8"', cantidadBase: 4, unidad: 'und', dep: 'soportes' },
-      { nombre: 'ARANDELAS 1/4', cantidadBase: 4, unidad: 'und', dep: 'soportes' },
-    ];
-
-    function calcularMaterialesTotal({ fuentes, calibre, rect, inv, solar, racks, baterias, soportes }) {
-      const mapa = new Map();
-      const add = (nombre, cantidad, unidad, seccion) => {
-        if (cantidad <= 0) return;
-        if (mapa.has(nombre)) mapa.get(nombre).cantidad += cantidad;
-        else mapa.set(nombre, { cantidad, unidad, seccion });
-      };
-      const n = v => parseFloat((v || '0').toString().replace(',', '.')) || 0;
-      const F = n(fuentes), C = n(calibre), R = n(rect), I = n(inv), S = n(solar), Ra = n(racks), B = n(baterias), So = n(soportes);
-      MAT_FUENTES_NEW.forEach(m => {
-        const mult = m.dep === 'fuentes' ? F : m.dep === 'inversores' ? I * F : m.dep === 'rectificadores' ? R * F : m.dep === 'solares' ? S * F : 0;
-        const nombre = m.dinamico && C > 0 ? m.nombre.replace('{calibre}', C) : m.nombre;
-        add(nombre, m.cantidadBase * mult, m.unidad, 'fuentes');
-      });
-      MAT_RACK_NEW.forEach(m => {
-        const mult = m.dep === 'racks' ? Ra : m.dep === 'baterias' ? B : 0;
-        add(m.nombre, m.cantidadBase * mult, m.unidad, 'rack');
-      });
-      MAT_ESC_NEW.forEach(m => add(m.nombre, m.cantidadBase * So, m.unidad, 'escalerillas'));
-      const orden = { fuentes: 1, rack: 2, escalerillas: 3 };
-      return Array.from(mapa.entries())
-        .map(([nombre, d]) => ({ nombre, cantidad: d.cantidad, unidad: d.unidad, seccion: d.seccion }))
-        .sort((a, b) => (orden[a.seccion] || 4) - (orden[b.seccion] || 4));
-    }
-
     function MaterialesCalc() {
       const [proyecto, setProyecto] = useState('');
-      const [f, setF] = useState({ fuentes: '', calibre: '', rect: '', inv: '', solar: '', racks: '', baterias: '', soportes: '' });
+      const [f, setF] = useState({
+        // Fuentes
+        fuentesCantidad: '',
+        rectificadores: '',
+        inversores: '',
+        moduloSolarG1: '',
+        moduloSolarG6: '',
+        alimentacionFuente: '',
+        
+        // Rack
+        racksCantidad: '',
+        bateriasCantidad: '',
+        jumpersLargos: '',
+        
+        // Entrada AC
+        aislamientoEntradaAC: 'THW',
+        calibreEntradaAC: '',
+        metrosEntradaAC: '',
+        racksEntradaAC: '',
+        fuentesEntradaAC: '',
+        
+        // Salida AC
+        aislamientoSalidaAC: 'AUTO',
+        calibreSalidaAC: '',
+        metrosSalidaAC: '',
+        racksSalidaAC: '',
+        pduAC: '',
+        
+        // Salida DC
+        aislamientoSalidaDC: 'AUTOMOTRIZ',
+        calibreSalidaDC: '',
+        metrosSalidaDC: '',
+        racksSalidaDC: '',
+        equipos10: '',
+        equipos14: '',
+        
+        // Escalerillas
+        soportesCantidad: ''
+      });
       const [resultados, setResultados] = useState(null); // null=sin calcular, []=vacío
 
+      const getValNum = (key) => parseFloat(f[key]) || 0;
+      const getValText = (key) => f[key] || '';
+
+      const calcularFuentes = () => {
+        const fuentesCantidad = getValNum("fuentesCantidad");
+        const alimentacionFuente = getValNum("alimentacionFuente");
+        const rectificadores = getValNum("rectificadores");
+        const inversores = getValNum("inversores");
+        const moduloSolarG1 = getValNum("moduloSolarG1");
+        const moduloSolarG6 = getValNum("moduloSolarG6");
+        let items = [];
+        if (fuentesCantidad === 0) return items;
+        
+        items.push({ nombre: "CABLE ROJO AUTOMOTRIZ #2 AWG", cantidad: 2.5 * fuentesCantidad, unidad: "mts", seccion: "fuentes", orden: 1 });
+        items.push({ nombre: "CABLE NEGRO AUTOMOTRIZ #2 AWG", cantidad: 2.5 * fuentesCantidad, unidad: "mts", seccion: "fuentes", orden: 2 });
+        items.push({ nombre: "TERMINAL DE UN OJO #2", cantidad: 4 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 3 });
+        if (alimentacionFuente > 0) {
+          items.push({ nombre: `TERMINAL DE OJO #${alimentacionFuente}`, cantidad: 1 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 4 });
+        }
+        items.push({ nombre: "TERMINAL AUTOMOTRIZ AISLADO DE ANILLO DE CALIBRE #10-12 AWG (AMARILLO) DE DIÁMETRO ¼” O 6 MM (M6)", cantidad: 2 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 5 });
+        items.push({ nombre: "TORNILLO CABEZA HEXAGONAL 5/16\"X1\"", cantidad: 2 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 6 });
+        items.push({ nombre: "ARANDELAS 5*16", cantidad: 2 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 7 });
+        items.push({ nombre: "TUERCA 5/16\"", cantidad: 2 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 8 });
+        items.push({ nombre: "CHASIS DE FUENTE DE PODER (PSU) HUAWEI ETP23006-C3A1", cantidad: 1 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 9 });
+        items.push({ nombre: "MODULO INVERSOR HUAWEI I23003G1 3KVA / 230VAC", cantidad: inversores * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 10 });
+        items.push({ nombre: "MODULO RECTIFICADOR HUAWEI R4875G5 48VDC / 75ADC", cantidad: rectificadores * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 11 });
+        if (moduloSolarG1 > 0) {
+          items.push({ nombre: "MODULO SOLAR SCC (CONTROLADOR DE CARGA SOLAR) SSU (SOLAR SUPPLY UNIT) MPPT HUAWEI S4875G1 4KWPK / 150VOC / 60ASC / 48VDC / 75ADC", cantidad: moduloSolarG1 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 12 });
+          items.push({ nombre: "CONECTOR PV HUAWEI EPC PARA MODULO SOLAR S4875G1", cantidad: 2 * moduloSolarG1 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 13 });
+        }
+        if (moduloSolarG6 > 0) {
+          items.push({ nombre: "MODULO SOLAR SCC (CONTROLADOR DE CARGA SOLAR) SSU (SOLAR SUPPLY UNIT) MPPT HUAWEI S4875G6 4KWPK / 150VOC / 60ASC / 48VDC / 75ADC", cantidad: moduloSolarG6 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 14 });
+          items.push({ nombre: "CABLE PARA MODULO SOLAR S4875G6", cantidad: 1 * moduloSolarG6 * fuentesCantidad, unidad: "und", seccion: "fuentes", orden: 15 });
+        }
+        return items;
+      };
+
+      const calcularRack = () => {
+        const racksCantidad = getValNum("racksCantidad");
+        const bateriasCantidad = getValNum("bateriasCantidad");
+        const jumpersLargos = getValNum("jumpersLargos");
+        let items = [];
+        if (racksCantidad === 0 && bateriasCantidad === 0 && jumpersLargos === 0) return items;
+        
+        if (racksCantidad > 0) {
+          items.push({ nombre: "RACK PISO STRIG 42U CERRADO", cantidad: racksCantidad, unidad: "und", seccion: "rack", orden: 100 });
+          items.push({ nombre: "TERMINAL AUTOMOTRIZ AISLADO DE ANILLO DE CALIBRE #10-12 AWG (AMARILLO) DE DIÁMETRO ¼” O 6 MM (M6)", cantidad: 2 * racksCantidad, unidad: "und", seccion: "rack", orden: 101 });
+          items.push({ nombre: "AISLADOR PARA BARRA DE COBRE SM-35", cantidad: 4 * racksCantidad, unidad: "und", seccion: "rack", orden: 102 });
+          items.push({ nombre: "TORNILLO 8mm", cantidad: 8 * racksCantidad, unidad: "und", seccion: "rack", orden: 103 });
+        }
+        if (bateriasCantidad > 0) {
+          items.push({ nombre: "BATERIA PYLONTECH US5000 / IONES DE LITIO TIPO LFP / 48V / 100 AH", cantidad: bateriasCantidad, unidad: "und", seccion: "rack", orden: 104 });
+          items.push({ nombre: "TORNILLO CABEZA HEXAGONAL 5/16\"X1\"", cantidad: 2 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 105 });
+          items.push({ nombre: "ARANDELAS 5*16", cantidad: 2 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 106 });
+          items.push({ nombre: "TUERCA 5/16\"", cantidad: 2 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 107 });
+          items.push({ nombre: "KIT DE CABLES EXTERNOS (BATERIA-INVERSOR) PARA BATERIAS PYLONTECH US / UP", cantidad: 1 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 108 });
+          items.push({ nombre: "CABLE DE TIERRA DE BATERIA", cantidad: 1 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 109 });
+          const moduloCables = bateriasCantidad - 1;
+          if (moduloCables > 0) {
+            items.push({ nombre: "KIT DE CABLES DE MODULO (BATERIA-BATERIA) PARA BATERIAS PYLONTECH US", cantidad: moduloCables, unidad: "und", seccion: "rack", orden: 110 });
+          }
+        }
+        if (jumpersLargos > 0) {
+          items.push({ nombre: "JUMPER LARGO NEGATIVO", cantidad: jumpersLargos, unidad: "und", seccion: "rack", orden: 111 });
+          items.push({ nombre: "JUMPER LARGO POSITIVO", cantidad: jumpersLargos, unidad: "und", seccion: "rack", orden: 112 });
+        }
+        return items;
+      };
+
+      const calcularEntradaAC = () => {
+        const metrosEntradaAC = getValNum("metrosEntradaAC");
+        const racksEntradaAC = getValNum("racksEntradaAC");
+        const fuentesEntradaAC = getValNum("fuentesEntradaAC");
+        const calibreEntradaAC = getValNum("calibreEntradaAC");
+        const aislamientoEntradaAC = getValText("aislamientoEntradaAC");
+        if (metrosEntradaAC === 0 || racksEntradaAC === 0 || fuentesEntradaAC === 0 || calibreEntradaAC === 0 || !aislamientoEntradaAC) return [];
+        const total = (metrosEntradaAC + 4) * racksEntradaAC * fuentesEntradaAC;
+        return [
+          { nombre: `CABLE ${aislamientoEntradaAC} #${calibreEntradaAC} (Fase 1)`, cantidad: total, unidad: "mts", seccion: "entrada_ac", orden: 200 },
+          { nombre: `CABLE ${aislamientoEntradaAC} #${calibreEntradaAC} (Fase 2)`, cantidad: total, unidad: "mts", seccion: "entrada_ac", orden: 201 }
+        ];
+      };
+
+      const calcularSalidaAC = () => {
+        const metrosSalidaAC = getValNum("metrosSalidaAC");
+        const racksSalidaAC = getValNum("racksSalidaAC");
+        const calibreSalidaAC = getValNum("calibreSalidaAC");
+        const aislamientoSalidaAC = getValText("aislamientoSalidaAC");
+        const pduAC = getValNum("pduAC");
+        let items = [];
+        if (metrosSalidaAC > 0 && racksSalidaAC > 0 && calibreSalidaAC > 0 && aislamientoSalidaAC) {
+          const total = ((metrosSalidaAC + 4) * racksSalidaAC) * 2;
+          items.push({ nombre: `CABLE ${aislamientoSalidaAC} #${calibreSalidaAC} (Fase 1)`, cantidad: total, unidad: "mts", seccion: "salida_ac", orden: 300 });
+          items.push({ nombre: `CABLE ${aislamientoSalidaAC} #${calibreSalidaAC} (Fase 2)`, cantidad: total, unidad: "mts", seccion: "salida_ac", orden: 301 });
+        }
+        if (pduAC > 0) {
+          items.push({ nombre: "PDU DC INPUT 2 CHANNELS 63A/1P, OUTPUT 8(2X4) CHANNELS 32A/1P", cantidad: pduAC, unidad: "und", seccion: "salida_ac", orden: 302 });
+          items.push({ nombre: "[ENE-BRE-MAG-002] BREAKER MAGNETOTÉRMICO DE 2X20 AMP", cantidad: 4 * pduAC, unidad: "und", seccion: "salida_ac", orden: 303 });
+          items.push({ nombre: "BARRA DE DISTRIBUCION PARA BREAKER TERMOMAGNETICO DE 2 POLOS 63AMP, 240/410 VOLTS", cantidad: 8 * pduAC, unidad: "und", seccion: "salida_ac", orden: 304 });
+        }
+        if (racksSalidaAC > 0) {
+          items.push({ nombre: "TOMACORRIENTE DOBLE AC 120VOTS", cantidad: 2 * racksSalidaAC, unidad: "und", seccion: "salida_ac", orden: 305 });
+          items.push({ nombre: "CAJERA METALICA DE 4X2\"", cantidad: 2 * racksSalidaAC, unidad: "und", seccion: "salida_ac", orden: 306 });
+          items.push({ nombre: "TAPA PLASTICA PARA TOMACORRIENTE DOBLE 4X2\"", cantidad: 2 * racksSalidaAC, unidad: "und", seccion: "salida_ac", orden: 307 });
+        }
+        return items;
+      };
+
+      const calcularSalidaDC = () => {
+        const metrosSalidaDC = getValNum("metrosSalidaDC");
+        const racksSalidaDC = getValNum("racksSalidaDC");
+        const calibreSalidaDC = getValNum("calibreSalidaDC");
+        const aislamientoSalidaDC = getValText("aislamientoSalidaDC");
+        const equipos10 = getValNum("equipos10");
+        const equipos14 = getValNum("equipos14");
+        let items = [];
+        if (metrosSalidaDC > 0 && racksSalidaDC > 0 && calibreSalidaDC > 0 && aislamientoSalidaDC) {
+          const total = ((metrosSalidaDC + 4) * racksSalidaDC) * 2;
+          items.push({ nombre: `CABLE ${aislamientoSalidaDC} #${calibreSalidaDC} (ROJO)`, cantidad: total, unidad: "mts", seccion: "salida_dc", orden: 400 });
+          items.push({ nombre: `CABLE ${aislamientoSalidaDC} #${calibreSalidaDC} (NEGRO)`, cantidad: total, unidad: "mts", seccion: "salida_dc", orden: 401 });
+        }
+        if (racksSalidaDC > 0) {
+          items.push({ nombre: "PDU DC INPUT 2 CHANNELS 63A/1P, OUTPUT 8(2X4) CHANNELS 32A/1P", cantidad: racksSalidaDC, unidad: "und", seccion: "salida_dc", orden: 402 });
+          items.push({ nombre: "CONECTOR PARA PEINE ELÉCTRICO, 63A", cantidad: 2 * racksSalidaDC, unidad: "und", seccion: "salida_dc", orden: 403 });
+        }
+        if (equipos10 > 0) {
+          items.push({ nombre: "CABLE AUTOMOTRIZ #10 (POS+)", cantidad: 5 * equipos10, unidad: "mts", seccion: "salida_dc", orden: 404 });
+          items.push({ nombre: "CABLE AUTOMOTRIZ #10 (NEG-)", cantidad: 5 * equipos10, unidad: "mts", seccion: "salida_dc", orden: 405 });
+          items.push({ nombre: "TERMINAL AUTOMOTRIZ AISLADO DE ANILLO DE CALIBRE #10-12 AWG (AMARILLO) DE DIÁMETRO ¼” O 6 MM (M6)", cantidad: 4 * equipos10, unidad: "und", seccion: "salida_dc", orden: 406 });
+        }
+        if (equipos14 > 0) {
+          items.push({ nombre: "CABLE AUTOMOTRIZ #12 (POS+)", cantidad: 5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 407 });
+          items.push({ nombre: "CABLE AUTOMOTRIZ #12 (NEG-)", cantidad: 5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 408 });
+          items.push({ nombre: "CONECTOR TERMINAL HORQUILLA TIPO Y PARA 1/8\" (AZUL)", cantidad: 4 * equipos14, unidad: "und", seccion: "salida_dc", orden: 409 });
+        }
+        return items;
+      };
+
+      const calcularEscalerillas = () => {
+        const soportesCantidad = getValNum("soportesCantidad");
+        if (soportesCantidad === 0) return [];
+        return [
+          { nombre: "ACOPLADOR GALVANIZADO PARA BANDEJA METALICA", cantidad: soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 500 },
+          { nombre: "SOPORTE PARA COLGAR BANDEJA METALICA DE ALTA RESISTENCIA (RIEL UNISTRURT DE 30CM)", cantidad: soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 501 },
+          { nombre: "SOPORTE PARA ANCLAJE DE BANDEJA METALICA EN TECHO", cantidad: 2 * soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 502 },
+          { nombre: "TUERCA PARA BARRA ROSCADA DE 1/2\"", cantidad: 8 * soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 503 },
+          { nombre: "ARANDELA PARA BARRA ROSCADA DE 1/2\"", cantidad: 8 * soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 504 },
+          { nombre: "TORNILLOS PARA RAMPLUNG NARANJA", cantidad: 4 * soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 505 },
+          { nombre: "RAMPLUG NARANJA 3/8\"", cantidad: 4 * soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 506 },
+          { nombre: "ARANDELAS 5*16", cantidad: 4 * soportesCantidad, unidad: "und", seccion: "escalerillas", orden: 507 }
+        ];
+      };
+
+      const consolidarResultados = () => {
+        let todos = [
+          ...calcularFuentes(),
+          ...calcularRack(),
+          ...calcularEntradaAC(),
+          ...calcularSalidaAC(),
+          ...calcularSalidaDC(),
+          ...calcularEscalerillas()
+        ];
+        
+        const mapa = new Map();
+        for (let item of todos) {
+          if (item.cantidad === 0) continue;
+          const key = item.nombre;
+          if (mapa.has(key)) {
+            mapa.get(key).cantidad += item.cantidad;
+          } else {
+            mapa.set(key, { nombre: item.nombre, cantidad: item.cantidad, unidad: item.unidad, seccion: item.seccion, orden: item.orden });
+          }
+        }
+        
+        let consolidado = Array.from(mapa.values());
+        consolidado.sort((a, b) => a.orden - b.orden);
+        return consolidado.map((item, idx) => ({ ...item, id: idx }));
+      };
+
       const calcular = () => {
-        const res = calcularMaterialesTotal(f);
+        const res = consolidarResultados();
         setResultados(res);
       };
 
@@ -5382,6 +5531,10 @@ ${f.obsGenerales}`;
         window.XLSX.writeFile(wb, 'materiales_airtek_' + Date.now() + '.xlsx');
       };
 
+      const removeResultadoItem = (id) => {
+        setResultados(prev => prev.filter(item => item.id !== id));
+      };
+
       const FI2 = ({ label, k, placeholder, type = 'number' }) => (
         <div>
           <label className="lbl">{label}</label>
@@ -5406,34 +5559,67 @@ ${f.obsGenerales}`;
           <div className="card" style={{ marginBottom: 10 }}>
             <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>⚡ Fuentes ETP Huawei 23006</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
-              <FI2 label="Cantidad de fuentes" k="fuentes" />
-              <div>
-                <label className="lbl">Calibre entrada AC (AWG)</label>
-                <select className="fi" value={f.calibre} onChange={e => setF(p => ({ ...p, calibre: e.target.value }))}>
-                  <option value="">-- Sin calibre --</option>
-                  {['14', '12', '10', '8', '6', '4', '3', '2', '1', '1/0', '2/0', '3/0', '4/0'].map(c => <option key={c} value={c}>{c} AWG</option>)}
-                </select>
-              </div>
-              <FI2 label="Módulos rectificadores/fuente" k="rect" />
-              <FI2 label="Módulos inversores/fuente" k="inv" />
-              <FI2 label="Módulos solares MPPT/fuente" k="solar" />
+              <FI2 label="Cantidad de fuentes" k="fuentesCantidad" />
+              <FI2 label="Alimentación de fuente (AWG)" k="alimentacionFuente" />
+              <FI2 label="Cantidad de rectificadores" k="rectificadores" />
+              <FI2 label="Cantidad de inversores" k="inversores" />
+              <FI2 label="Módulo solar G1" k="moduloSolarG1" />
+              <FI2 label="Módulo solar G6" k="moduloSolarG6" />
             </div>
           </div>
 
           {/* Rack */}
           <div className="card" style={{ marginBottom: 10 }}>
-            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>🔋 Rack + Baterías Pylontech</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <FI2 label="Cantidad de racks" k="racks" />
-              <FI2 label="Cantidad de baterías" k="baterias" />
+            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>🔋 Rack + Baterías Pylontech</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
+              <FI2 label="Cantidad de racks" k="racksCantidad" />
+              <FI2 label="Cantidad de baterías" k="bateriasCantidad" />
+              <FI2 label="Jumpers largos" k="jumpersLargos" />
+            </div>
+          </div>
+
+          {/* Entrada AC */}
+          <div className="card" style={{ marginBottom: 10 }}>
+            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>🔌 Entrada AC</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
+              <FI2 label="Tipo de aislamiento" k="aislamientoEntradaAC" type="text" placeholder="THW" />
+              <FI2 label="Calibre de conductor (AWG)" k="calibreEntradaAC" />
+              <FI2 label="Metros lineales" k="metrosEntradaAC" />
+              <FI2 label="Racks a conectar" k="racksEntradaAC" />
+              <FI2 label="Fuentes a conectar" k="fuentesEntradaAC" />
+            </div>
+          </div>
+
+          {/* Salida AC */}
+          <div className="card" style={{ marginBottom: 10 }}>
+            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>🔄 Salida AC</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
+              <FI2 label="Tipo de aislamiento" k="aislamientoSalidaAC" type="text" placeholder="AUTO" />
+              <FI2 label="Calibre de conductor (AWG)" k="calibreSalidaAC" />
+              <FI2 label="Metros lineales" k="metrosSalidaAC" />
+              <FI2 label="Racks a alimentar" k="racksSalidaAC" />
+              <FI2 label="PDU AC" k="pduAC" />
+            </div>
+          </div>
+
+          {/* Salida DC */}
+          <div className="card" style={{ marginBottom: 10 }}>
+            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--green)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>⚡ Salida DC</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
+              <FI2 label="Tipo de aislamiento" k="aislamientoSalidaDC" type="text" placeholder="AUTOMOTRIZ" />
+              <FI2 label="Calibre de conductor (AWG)" k="calibreSalidaDC" />
+              <FI2 label="Metros lineales" k="metrosSalidaDC" />
+              <FI2 label="Racks a alimentar" k="racksSalidaDC" />
+              <FI2 label="Equipos #10" k="equipos10" />
+              <FI2 label="Equipos #14" k="equipos14" />
             </div>
           </div>
 
           {/* Escalerillas */}
           <div className="card" style={{ marginBottom: 14 }}>
-            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>🏗️ Escalerillas y Soportes</div>
-            <div style={{ maxWidth: 280 }}>
-              <FI2 label="Cantidad de soportes de techo" k="soportes" />
+            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 12 }}>🏗️ Escalerillas y Soportes</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(175px,1fr))', gap: 10 }}>
+              <FI2 label="Soportes de techo" k="soportesCantidad" />
             </div>
           </div>
 
@@ -5456,15 +5642,22 @@ ${f.obsGenerales}`;
           {resultados !== null && resultados.length > 0 && (
             <div>
               <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', background: 'var(--bg-elevated)', padding: '8px 12px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: "'Exo 2',sans-serif" }}>
-                  <span>Material</span><span style={{ textAlign: 'center', minWidth: 60 }}>Cantidad</span><span style={{ textAlign: 'center', minWidth: 45 }}>Unidad</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', background: 'var(--bg-elevated)', padding: '8px 12px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: "'Exo 2',sans-serif" }}>
+                  <span>Material</span><span style={{ textAlign: 'center', minWidth: 60 }}>Cantidad</span><span style={{ textAlign: 'center', minWidth: 45 }}>Unidad</span><span style={{ width: 20 }}></span>
                 </div>
                 {resultados.map((r, i) => {
-                  const secColors = { fuentes: 'var(--amber)', rack: 'var(--purple)', escalerillas: 'var(--blue)' };
+                  const secColors = {
+                    fuentes: 'var(--amber)',
+                    rack: 'var(--purple)',
+                    entrada_ac: 'var(--blue)',
+                    salida_ac: 'var(--red)',
+                    salida_dc: 'var(--green)',
+                    escalerillas: '#64748b'
+                  };
                   const c = Number.isInteger(r.cantidad) ? r.cantidad : r.cantidad.toFixed(2);
                   return (
                     <div key={i} style={{
-                      display: 'grid', gridTemplateColumns: '1fr auto auto', padding: '9px 12px',
+                      display: 'grid', gridTemplateColumns: '1fr auto auto auto', padding: '9px 12px',
                       background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
                       borderTop: '1px solid var(--border)', alignItems: 'center', gap: 8
                     }}>
@@ -5474,6 +5667,9 @@ ${f.obsGenerales}`;
                       </div>
                       <span className="fm" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--green)', textAlign: 'center', minWidth: 60 }}>{c}</span>
                       <span style={{ fontSize: '.78rem', color: 'var(--tx3)', textAlign: 'center', minWidth: 45 }}>{r.unidad}</span>
+                      <button onClick={() => removeResultadoItem(r.id)} style={{
+                        background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', padding: '4px 6px', fontSize: '.75rem', fontWeight: 'bold'
+                      }}>✕</button>
                     </div>
                   );
                 })}
@@ -5485,7 +5681,10 @@ ${f.obsGenerales}`;
               <div style={{ marginTop: 8, fontSize: '.72rem', color: 'var(--tx4)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                 <span><span style={{ color: 'var(--amber)' }}>●</span> Fuentes ETP</span>
                 <span><span style={{ color: 'var(--purple)' }}>●</span> Rack + Baterías</span>
-                <span><span style={{ color: 'var(--blue)' }}>●</span> Escalerillas</span>
+                <span><span style={{ color: 'var(--blue)' }}>●</span> Entrada AC</span>
+                <span><span style={{ color: 'var(--red)' }}>●</span> Salida AC</span>
+                <span><span style={{ color: 'var(--green)' }}>●</span> Salida DC</span>
+                <span><span style={{ color: '#64748b' }}>●</span> Escalerillas</span>
               </div>
             </div>
           )}
@@ -5586,4 +5785,3 @@ ${f.obsGenerales}`;
 </body>
 
 </html>
-
