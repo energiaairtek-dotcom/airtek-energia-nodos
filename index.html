@@ -5360,7 +5360,6 @@ ${f.obsGenerales}`;
         
         if (racksCantidad > 0) {
           items.push({ nombre: "RACK PISO STRIG 42U CERRADO", cantidad: racksCantidad, unidad: "und", seccion: "rack", orden: 100 });
-          items.push({ nombre: "TERMINAL AUTOMOTRIZ AISLADO DE ANILLO DE CALIBRE #10-12 AWG (AMARILLO) DE DIÁMETRO ¼” O 6 MM (M6)", cantidad: 2 * racksCantidad, unidad: "und", seccion: "rack", orden: 101 });
           items.push({ nombre: "AISLADOR PARA BARRA DE COBRE SM-35", cantidad: 4 * racksCantidad, unidad: "und", seccion: "rack", orden: 102 });
           items.push({ nombre: "TORNILLO 8mm", cantidad: 8 * racksCantidad, unidad: "und", seccion: "rack", orden: 103 });
         }
@@ -5369,7 +5368,6 @@ ${f.obsGenerales}`;
           items.push({ nombre: "TORNILLO CABEZA HEXAGONAL 5/16\"X1\"", cantidad: 2 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 105 });
           items.push({ nombre: "ARANDELAS 5*16", cantidad: 2 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 106 });
           items.push({ nombre: "TUERCA 5/16\"", cantidad: 2 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 107 });
-          items.push({ nombre: "KIT DE CABLES EXTERNOS (BATERIA-INVERSOR) PARA BATERIAS PYLONTECH US / UP", cantidad: 1 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 108 });
           items.push({ nombre: "CABLE DE TIERRA DE BATERIA", cantidad: 1 * bateriasCantidad, unidad: "und", seccion: "rack", orden: 109 });
           const moduloCables = bateriasCantidad - 1;
           if (moduloCables > 0) {
@@ -5377,8 +5375,7 @@ ${f.obsGenerales}`;
           }
         }
         if (jumpersLargos > 0) {
-          items.push({ nombre: "JUMPER LARGO NEGATIVO", cantidad: jumpersLargos, unidad: "und", seccion: "rack", orden: 111 });
-          items.push({ nombre: "JUMPER LARGO POSITIVO", cantidad: jumpersLargos, unidad: "und", seccion: "rack", orden: 112 });
+          items.push({ nombre: "KIT DE CABLES EXTERNOS (BATERIA-INVERSOR) PARA BATERIAS PYLONTECH US / UP", cantidad: jumpersLargos, unidad: "und", seccion: "rack", orden: 108 });
         }
         return items;
       };
@@ -5442,12 +5439,14 @@ ${f.obsGenerales}`;
         if (equipos10 > 0) {
           items.push({ nombre: "CABLE AUTOMOTRIZ #10 (POS+)", cantidad: 5 * equipos10, unidad: "mts", seccion: "salida_dc", orden: 404 });
           items.push({ nombre: "CABLE AUTOMOTRIZ #10 (NEG-)", cantidad: 5 * equipos10, unidad: "mts", seccion: "salida_dc", orden: 405 });
-          items.push({ nombre: "TERMINAL AUTOMOTRIZ AISLADO DE ANILLO DE CALIBRE #10-12 AWG (AMARILLO) DE DIÁMETRO ¼” O 6 MM (M6)", cantidad: 4 * equipos10, unidad: "und", seccion: "salida_dc", orden: 406 });
+          items.push({ nombre: "CABLE AUTOMOTRIZ #10 VERDE (GND)", cantidad: 2.5 * equipos10, unidad: "mts", seccion: "salida_dc", orden: 405.5 });
+          items.push({ nombre: "TERMINAL AUTOMOTRIZ AISLADO DE ANILLO DE CALIBRE #10-12 AWG (AMARILLO) DE DIÁMETRO ¼” O 6 MM (M6)", cantidad: (4 * equipos10) + 1, unidad: "und", seccion: "salida_dc", orden: 406 });
         }
         if (equipos14 > 0) {
-          items.push({ nombre: "CABLE AUTOMOTRIZ #12 (POS+)", cantidad: 5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 407 });
-          items.push({ nombre: "CABLE AUTOMOTRIZ #12 (NEG-)", cantidad: 5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 408 });
-          items.push({ nombre: "CONECTOR TERMINAL HORQUILLA TIPO Y PARA 1/8\" (AZUL)", cantidad: 4 * equipos14, unidad: "und", seccion: "salida_dc", orden: 409 });
+          items.push({ nombre: "CABLE AUTOMOTRIZ #14 (POS+)", cantidad: 5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 407 });
+          items.push({ nombre: "CABLE AUTOMOTRIZ #14 (NEG-)", cantidad: 5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 408 });
+          items.push({ nombre: "CABLE AUTOMOTRIZ #14 VERDE (GND)", cantidad: 2.5 * equipos14, unidad: "mts", seccion: "salida_dc", orden: 408.5 });
+          items.push({ nombre: "CONECTOR TERMINAL HORQUILLA TIPO Y PARA 1/8\" (AZUL)", cantidad: (4 * equipos14) + 1, unidad: "und", seccion: "salida_dc", orden: 409 });
         }
         return items;
       };
