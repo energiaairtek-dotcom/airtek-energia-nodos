@@ -2576,7 +2576,7 @@ ${alertData.body}`,
         serial: eq.serial || '',
         notes: eq.notes || '',
         active: eq.active !== false,
-        lastMaintenanceHorometer: eq.lastMaintenanceHorometer || 0,
+        lastMaintenanceHorometer: eq.lastMaintenanceHorometer ? formatHHMMSS(parseFloat(eq.lastMaintenanceHorometer)) : '00:00:00',
         maintenanceInterval: eq.maintenanceInterval || 250,
         capacity: eq.capacity || '',
         phases: eq.phases || '',
@@ -2605,7 +2605,7 @@ ${alertData.body}`,
           serial: eq.serial || '',
           notes: eq.notes || '',
           active: eq.active !== false,
-          lastMaintenanceHorometer: eq.lastMaintenanceHorometer || 0,
+          lastMaintenanceHorometer: eq.lastMaintenanceHorometer ? formatHHMMSS(parseFloat(eq.lastMaintenanceHorometer)) : '00:00:00',
           maintenanceInterval: eq.maintenanceInterval || 250,
           capacity: eq.capacity || '',
           phases: eq.phases || '',
@@ -2628,7 +2628,11 @@ ${alertData.body}`,
         if (!f.tag.trim()) { return; }
         setSaving(true);
         const isDC = f.type === 'BAT' || f.type === 'ETP';
-        await onSave({ ...f, tag: f.tag.trim().toUpperCase(), voltage: isDC ? '' : f.voltage });
+        const saveData = { ...f, tag: f.tag.trim().toUpperCase(), voltage: isDC ? '' : f.voltage };
+        if (f.type === 'GEN') {
+          saveData.lastMaintenanceHorometer = parseHours(f.lastMaintenanceHorometer);
+        }
+        await onSave(saveData);
         setSaving(false);
       };
 
@@ -2785,8 +2789,8 @@ ${alertData.body}`,
                   </select>
                 </div>
                 <div>
-                  <label className="lbl">Horómetro del último mantenimiento (H)</label>
-                  <input className="fi" type="number" value={f.lastMaintenanceHorometer || 0} onChange={e => setF({ ...f, lastMaintenanceHorometer: parseFloat(e.target.value) || 0 })} placeholder="Ej: 300" />
+                  <label className="lbl">Horómetro del último mantenimiento (HH:MM:SS)</label>
+                  <input className="fi fm" type="text" value={f.lastMaintenanceHorometer || ''} onChange={e => setF({ ...f, lastMaintenanceHorometer: e.target.value })} placeholder="Ej: 1412:20:00 o 300" />
                 </div>
                 <div>
                   <label className="lbl">Intervalo de mantenimiento (H)</label>
