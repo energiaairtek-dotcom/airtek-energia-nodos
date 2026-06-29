@@ -512,8 +512,6 @@
     // Orden canónico de tipos para mostrar equipos
     const EQ_ORDER = { INV: 0, ETP: 1, ATS: 2, BAT: 3, GEN: 4, OTR: 5 };
 
-    // Extrae identificador de banco del tag
-    // INV06-LFP00→LFP00 | BAT00-LFP→LFP00 | ETP02-AC-PV-NMC02→NMC02
     const getBankId = tag => {
       const t = (tag || '').toUpperCase();
       const m1 = t.match(/(LFP|NMC|GEL|AGM|VRLA)(\d+)$/);
@@ -2065,9 +2063,22 @@
 
       const lastRec = inspRecords[inspRecords.length - 1];
 
-      // Bancos presentes en historial
+      // 🛡️ SOLUCIÓN GLOBAL: Construir conjunto de bancos con equipamiento activo (active !== false)
+      const activeBankIds = new Set(
+        (equipment || [])
+          .filter(e => e.active !== false)
+          .map(e => getBankId(e.tag))
+          .filter(Boolean)
+      );
+
+      // Bancos presentes en historial que tengan equipamiento activo
       const allBanks = new Set();
-      inspRecords.forEach(r => Object.keys(r.measurements).forEach(tag => { const b = getBankId(tag); if (b) allBanks.add(b); }));
+      inspRecords.forEach(r => Object.keys(r.measurements).forEach(tag => {
+        const b = getBankId(tag);
+        if (b && activeBankIds.has(b)) {
+          allBanks.add(b);
+        }
+      }));
       const bankList = ['_total', ...Array.from(allBanks).sort()];
 
       // Series para gráfico
@@ -6045,5 +6056,6 @@ ${f.obsGenerales}`;
 </body>
 
 </html>
+
 
                
