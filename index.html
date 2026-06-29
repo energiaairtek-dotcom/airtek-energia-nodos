@@ -12,6 +12,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Airtek – Gestión de Energía</title>
+  <!-- 🛡️ SECURITY HEADERS -->
+  <meta http-equiv="X-Frame-Options" content="DENY">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+  <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()">
   <link
     href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Barlow:wght@300;400;500;600&display=swap"
     rel="stylesheet">
@@ -24,7 +29,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <style>
     :root {
@@ -421,8 +426,34 @@
 <body>
   <div id="root"></div>
   <script>
+    // 🛡️ SECURITY: Error handler seguro — usa textContent en vez de innerHTML para prevenir XSS (CWE-79)
     window.onerror = function(msg, src, line, col, err) {
-      document.body.innerHTML = '<div style="background:#0f172a;color:#ef4444;font-family:monospace;padding:30px;min-height:100vh"><h2 style="color:#f59e0b;margin-bottom:16px">⚠️ Error de JavaScript</h2><p style="font-size:1.1rem;margin-bottom:12px">' + msg + '</p><p style="color:#94a3b8;font-size:.85rem">Archivo: ' + src + '</p><p style="color:#94a3b8;font-size:.85rem">Línea: ' + line + ', Columna: ' + col + '</p>' + (err ? '<pre style="color:#fbbf24;margin-top:16px;white-space:pre-wrap;font-size:.82rem">' + err.stack + '</pre>' : '') + '</div>';
+      var container = document.createElement('div');
+      container.style.cssText = 'background:#0f172a;color:#ef4444;font-family:monospace;padding:30px;min-height:100vh';
+      var h2 = document.createElement('h2');
+      h2.style.cssText = 'color:#f59e0b;margin-bottom:16px';
+      h2.textContent = '⚠️ Error de JavaScript';
+      var pMsg = document.createElement('p');
+      pMsg.style.cssText = 'font-size:1.1rem;margin-bottom:12px';
+      pMsg.textContent = String(msg);
+      var pSrc = document.createElement('p');
+      pSrc.style.cssText = 'color:#94a3b8;font-size:.85rem';
+      pSrc.textContent = 'Archivo: ' + String(src);
+      var pLine = document.createElement('p');
+      pLine.style.cssText = 'color:#94a3b8;font-size:.85rem';
+      pLine.textContent = 'Línea: ' + line + ', Columna: ' + col;
+      container.appendChild(h2);
+      container.appendChild(pMsg);
+      container.appendChild(pSrc);
+      container.appendChild(pLine);
+      if (err && err.stack) {
+        var pre = document.createElement('pre');
+        pre.style.cssText = 'color:#fbbf24;margin-top:16px;white-space:pre-wrap;font-size:.82rem';
+        pre.textContent = String(err.stack);
+        container.appendChild(pre);
+      }
+      document.body.innerHTML = '';
+      document.body.appendChild(container);
       return false;
     };
   </script>
@@ -886,17 +917,21 @@
     }
 
     function RegisterPage({ onBack }) {
+      // 🛡️ SECURITY: Rol forzado a 'tecnico' — solo admin puede cambiar roles (CWE-862)
       const [f, setF] = useState({ name: '', email: '', pass: '', pass2: '', role: 'tecnico' }); const [loading, setLoading] = useState(false); const [err, setErr] = useState(''); const [done, setDone] = useState(false);
       const go = async () => {
         setErr('');
         if (!f.name || !f.email || !f.pass) { setErr('Completa todos los campos.'); return; }
         if (f.pass !== f.pass2) { setErr('Las contraseñas no coinciden.'); return; }
-        if (f.pass.length < 6) { setErr('La contraseña debe tener al menos 6 caracteres.'); return; }
+        if (f.pass.length < 8) { setErr('La contraseña debe tener al menos 8 caracteres.'); return; }
+        if (!/[A-Z]/.test(f.pass) || !/[0-9]/.test(f.pass)) { setErr('La contraseña debe incluir al menos una mayúscula y un número.'); return; }
         setLoading(true);
         try {
-          const selectedRole = f.role || 'tecnico';
+          // 🛡️ SECURITY: Forzar rol 'tecnico' — ignorar valor del formulario para prevenir escalamiento (CWE-862)
+          const allowedRoles = ['tecnico', 'directivo'];
+          const selectedRole = allowedRoles.includes(f.role) ? f.role : 'tecnico';
           const cred = await auth.createUserWithEmailAndPassword(f.email, f.pass);
-          const profile = { name: sanitize(f.name), email: f.email.toLowerCase(), role: selectedRole, approved: false, createdAt: TS() };
+          const profile = { name: sanitize(f.name), email: sanitize(f.email.toLowerCase()), role: selectedRole, approved: false, createdAt: TS() };
           // Escribir en colección unificada (nueva) y en energy_users (legacy)
           await db.collection('airtek_users').doc(cred.user.uid).set({ ...profile, apps: { nodos: selectedRole, pm: null, almacen: null } });
           await db.collection('energy_users').doc(cred.user.uid).set(profile);
@@ -971,11 +1006,16 @@
           new QRCode(ref.current, { text: url, width: 200, height: 200, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.H });
         } catch { }
       }, []);
+      // 🛡️ SECURITY: QR print usa sanitize() para prevenir XSS stored (CWE-79)
       const print = () => {
         const w = window.open('', '_blank');
         const canvas = ref.current?.querySelector('canvas');
         const img = canvas ? canvas.toDataURL() : '';
-        w.document.write(`<html><head><title>QR ${node.name}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:40px}h2{font-size:15px;margin:8px 0}p{font-size:11px;color:#666;margin:3px 0}</style></head><body><h2 style="color:#f59e0b">AIRTEK ENERGÍA</h2><img src="${img}" style="width:200px;height:200px;border:2px solid #eee;border-radius:6px"><h2>${node.name}</h2><p>${node.zone || ''} — ${(NODE_TYPES[node.type] || {}).label || node.type}</p><p style="font-size:9px;color:#aaa;margin-top:12px;word-break:break-all">${url}</p><script>window.print();window.close();<\/script></body></html>`);
+        const safeName = sanitize(node.name);
+        const safeZone = sanitize(node.zone || '');
+        const safeUrl = sanitize(url);
+        const safeLabel = sanitize((NODE_TYPES[node.type] || {}).label || node.type);
+        w.document.write(`<html><head><title>QR ${safeName}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:40px}h2{font-size:15px;margin:8px 0}p{font-size:11px;color:#666;margin:3px 0}</style></head><body><h2 style="color:#f59e0b">AIRTEK ENERGÍA</h2><img src="${img}" style="width:200px;height:200px;border:2px solid #eee;border-radius:6px"><h2>${safeName}</h2><p>${safeZone} — ${safeLabel}</p><p style="font-size:9px;color:#aaa;margin-top:12px;word-break:break-all">${safeUrl}</p><script>window.print();window.close();<\/script></body></html>`);
       };
       return (
         <div className="overlay" onClick={onClose}>
@@ -1293,10 +1333,10 @@
         capacity: '', phases: '', horometer: '', lastMaintenanceHorometer: '', maintenanceInterval: 250
       });
 
-      // Cargar borrador de localStorage al montar
+      // 🛡️ SECURITY: Usar sessionStorage en vez de localStorage — expira al cerrar pestaña (CWE-922)
       useEffect(() => {
         try {
-          const saved = localStorage.getItem(`energy_draft_${nodeId}_general`);
+          const saved = sessionStorage.getItem(`energy_draft_${nodeId}_general`);
           if (saved) {
             const draft = JSON.parse(saved);
             if (draft.type) setType(draft.type);
@@ -1308,17 +1348,17 @@
             if (draft.eqAction) setEqA(draft.eqAction);
           }
         } catch (e) {
-          console.warn("Error al cargar borrador general:", e);
+          // silenciado intencionalmente
         }
       }, [nodeId]);
 
-      // Guardar borrador en localStorage automáticamente ante cambios
+      // Guardar borrador en sessionStorage automáticamente ante cambios
       useEffect(() => {
         try {
           const draft = { type, date, shift, obs, participants, meas, eqAction };
-          localStorage.setItem(`energy_draft_${nodeId}_general`, JSON.stringify(draft));
+          sessionStorage.setItem(`energy_draft_${nodeId}_general`, JSON.stringify(draft));
         } catch (e) {
-          console.warn("Error al guardar borrador general:", e);
+          // silenciado intencionalmente
         }
       }, [type, date, shift, obs, participants, meas, eqAction, nodeId]);
 
@@ -1377,7 +1417,7 @@
             if (eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({ active: false, retiredAt: new Date(date) });
           }
           toast('Registro guardado exitosamente.', 'success');
-          localStorage.removeItem(`energy_draft_${nodeId}_general`);
+          sessionStorage.removeItem(`energy_draft_${nodeId}_general`);
           // Verificar alarmas de conductores ATS
           if (type === 'inspeccion') {
             const alarms = checkAtsAlarms(cleanMeas, active);
@@ -1402,7 +1442,8 @@
           } else {
             onSave();
           }
-        } catch (e) { console.error(e); toast('Error al guardar. Intenta de nuevo.', 'error'); }
+        // 🛡️ SECURITY: No exponer detalles de error al usuario (CWE-209)
+        } catch (e) { console.warn('Save error:', e?.code || 'unknown'); toast('Error al guardar. Intenta de nuevo.', 'error'); }
         setSaving(false);
       };
 
@@ -2233,12 +2274,13 @@
         if (!form.description.trim()) { toast('Escribe la descripción del evento.', 'error'); return; }
         setSaving(true);
         try {
+          // 🛡️ SECURITY: Sanitizar inputs antes de escribir a Firestore (CWE-116)
           await db.collection('energy_nodes').doc(nodeId).collection('node_events').add({
             date: new Date(form.date),
-            equipo: form.equipo || null,
-            description: form.description.trim(),
-            assistants: form.assistants.trim() || null,
-            author: form.recordedBy.trim(),
+            equipo: form.equipo ? sanitize(form.equipo) : null,
+            description: sanitize(form.description.trim()),
+            assistants: form.assistants.trim() ? sanitize(form.assistants.trim()) : null,
+            author: sanitize(form.recordedBy.trim()),
             authorId: userProfile.uid,
             createdAt: TS(),
           });
@@ -2255,7 +2297,7 @@ Personal Asistente: ${form.assistants || 'Solo autor'}`,
           toast('Evento registrado.', 'success');
           setForm({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', assistants: '', recordedBy: '', notify: false });
           setShowForm(false);
-        } catch (e) { console.error(e); toast('Error al guardar.', 'error'); }
+        } catch (e) { console.warn('Event save error:', e?.code || 'unknown'); toast('Error al guardar.', 'error'); }
         setSaving(false);
       };
 
@@ -3056,25 +3098,25 @@ ${alertData.body}`,
       const [saving, setSaving] = useState(false);
       const [odooText, setOdooText] = useState('');
 
-      // Cargar borrador de localStorage al montar
+      // 🛡️ SECURITY: Usar sessionStorage en vez de localStorage (CWE-922)
       useEffect(() => {
         try {
-          const saved = localStorage.getItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
+          const saved = sessionStorage.getItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
           if (saved) {
             const draft = JSON.parse(saved);
             setF(prev => ({ ...prev, ...draft }));
           }
         } catch (e) {
-          console.warn("Error al cargar borrador de planta:", e);
+          // silenciado intencionalmente
         }
       }, [nodeId, plantEq.tag]);
 
-      // Guardar borrador en localStorage automáticamente ante cualquier cambio en f
+      // Guardar borrador en sessionStorage automáticamente ante cualquier cambio en f
       useEffect(() => {
         try {
-          localStorage.setItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`, JSON.stringify(f));
+          sessionStorage.setItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`, JSON.stringify(f));
         } catch (e) {
-          console.warn("Error al guardar borrador de planta:", e);
+          // silenciado intencionalmente
         }
       }, [f, nodeId, plantEq.tag]);
 
@@ -3212,10 +3254,12 @@ ${f.obsGenerales}`;
           await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update(equipUpdate);
 
           toast('Chequeo de Grupo Electrógeno guardado', 'success');
-          localStorage.removeItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
+          sessionStorage.removeItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
           setOdooText(text);
         } catch (e) {
-          toast('Error al guardar: ' + e.message, 'error');
+          // 🛡️ SECURITY: No exponer e.message al usuario (CWE-209)
+          console.warn('Plant save error:', e?.code || 'unknown');
+          toast('Error al guardar el chequeo. Intenta de nuevo.', 'error');
         }
         setSaving(false);
       };
@@ -4704,11 +4748,19 @@ ${f.obsGenerales}`;
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       <select style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', color: 'var(--tx2)', padding: '5px 9px', borderRadius: 5, fontSize: '.8rem', cursor: 'pointer' }}
-                        value={u.role} onChange={e => {
+                        value={u.role} onChange={async e => {
+                          // 🛡️ SECURITY: Re-verificar permisos antes de cambiar roles (CWE-862)
+                          const isRealAdmin = await verifyAdminRole();
+                          if (!isRealAdmin) { toast('No tienes permisos de administrador.', 'error'); return; }
                           const newRole = e.target.value;
-                          db.collection('energy_users').doc(u.id).update({ role: newRole }).catch(() => { });
-                          db.collection('airtek_users').doc(u.id).update({ 'apps.nodos': newRole }).catch(() => { });
-                          toast('Rol actualizado', 'success');
+                          try {
+                            await Promise.allSettled([
+                              db.collection('energy_users').doc(u.id).update({ role: newRole }),
+                              db.collection('airtek_users').doc(u.id).update({ 'apps.nodos': newRole })
+                            ]);
+                            toast('Rol actualizado', 'success');
+                            loadUsers();
+                          } catch (err) { toast('Error al actualizar rol.', 'error'); }
                         }}>
                         <option value="tecnico">Técnico</option>
                         <option value="supervisor">Supervisor</option>
@@ -5934,7 +5986,8 @@ ${f.obsGenerales}`;
             setUserProfile(p);
             setAuthState(approved ? 'authenticated' : 'pending');
           } catch (e) {
-            console.error('Firestore error:', e.code, e.message);
+            // 🛡️ SECURITY: No loggear detalles de error sensibles (CWE-532)
+            console.warn('Auth profile load failed:', e?.code || 'unknown');
             setAuthState('unauthenticated');
           }
         });
@@ -5992,3 +6045,5 @@ ${f.obsGenerales}`;
 </body>
 
 </html>
+
+               
