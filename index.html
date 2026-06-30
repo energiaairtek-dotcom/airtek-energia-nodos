@@ -2709,6 +2709,7 @@ ${alertData.body}`,
         notes: eq.notes || '',
         active: eq.active !== false,
         lastMaintenanceHorometer: eq.lastMaintenanceHorometer ? formatHHMMSS(parseFloat(eq.lastMaintenanceHorometer)) : '00:00:00',
+        horometer: eq.horometer ? formatHHMMSS(parseFloat(eq.horometer)) : '00:00:00',
         maintenanceInterval: eq.maintenanceInterval || 250,
         capacity: eq.capacity || '',
         phases: eq.phases || '',
@@ -2738,6 +2739,7 @@ ${alertData.body}`,
           notes: eq.notes || '',
           active: eq.active !== false,
           lastMaintenanceHorometer: eq.lastMaintenanceHorometer ? formatHHMMSS(parseFloat(eq.lastMaintenanceHorometer)) : '00:00:00',
+          horometer: eq.horometer ? formatHHMMSS(parseFloat(eq.horometer)) : '00:00:00',
           maintenanceInterval: eq.maintenanceInterval || 250,
           capacity: eq.capacity || '',
           phases: eq.phases || '',
@@ -2762,6 +2764,7 @@ ${alertData.body}`,
         const isDC = f.type === 'BAT' || f.type === 'ETP';
         const saveData = { ...f, tag: f.tag.trim().toUpperCase(), voltage: isDC ? '' : f.voltage };
         if (f.type === 'GEN') {
+          saveData.horometer = parseHours(f.horometer);
           saveData.lastMaintenanceHorometer = parseHours(f.lastMaintenanceHorometer);
         }
         await onSave(saveData);
@@ -2919,6 +2922,10 @@ ${alertData.body}`,
                     <option value="Monofásica">Monofásica</option>
                     <option value="Trifásica">Trifásica</option>
                   </select>
+                </div>
+                <div>
+                  <label className="lbl">Horómetro actual (HH:MM:SS)</label>
+                  <input className="fi fm" type="text" value={f.horometer || ''} onChange={e => setF({ ...f, horometer: e.target.value })} placeholder="Ej: 1412:20:00 o 300" />
                 </div>
                 <div>
                   <label className="lbl">Horómetro del último mantenimiento (HH:MM:SS)</label>
@@ -6136,5 +6143,3 @@ ${f.obsGenerales}`;
 
 </html>
 
-
-               
