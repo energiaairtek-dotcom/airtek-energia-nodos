@@ -1780,8 +1780,73 @@
         if (!nodeId || !record.id) return;
         setSaving(true);
         try {
-          await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).update({ measurements: measEdit });
-          // Update local record object so view reflects changes
+          const upd = { measurements: measEdit };
+          if (record.type === 'inspeccion_gen') {
+            const plantTag = Object.keys(measEdit)[0];
+            if (plantTag) {
+              const gVals = measEdit[plantTag] || {};
+              const plantEq = (equipment || []).find(e => e.tag === plantTag) || {};
+              const isTri = plantEq && plantEq.phases && plantEq.phases.toLowerCase().includes('tri');
+              const dateStr = record.date?.toDate ? record.date.toDate().toLocaleDateString('es-VE') : new Date(record.date).toLocaleDateString('es-VE');
+              const marcaMod = ((plantEq.brand || '') + ' ' + (plantEq.model || '')).trim();
+
+              const voltajesText = isTri 
+                ? `L1-L2: ${gVals.voltajeL1L2 || ''} V / L2-L3: ${gVals.voltajeL2L3 || ''} V / L1-L3: ${gVals.voltajeL1L3 || ''} V / L-N: ${gVals.voltajeLN || ''} V`
+                : `L1-L2: ${gVals.voltajeL1L2 || ''} V / L1-N: ${gVals.voltajeL1N || ''} V / L2-N: ${gVals.voltajeL2N || ''} V`;
+                
+              const amperajesText = isTri
+                ? `Fase 1: ${gVals.ampF1 || ''} fase 2: ${gVals.ampF2 || ''}   Fase 3: ${gVals.ampF3 || ''} N: ${gVals.ampN || ''}`
+                : `Fase 1: ${gVals.ampF1 || ''} fase 2: ${gVals.ampF2 || ''}   N: ${gVals.ampN || ''}`;
+
+              const text = `CHEQUEO PREVENTIVO
+Fecha: ${dateStr}
+Técnico responsable: ${gVals.firmaTecnico || record.technicianName}
+1. DATOS DEL EQUIPO
+Serial de la planta eléctrica:	${plantEq.serial || '—'}
+Marca / Modelo:	${marcaMod || '—'}
+Horas de servicio (lectura actual):	${gVals.horometer || ''}
+Autonomía del combustible:	${gVals.autonomia || '—'}
+2. PARÁMETROS ELÉCTRICOS
+Voltaje de la red (entrada ATS)	${gVals.voltajeRed || ''} V
+Voltajes de generación	${voltajesText} 
+Amperaje del nodo	${amperajesText}
+3. COMPONENTES MECÁNICOS Y FLUIDOS
+Valor de presión de aceite (psi o bar)	${gVals.presionAceite || ''}	${gVals.obsPresionAceite || ''}
+Fluidos (nivel y fugas)	[${gVals.fluidosStatus || ''}]	${gVals.obsFluidos || ''}
+Mangueras (fisuras, abrasión)	[${gVals.manguerasStatus || ''}]	${gVals.obsMangueras || ''}
+Correa única (tensión y desgaste)	[${gVals.correaStatus || ''}]	${gVals.obsCorrea || ''}
+4. SISTEMA ELÉCTRICO Y CONTROL
+ATS (Transferencia automática)	[${gVals.atsStatus || ''}]	${gVals.obsATS || ''}
+Batería (voltaje y bornes)	V-CG ${gVals.batVCG || ''} V-AT ${gVals.batVAT || ''} C-TS ${gVals.batCTS || ''}	${gVals.obsBat || ''}
+Cableado (conexiones sueltas, corrosión)	[${gVals.cableadoStatus || ''}]	${gVals.obsCableado || ''}
+Puntos calientes(termografía/contacto)	[${gVals.puntosCalStatus || ''}]	${gVals.obsPuntosCal || ''}
+Indicación de Sonoff (o relé remoto)	[${gVals.sonoffStatus || ''}]	${gVals.obsSonoff || ''}
+5. PRUEBAS OPERATIVAS
+Prueba de encendido remoto (local o remoto)	[${gVals.encendidoStatus || ''}]	${gVals.obsEncendido || ''}
+Ruidos anormales(motor/alternador)	[${gVals.ruidosStatus || ''}]	${gVals.obsRuidos || ''}
+Surtido a la planta (suministro de combustible)	[${gVals.surtidoStatus || ''}]	${gVals.obsSurtido || ''}
+Reserva de combustible.	${gVals.reservaMin || ''} Autonomía: ${gVals.reservaAutonomia || ''}	${gVals.obsReserva || ''}
+6. RESULTADO FINAL
+[X] ${gVals.resultado || ''}
+Mantenimiento de ${plantEq.maintenanceInterval || 250} horas realizado: ${gVals.mantenimientoRealizado ? 'SÍ' : 'NO'}
+Observaciones generales:
+${gVals.obsGenerales || ''}`;
+
+              upd.odooReport = text;
+              record.odooReport = text;
+
+              const newH = parseHours(gVals.horometer) || 0;
+              const equipUpdate = { horometer: newH };
+              if (gVals.mantenimientoRealizado) {
+                equipUpdate.lastMaintenanceHorometer = newH;
+              }
+              if (plantEq.id) {
+                await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update(equipUpdate);
+                Object.assign(plantEq, equipUpdate);
+              }
+            }
+          }
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).update(upd);
           Object.assign(record.measurements, measEdit);
           setEditMeas(false);
         } catch (e) { console.error(e); }
@@ -1837,15 +1902,29 @@
                   <div key={tag} className="card" style={{ marginBottom: 10, borderLeft: '3px solid var(--amber)' }}>
                     <div className="fm" style={{ fontSize: '.85rem', color: 'var(--amber)', fontWeight: 700, marginBottom: 10 }}>{tag}</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {Object.entries(vals).map(([k, v]) => (
-                        <div key={k}>
-                          <label style={{ display: 'block', fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3, fontFamily: "'Exo 2',sans-serif" }}>
-                            {FIELD_LABELS[k] || k} <span style={{ color: 'var(--amber)' }}>{FIELD_UNITS[k] || ''}</span>
-                          </label>
-                          <input className="mi" type="number" step="any" value={measEdit[tag][k] ?? ''}
-                            onChange={e => setMeasEdit(prev => { const n = JSON.parse(JSON.stringify(prev)); n[tag][k] = e.target.value; return n; })} />
-                        </div>
-                      ))}
+                       {Object.entries(vals).map(([k, v]) => {
+                        const isBool = typeof v === 'boolean';
+                        return (
+                          <div key={k} style={{ gridColumn: isBool || k.startsWith('obs') || k === 'resultado' || k === 'obsGenerales' ? '1/-1' : 'auto' }}>
+                            <label style={{ display: 'block', fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3, fontFamily: "'Exo 2',sans-serif" }}>
+                              {FIELD_LABELS[k] || k} <span style={{ color: 'var(--amber)' }}>{FIELD_UNITS[k] || ''}</span>
+                            </label>
+                            {isBool ? (
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx2)', fontSize: '.82rem', cursor: 'pointer', marginTop: 4 }}>
+                                <input type="checkbox" checked={!!measEdit[tag][k]}
+                                  onChange={e => setMeasEdit(prev => { const n = JSON.parse(JSON.stringify(prev)); n[tag][k] = e.target.checked; return n; })} />
+                                SÍ (Mantenimiento Realizado)
+                              </label>
+                            ) : k === 'obsGenerales' || k === 'resultado' || k.startsWith('obs') ? (
+                              <textarea className="fi" rows={2} value={measEdit[tag][k] ?? ''}
+                                onChange={e => setMeasEdit(prev => { const n = JSON.parse(JSON.stringify(prev)); n[tag][k] = e.target.value; return n; })} style={{ resize: 'vertical' }} />
+                            ) : (
+                              <input className="mi" type={record.type === 'inspeccion' ? 'number' : 'text'} step="any" value={measEdit[tag][k] ?? ''}
+                                onChange={e => setMeasEdit(prev => { const n = JSON.parse(JSON.stringify(prev)); n[tag][k] = e.target.value; return n; })} />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
@@ -1865,7 +1944,7 @@
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {record.type === 'inspeccion' && record.measurements && Object.keys(record.measurements).length > 0 && (
+              {(record.type === 'inspeccion' || record.type === 'inspeccion_gen') && record.measurements && Object.keys(record.measurements).length > 0 && (
                 <button onClick={openEdit} className="bs" style={{ padding: '6px 14px', fontSize: '.78rem' }}>✏️ Valores</button>
               )}
               {isAdmin && (
