@@ -512,13 +512,30 @@
     // Orden canónico de tipos para mostrar equipos
     const EQ_ORDER = { INV: 0, ETP: 1, ATS: 2, BAT: 3, GEN: 4, OTR: 5 };
 
+    const FIELD_ORDER = {
+      INV: ['L1_carga', 'L1_pot', 'L2_carga', 'L2_pot', 'V_ac_out', 'load_kw', 'V_panel', 'P_panel', 'I_bat'],
+      ETP: ['DC_load', 'AC_load', 'I_bat', 'V_panel', 'I_panel'],
+      ATS: ['L1', 'L2', 'L3', 'N'],
+      BAT: ['V_banco', 'I_banco'],
+    };
+
     const getBankId = tag => {
-      const t = (tag || '').toUpperCase();
+      const t = (tag || '').trim().toUpperCase();
       const m1 = t.match(/(LFP|NMC|GEL|AGM|VRLA)(\d+)$/);
       if (m1) return m1[1] + m1[2];
       const m2 = t.match(/^BAT(\d+)[_-](LFP|NMC|GEL|AGM|VRLA)/);
       if (m2) return m2[2] + m2[1];
       return null;
+    };
+
+    const getEqType = tag => {
+      const t = (tag || '').trim().toUpperCase();
+      if (t.startsWith('INV')) return 'INV';
+      if (t.startsWith('ETP')) return 'ETP';
+      if (t.startsWith('ATS')) return 'ATS';
+      if (t.startsWith('BAT')) return 'BAT';
+      if (t.startsWith('GEN')) return 'GEN';
+      return 'OTR';
     };
 
     // Agrupa equipos: no-BAT por banco → BAT al final del grupo → ATS/OTR al final
@@ -1214,6 +1231,14 @@
       const fechaStr = `${diaNum}/${mes}/${anio}`;
       const diaCap = dia.charAt(0).toUpperCase() + dia.slice(1);
 
+      // Normalizar las mediciones para evitar problemas con espacios en los tags
+      const cleanMeasurements = {};
+      if (measurements) {
+        Object.entries(measurements).forEach(([k, v]) => {
+          cleanMeasurements[k.trim().toUpperCase()] = v;
+        });
+      }
+
       const fmtVal = (k, v) => {
         if (v === '' || v === null || v === undefined) return null;
         const lbl = FIELD_LABELS[k] || k.replace(/_/g, ' ');
@@ -1222,11 +1247,22 @@
       };
 
       const printEq = (tag, lines) => {
-        const vals = measurements[tag];
+        const vals = cleanMeasurements[tag.trim().toUpperCase()];
         if (!vals) return;
-        lines.push(tag);
-        Object.entries(vals).forEach(([k, v]) => {
-          const s = fmtVal(k, v); if (s) lines.push(s);
+        lines.push(tag.trim());
+        const type = getEqType(tag);
+        const order = FIELD_ORDER[type] || [];
+        order.forEach(k => {
+          if (vals[k] !== undefined && vals[k] !== null && vals[k] !== '') {
+            const s = fmtVal(k, vals[k]);
+            if (s) lines.push(s);
+          }
+        });
+        Object.keys(vals).forEach(k => {
+          if (!order.includes(k) && vals[k] !== undefined && vals[k] !== null && vals[k] !== '') {
+            const s = fmtVal(k, vals[k]);
+            if (s) lines.push(s);
+          }
         });
       };
 
@@ -1236,7 +1272,10 @@
 
       // Equipos medidos — ordenados y agrupados por banco
       const measuredEqs = sortEquipment(
-        equipment.filter(e => measurements[e.tag] && Object.keys(measurements[e.tag]).some(k => measurements[e.tag][k] !== ''))
+        equipment.filter(e => {
+          const t = e.tag.trim().toUpperCase();
+          return cleanMeasurements[t] && Object.keys(cleanMeasurements[t]).some(k => cleanMeasurements[t][k] !== '');
+        })
       );
       const groups = groupByBank(measuredEqs);
 
@@ -1248,10 +1287,18 @@
         }
         // Equipos del grupo
         eqs.forEach(eq => { printEq(eq.tag, lines); });
-        // Voltaje del banco al final del grupo
-        if (bat && measurements[bat.tag]) {
-          const vb = measurements[bat.tag].V_banco;
-          if (vb) lines.push(`V Banco ${bank}: ${vb} Vdc`);
+        // Batería del grupo
+        if (bat) {
+          const batMeas = cleanMeasurements[bat.tag.trim().toUpperCase()];
+          if (batMeas) {
+            const keys = Object.keys(batMeas).filter(k => batMeas[k] !== '' && batMeas[k] !== null && batMeas[k] !== undefined);
+            if (keys.length > 1 || (keys.length === 1 && !keys.includes('V_banco'))) {
+              printEq(bat.tag, lines);
+            } else if (keys.includes('V_banco')) {
+              const vb = batMeas.V_banco;
+              if (vb) lines.push(`V Banco ${bank}: ${vb} Vdc`);
+            }
+          }
         }
         lines.push('');
         // Bancos huérfanos
@@ -1392,9 +1439,10 @@
           };
           await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add(record);
           if (type === 'instalacion' && eqAction.tag) {
+            const trimmedTag = eqAction.tag.trim().toUpperCase();
             const isDC = eqAction.type === 'BAT' || eqAction.type === 'ETP';
             await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
-              tag: eqAction.tag, type: eqAction.type,
+              tag: trimmedTag, type: eqAction.type,
               voltage: isDC ? '' : eqAction.voltage,
               voltageDC: eqAction.voltageDC || '',
               hasAcIn: !!eqAction.hasAcIn, hasAcOut: !!eqAction.hasAcOut, hasDcOut: !!eqAction.hasDcOut,
@@ -1886,7 +1934,7 @@ ${gVals.obsGenerales || ''}`;
       const II = ({ label, value, mono }) => (
         <div>
           <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2, fontFamily: "'Exo 2',sans-serif" }}>{label}</div>
-          <div className={mono ? 'fm' : ''} style={{ fontSize: '.9rem', color: 'var(--tx1)', fontWeight: 500 }}>{value || '—'}</div>
+          <div className={mono ? 'fm' : ''} style={{ fontSize: '.9rem', color: 'var(--tx1)', fontWeight: 500, whiteSpace: 'pre-wrap' }}>{value || '—'}</div>
         </div>
       );
       return (
@@ -2013,7 +2061,7 @@ ${gVals.obsGenerales || ''}`;
             </div>
             {record.observations && <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
               <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4, fontFamily: "'Exo 2',sans-serif" }}>Observaciones</div>
-              <p style={{ color: '#cbd5e1', fontSize: '.9rem' }}>{record.observations}</p>
+              <p style={{ color: '#cbd5e1', fontSize: '.9rem', whiteSpace: 'pre-wrap' }}>{record.observations}</p>
             </div>}
           </div>
           {record.measurements && Object.keys(record.measurements).length > 0 && (() => {
@@ -2022,28 +2070,29 @@ ${gVals.obsGenerales || ''}`;
             const measTags = Object.keys(meas);
             // Crear objetos de equipo ficticios desde los tags medidos
             const fakeEqs = sortEquipment(measTags.map(tag => {
-              const t = tag.toUpperCase();
-              const type = t.startsWith('INV') ? 'INV' : t.startsWith('ETP') ? 'ETP' : t.startsWith('ATS') ? 'ATS' : t.startsWith('BAT') ? 'BAT' : t.startsWith('GEN') ? 'GEN' : 'OTR';
+              const type = getEqType(tag);
               return { id: tag, tag, type, active: true };
             }));
             const groups = groupByBank(fakeEqs);
             // Calcular carga total del nodo
             const totalLoad = measTags.reduce((sum, tag) => {
-              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
-              return sum + calcLoad(type, meas[tag]);
+              const type = getEqType(tag);
+              const ld = calcLoad(type, meas[tag]);
+              return sum + ld.ac + ld.dc;
             }, 0);
 
             const MeasCard = ({ tag, highlight }) => {
               const vals = meas[tag] || {};
-              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : tag.toUpperCase().startsWith('ATS') ? 'ATS' : tag.toUpperCase().startsWith('BAT') ? 'BAT' : tag.toUpperCase().startsWith('GEN') ? 'GEN' : 'OTR';
+              const type = getEqType(tag);
               const ti = EQ_TYPES[type] || EQ_TYPES.OTR;
               const load = calcLoad(type, vals);
+              const loadVal = load.ac + load.dc;
               return (
                 <div style={{ background: highlight ? 'rgba(139,92,246,.06)' : 'var(--bg-surface)', borderRadius: 7, padding: '10px 12px', marginBottom: 6, border: `1px solid ${highlight ? 'rgba(139,92,246,.2)' : 'var(--border)'}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                       <span className="badge" style={{ background: ti.bg, color: ti.color, fontSize: '.62rem' }}>{type}</span>
-                      <span className="fm" style={{ fontSize: '.88rem', color: 'var(--tx1)', fontWeight: 600 }}>{tag}</span>
+                      <span className="fm" style={{ fontSize: '.88rem', color: 'var(--tx1)', fontWeight: 600 }}>{tag.trim()}</span>
                       {(() => {
                         const eq = (equipment || []).find(e => e.tag === tag);
                         if (eq?.type === 'ETP' && eq.solarRegPercentage) {
@@ -2052,15 +2101,28 @@ ${gVals.obsGenerales || ''}`;
                         return null;
                       })()}
                     </div>
-                    {load > 0 && <span className="fm" style={{ fontSize: '.8rem', color: '#10b981', fontWeight: 700 }}>{load.toFixed(2)} kW</span>}
+                    {loadVal > 0 && <span className="fm" style={{ fontSize: '.8rem', color: '#10b981', fontWeight: 700 }}>{loadVal.toFixed(2)} kW</span>}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 6 }}>
-                    {Object.entries(vals).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => (
-                      <div key={k} style={{ background: 'var(--bg-deep)', borderRadius: 5, padding: '6px 8px' }}>
-                        <div style={{ fontSize: '.6rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 1, fontFamily: "'Exo 2',sans-serif" }}>{(FIELD_LABELS[k] || k.replace(/_/g, ' '))} <span style={{ color: 'var(--amber)', fontWeight: 600 }}>{FIELD_UNITS[k] || ''}</span></div>
-                        <div className="fm" style={{ fontSize: '.95rem', color: '#10b981', fontWeight: 600 }}>{v}</div>
-                      </div>
-                    ))}
+                    {(() => {
+                      const order = FIELD_ORDER[type] || [];
+                      const entries = Object.entries(vals)
+                        .filter(([, v]) => v !== '' && v !== null && v !== undefined)
+                        .sort((a, b) => {
+                          const idxA = order.indexOf(a[0]);
+                          const idxB = order.indexOf(b[0]);
+                          if (idxA === -1 && idxB === -1) return a[0].localeCompare(b[0]);
+                          if (idxA === -1) return 1;
+                          if (idxB === -1) return -1;
+                          return idxA - idxB;
+                        });
+                      return entries.map(([k, v]) => (
+                        <div key={k} style={{ background: 'var(--bg-deep)', borderRadius: 5, padding: '6px 8px' }}>
+                          <div style={{ fontSize: '.6rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 1, fontFamily: "'Exo 2',sans-serif" }}>{(FIELD_LABELS[k] || k.replace(/_/g, ' '))} <span style={{ color: 'var(--amber)', fontWeight: 600 }}>{FIELD_UNITS[k] || ''}</span></div>
+                          <div className="fm" style={{ fontSize: '.95rem', color: '#10b981', fontWeight: 600 }}>{v}</div>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               );
@@ -2075,7 +2137,10 @@ ${gVals.obsGenerales || ''}`;
                 </div>}
                 <h3 className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 10 }}>Mediciones Registradas</h3>
                 {groups.map(({ bank, eqs, bat, orphanBats }) => {
-                  const bankLoad = eqs.reduce((s, e) => s + calcLoad(e.type, meas[e.tag]), 0);
+                  const bankLoad = eqs.reduce((s, e) => {
+                    const ld = calcLoad(e.type, meas[e.tag]);
+                    return s + ld.ac + ld.dc;
+                  }, 0);
                   return (
                     <div key={bank || '_ung'} style={{ marginBottom: 16 }}>
                       {bank && bank !== '_ats' && bank !== '_orphan' && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -2166,7 +2231,7 @@ ${gVals.obsGenerales || ''}`;
         const label = d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit' });
         let total = 0; const bankLoads = {};
         Object.entries(r.measurements).forEach(([tag, vals]) => {
-          const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+          const type = getEqType(tag);
           const load = calcLoad(type, vals);
           const aggLoad = load.ac + load.dc;
           total += aggLoad;
@@ -2185,7 +2250,7 @@ ${gVals.obsGenerales || ''}`;
       const bankAutonomies = Array.from(allBanks).sort().map(bank => {
         const bankLoad = Object.entries(lastRec.measurements || {}).reduce((sum, [tag, vals]) => {
           if (getBankId(tag) !== bank) return sum;
-          const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+          const type = getEqType(tag);
           const ld = calcLoad(type, vals);
           return { ac: sum.ac + ld.ac, dc: sum.dc + ld.dc };
         }, { ac: 0, dc: 0 });
@@ -2355,7 +2420,15 @@ ${gVals.obsGenerales || ''}`;
         const u1 = db.collection('energy_nodes').doc(nodeId).collection('node_events')
           .orderBy('date', 'desc').limit(25).onSnapshot(s => { setEvents(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
         const u2 = db.collection('energy_nodes').doc(nodeId).collection('energy_equipment')
-          .where('active', '==', true).onSnapshot(s => setEquipment(s.docs.map(d => ({ id: d.id, ...d.data() }))));
+          .where('active', '==', true).onSnapshot(s => {
+            const data = s.docs.map(d => {
+              const item = d.data();
+              const tag = (item.tag || '').trim();
+              const type = item.type === 'OTR' || !item.type ? getEqType(tag) : item.type;
+              return { id: d.id, ...item, tag, type };
+            });
+            setEquipment(data);
+          });
         return () => { u1(); u2(); };
       }, [nodeId]);
 
@@ -3825,9 +3898,31 @@ ${f.obsGenerales}`;
 
       useEffect(() => {
         const u1 = db.collection('energy_nodes').doc(node.id).collection('energy_equipment')
-          .onSnapshot(s => { setEquipment(s.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); });
+          .onSnapshot(s => {
+            const data = s.docs.map(d => {
+              const item = d.data();
+              const tag = (item.tag || '').trim();
+              const type = item.type === 'OTR' || !item.type ? getEqType(tag) : item.type;
+              return { id: d.id, ...item, tag, type };
+            });
+            setEquipment(data);
+            setLoading(false);
+          });
         const u2 = db.collection('energy_nodes').doc(node.id).collection('energy_records')
-          .orderBy('date', 'desc').limit(40).onSnapshot(s => { setRecords(s.docs.map(d => ({ id: d.id, ...d.data() }))); });
+          .orderBy('date', 'desc').limit(40).onSnapshot(s => {
+            const data = s.docs.map(d => {
+              const item = d.data();
+              if (item.measurements) {
+                const cleanMeas = {};
+                Object.entries(item.measurements).forEach(([k, v]) => {
+                  cleanMeas[k.trim().toUpperCase()] = v;
+                });
+                item.measurements = cleanMeas;
+              }
+              return { id: d.id, ...item };
+            });
+            setRecords(data);
+          });
         return () => { u1(); u2(); };
       }, [node.id]);
 
@@ -3906,7 +4001,7 @@ ${f.obsGenerales}`;
           const chartH = 35; const chartW = 170; const startX = 20; const chartY = y + chartH;
           const seriesData = inspRecs.map(r => {
             let t = 0; Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
-              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+              const type = getEqType(tag);
               const ld = calcLoad(type, vals);
               t += ld.ac + ld.dc;
             });
@@ -3951,7 +4046,7 @@ ${f.obsGenerales}`;
           bks.forEach(bank => {
             const bLoad = Object.entries(lastR.measurements).reduce((sum, [tag, vals]) => {
               if (getBankId(tag) !== bank) return sum;
-              const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+              const type = getEqType(tag);
               const ld = calcLoad(type, vals);
               return { ac: sum.ac + ld.ac, dc: sum.dc + ld.dc };
             }, { ac: 0, dc: 0 });
@@ -4052,7 +4147,7 @@ ${f.obsGenerales}`;
           const row = { 'Fecha': fmtDate(r.date), 'Hora': r.date?.toDate ? r.date.toDate().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : '' };
           let totalNodo = 0;
           Object.entries(r.measurements || {}).forEach(([tag, vals]) => {
-            const type = tag.toUpperCase().startsWith('INV') ? 'INV' : tag.toUpperCase().startsWith('ETP') ? 'ETP' : 'OTR';
+            const type = getEqType(tag);
             const ld = calcLoad(type, vals);
             const lTot = ld.ac + ld.dc;
             totalNodo += lTot;
@@ -6142,4 +6237,3 @@ ${f.obsGenerales}`;
 </body>
 
 </html>
-
