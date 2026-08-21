@@ -977,7 +977,7 @@
   <div id="root"></div>
   <script>
     window.onerror = function(msg, src, line, col, err) {
-      document.body.innerHTML = '<div style="background:#0f172a;color:#f55b5d;font-family:monospace;padding:30px;min-height:100vh"><h2 style="color:#0166ff;margin-bottom:16px">⚠️ Error de JavaScript</h2><p style="font-size:1.1rem;margin-bottom:12px">' + msg + '</p><p style="color:var(--tx3);font-size:.85rem">Archivo: ' + src + '</p><p style="color:var(--tx3);font-size:.85rem">Línea: ' + line + ', Columna: ' + col + '</p>' + (err ? '<pre style="color:#ff7d32;margin-top:16px;white-space:pre-wrap;font-size:.82rem">' + err.stack + '</pre>' : '') + '</div>';
+      document.body.innerHTML = '<div style="background:#0f172a;color:#f55b5d;font-family:monospace;padding:30px;min-height:100vh"><h2 style="color:#0166ff;margin-bottom:16px">Error de JavaScript</h2><p style="font-size:1.1rem;margin-bottom:12px">' + msg + '</p><p style="color:var(--tx3);font-size:.85rem">Archivo: ' + src + '</p><p style="color:var(--tx3);font-size:.85rem">Línea: ' + line + ', Columna: ' + col + '</p>' + (err ? '<pre style="color:#ff7d32;margin-top:16px;white-space:pre-wrap;font-size:.82rem">' + err.stack + '</pre>' : '') + '</div>';
       return false;
     };
   </script>
@@ -985,7 +985,7 @@
     const { useState, useEffect, useRef, useCallback } = React;
 
     // ═══════════════════════════════════════════════════════
-    // 🎨 AIRTEK UI DESIGN KIT — COMPONENTES DE ICONOS SVG
+    // AIRTEK UI DESIGN KIT — COMPONENTES DE ICONOS SVG
     // ═══════════════════════════════════════════════════════
     const IconHome = ({ size = 18, color = "currentColor" }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
@@ -1165,7 +1165,7 @@
     };
 
     // ═══════════════════════════════════════════════════
-    // 📋 CATÁLOGO DE TIPOS DE EQUIPOS
+    // CATÁLOGO DE TIPOS DE EQUIPOS
     // ═══════════════════════════════════════════════════
     const EQ_TYPES = {
       INV: { label: 'Inversor', color: '#0166ff', bg: 'rgba(1, 102, 255,.12)' },
@@ -1342,7 +1342,7 @@
     ];
 
     // ═══════════════════════════════════════════════════
-    // 🔥 FIREBASE INIT
+    // FIREBASE INIT
     // ═══════════════════════════════════════════════════
     let db, auth;
     try {
@@ -1352,9 +1352,9 @@
     } catch (e) { console.error('Firebase error:', e); }
 
     // ═══════════════════════════════════════════════════
-    // 🛡️ SEGURIDAD — Advertencia de consola
+    // SEGURIDAD — Advertencia de consola
     // ═══════════════════════════════════════════════════
-    console.log('%c⚠️ ADVERTENCIA DE SEGURIDAD', 'color:#f55b5d;font-size:20px;font-weight:bold');
+    console.log('%cADVERTENCIA DE SEGURIDAD', 'color:#f55b5d;font-size:20px;font-weight:bold');
     console.log('%cEsta consola es una herramienta para desarrolladores. Si alguien te pidió que copies o pegues algo aquí, es probable que sea una estafa. Nunca compartas información de esta consola.', 'color:#0166ff;font-size:14px');
     console.log('%cAIRTEK Energía — Sistema protegido.', 'color:#008000;font-size:12px');
     console.log('%cSeguridad: Validación de roles activa. Sanitización XSS habilitada.', 'color:var(--tx3);font-size:10px');
@@ -1380,7 +1380,7 @@
       return false;
     };
 
-    // 🛡️ SEGURIDAD - Función de sanitización mejorada (Prevención XSS)
+    // SEGURIDAD - Función de sanitización mejorada (Prevención XSS)
     const sanitize = (str) => {
       if (typeof str !== 'string') return str;
       const map = {
@@ -1396,7 +1396,7 @@
     };
 
     // ═══════════════════════════════════════════════════
-    // 📧 NOTIFICACIONES CORPORATIVAS (notification-ms)
+    // NOTIFICACIONES CORPORATIVAS (notification-ms)
     // ═══════════════════════════════════════════════════
     const API_BASE = (typeof window !== 'undefined' && window.location.origin.includes('localhost'))
       ? 'http://127.0.0.1:8000'
@@ -1405,7 +1405,7 @@
     const sendNotificationAlert = async (params) => {
       try {
         const apiUrl = API_BASE + '/notifications/email';
-        console.log('[📧 Notificación Corporativa] Enviando alerta a:', apiUrl, params);
+        console.log('[Notificación Corporativa] Enviando alerta a:', apiUrl, params);
         const resp = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1413,7 +1413,7 @@
         });
         if (!resp.ok) throw new Error('Notification API error: ' + resp.status);
         const resJson = await resp.json();
-        console.log('[✓ Notificación Corporativa] Enviada exitosamente:', resJson);
+        console.log('[Notificación Corporativa] Enviada exitosamente:', resJson);
         return resJson;
       } catch (e) {
         console.warn('[X Notificación Corporativa Error]', e.message);
@@ -1421,7 +1421,7 @@
     };
 
     // ═══════════════════════════════════════════════════
-    // ⚡ TABLA DE AMPACIDAD POR CALIBRE AWG (A máx en cobre, 75°C)
+    // TABLA DE AMPACIDAD POR CALIBRE AWG (A máx en cobre, 75°C)
     // ═══════════════════════════════════════════════════
     const AWG_AMPACITY = {
       '14 AWG': 15, '12 AWG': 20, '10 AWG': 30, '8 AWG': 50,
@@ -1453,7 +1453,7 @@
     };
 
     // ═══════════════════════════════════════════════════
-    // 🛠️  HELPERS
+    //  HELPERS
     // ═══════════════════════════════════════════════════
     const fmtDateTime = d => {
       if (!d) return '—';
@@ -1471,7 +1471,7 @@
 
     // ═══════════════════════════════════════════════════
     // ═══════════════════════════════════════════════════════
-    // 🔔 TOAST — AIRTEK UI DESIGN KIT (SVG Icons adaptativos)
+    // TOAST — AIRTEK UI DESIGN KIT (SVG Icons adaptativos)
     // ═══════════════════════════════════════════════════════
     function Toast({ msg, type, onDone }) {
       useEffect(() => { const t = setTimeout(onDone, 4000); return () => clearTimeout(t); }, []);
@@ -1562,7 +1562,7 @@
       );
     }
 
-    // 🔐 AUTH PAGES
+    // AUTH PAGES
     // ═══════════════════════════════════════════════════
                 function AuthLogo() {
       const theme = document.documentElement.getAttribute('data-theme') || 'light';
@@ -1764,7 +1764,7 @@
       return (
         <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div className="card fin" style={{ maxWidth: 400, textAlign: 'center' }}>
-            <div style={{ fontSize: 44, marginBottom: 14 }}>⏳</div>
+            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--warn-bg)", border: "1px solid var(--warn-border)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", color: "var(--amber)" }}><IconPlug size={24} /></div>
             <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 700, color: '#0166ff', marginBottom: 8 }}>Cuenta pendiente</h2>
             <p style={{ color: 'var(--tx3)', fontSize: '.9rem', marginBottom: 20 }}>Tu cuenta está en espera de aprobación por un administrador.</p>
             <button className="bd" onClick={onLogout}>Cerrar sesión</button>
@@ -1774,7 +1774,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // 📱 QR MODAL
+    // QR MODAL
     // ═══════════════════════════════════════════════════
     function QRModal({ node, onClose }) {
       const ref = useRef(null);
@@ -1809,7 +1809,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // ⚡ CAMPO DE MEDICIÓN
+    // CAMPO DE MEDICIÓN
     // ═══════════════════════════════════════════════════
     function MF({ label, unit, vals, k, onChange }) {
       return (
@@ -1823,7 +1823,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // 📊 MEDICIONES DINÁMICAS POR TIPO DE EQUIPO
+    // MEDICIONES DINÁMICAS POR TIPO DE EQUIPO
     // ═══════════════════════════════════════════════════
     function EqMeasurements({ eq, vals, onChange }) {
       if (eq.type === 'INV') {
@@ -1898,7 +1898,7 @@
 
 
     // ═══════════════════════════════════════════════════
-    // 📋 GENERADOR DE REPORTE DE INSPECCIÓN
+    // GENERADOR DE REPORTE DE INSPECCIÓN
     // ═══════════════════════════════════════════════════
     const DIAS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
     const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -2092,7 +2092,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // 📝 FORMULARIO DE REGISTRO
+    // FORMULARIO DE REGISTRO
     // ═══════════════════════════════════════════════════
     function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel, toast, initialType = 'inspeccion' }) {
       const DRAFT_KEY = `airtek_draft_general_${nodeId}`;
@@ -2353,11 +2353,11 @@
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {lastSavedTime && (
                 <span style={{ fontSize: '.72rem', color: '#10b981', background: 'rgba(16,185,129,.12)', padding: '4px 8px', borderRadius: 4 }}>
-                  💾 Guardado local {lastSavedTime}
+                  Guardado local {lastSavedTime}
                 </span>
               )}
               <button className="bd" style={{ padding: '5px 10px', fontSize: '.72rem' }} onClick={clearDraft} title="Limpiar los campos del borrador">
-                🗑️ Limpiar
+                Limpiar
               </button>
             </div>
           </div>
@@ -2809,7 +2809,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // 🔎 DETALLE DE REGISTRO
+    // DETALLE DE REGISTRO
     // ═══════════════════════════════════════════════════
     function RecordDetail({ record, onBack, nodeId, nodeName, equipment, userProfile, toast }) {
       const [confirmModal, setConfirmModal] = useState(null);
@@ -3123,7 +3123,7 @@
 
 
     // ═══════════════════════════════════════════════════
-    // 📊 GRÁFICO HISTÓRICO DE CARGAS POR BANCO
+    // GRÁFICO HISTÓRICO DE CARGAS POR BANCO
     // ═══════════════════════════════════════════════════
     function LoadChart({ records, equipment, onExport }) {
       const [selBank, setSelBank] = React.useState('_total');
@@ -3366,7 +3366,7 @@
 
 
     // ═══════════════════════════════════════════════════
-    // 📋 HISTORIAL DE EVENTOS / EVENTUALIDADES DEL NODO
+    // HISTORIAL DE EVENTOS / EVENTUALIDADES DEL NODO
     // ═══════════════════════════════════════════════════
     function NodeEvents({ nodeId, nodeName, userProfile, toast }) {
       const [confirmModal, setConfirmModal] = useState(null);
@@ -3532,7 +3532,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // 🔔 ALERTAS / COMENTARIOS IMPORTANTES DEL NODO
+    // ALERTAS / COMENTARIOS IMPORTANTES DEL NODO
     // ═══════════════════════════════════════════════════
     const ALERT_PRIORITIES = {
       critica: { label: 'Crítica', color: '#f55b5d', bg: 'rgba(245, 91, 93,.12)', icon: <IconAlertTriangle size={15} color="#f55b5d" /> },
@@ -3820,7 +3820,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    // ✏️  MODAL EDICIÓN DE EQUIPO
+    //  MODAL EDICIÓN DE EQUIPO
     // ═══════════════════════════════════════════════════
     function EditEqModal({ eq, onSave, onDelete, onClose, userProfile }) {
       const [confirmModal, setConfirmModal] = useState(null);
@@ -4143,7 +4143,7 @@
 
 
     // ═══════════════════════════════════════════════════
-    // 📁 DOCUMENTOS DEL NODO — Diagramas y manuales (solo usuarios registrados)
+    // DOCUMENTOS DEL NODO — Diagramas y manuales (solo usuarios registrados)
     // ═══════════════════════════════════════════════════
     function NodeDocs({ nodeId, userProfile, toast }) {
       const [confirmModal, setConfirmModal] = useState(null);
@@ -4637,16 +4637,16 @@ ${f.obsGenerales}`;
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button onClick={onCancel} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 22, display: 'flex', alignItems: 'center' }}>←</button>
-              <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800 }}>🔋 Chequeo: {plantEq.tag}</h2>
+              <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800 }}>Chequeo: {plantEq.tag}</h2>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {lastSavedTime && (
                 <span style={{ fontSize: '.72rem', color: '#10b981', background: 'rgba(16,185,129,.12)', padding: '4px 8px', borderRadius: 4 }}>
-                  💾 Guardado local {lastSavedTime}
+                  Guardado local {lastSavedTime}
                 </span>
               )}
               <button className="bd" style={{ padding: '5px 10px', fontSize: '.72rem' }} onClick={clearDraft} title="Limpiar los campos del borrador">
-                🗑️ Limpiar
+                Limpiar
               </button>
             </div>
           </div>
@@ -5141,7 +5141,7 @@ ${f.obsGenerales}`;
     }
 
     // ═══════════════════════════════════════════════════
-    // 🏭 DETALLE DE NODO
+    // DETALLE DE NODO
     // ═══════════════════════════════════════════════════
     function NodeDetail({ node, userProfile, onBack, toast }) {
       const [confirmModal, setConfirmModal] = useState(null);
@@ -5687,7 +5687,7 @@ ${f.obsGenerales}`;
     }
 
     // ═══════════════════════════════════════════════════
-    // 🗺️  LISTA DE NODOS (DASHBOARD PRINCIPAL)
+    //  LISTA DE NODOS (DASHBOARD PRINCIPAL)
     // ═══════════════════════════════════════════════════
     
     function IconSliders({ size = 18, color = "currentColor" }) {
@@ -5830,7 +5830,7 @@ ${f.obsGenerales}`;
               boxShadow: 'var(--card-shadow)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: '1.5rem' }}>📝</span>
+                <IconChecklist size={22} color="#f59e0b" />
                 <div>
                   <div style={{ fontWeight: 700, color: '#f59e0b', fontSize: '.92rem' }}>
                     Inspección en progreso: {activeInspection.nodeName}
@@ -5979,7 +5979,7 @@ ${f.obsGenerales}`;
                     gap: 4
                   }}
                 >
-                  ✕ Limpiar filtro
+                  Limpiar filtro
                 </button>
               )}
             </div>
@@ -6009,7 +6009,7 @@ ${f.obsGenerales}`;
     }
 
     // ═══════════════════════════════════════════════════
-    // ➕ AGREGAR USUARIO EXISTENTE
+    // AGREGAR USUARIO EXISTENTE
     // ═══════════════════════════════════════════════════
     function AddExistingUser({ toast, userProfile }) {
       const [open, setOpen] = useState(false);
@@ -6108,7 +6108,7 @@ ${f.obsGenerales}`;
             const data = evt.target.result;
             const workbook = XLSX.read(data, { type: 'binary' });
             const sheetName = workbook.SheetNames.find(n => n.includes('MANTTO 2026')) || workbook.SheetNames[0];
-            setLog(prev => [...prev, `📄 Hoja seleccionada: "${sheetName}"`]);
+            setLog(prev => [...prev, `Hoja seleccionada: "${sheetName}"`]);
             const sheet = workbook.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
 
@@ -6125,7 +6125,7 @@ ${f.obsGenerales}`;
             }
 
             if (headerIdx === -1) {
-              setLog(prev => [...prev, "❌ Error: No se encontró la fila de cabecera con las columnas 'planta' y 'horas de funcionamiento'."]);
+              setLog(prev => [...prev, "Error: No se encontró la fila de cabecera con las columnas 'planta' y 'horas de funcionamiento'."]);
               setLoading(false);
               return;
             }
@@ -6137,7 +6137,7 @@ ${f.obsGenerales}`;
             const colTrabajadas = headers.findIndex(h => h.includes('trabajadas')); // horas trabajadas
 
             if (colPlanta === -1 || colHoras === -1) {
-              setLog(prev => [...prev, "❌ Error: Faltan las columnas requeridas 'planta' o 'horas de funcionamiento...'."]);
+              setLog(prev => [...prev, "Error: Faltan las columnas requeridas 'planta' o 'horas de funcionamiento...'."]);
               setLoading(false);
               return;
             }
@@ -6155,7 +6155,7 @@ ${f.obsGenerales}`;
               }
             }
 
-            setLog(prev => [...prev, `📂 Encontradas ${excelData.length} plantas con registros en Excel. Iniciando comparación...`]);
+            setLog(prev => [...prev, `Encontradas ${excelData.length} plantas con registros en Excel. Iniciando comparación...`]);
 
             let updatedCount = 0;
             let logBuffer = [];
@@ -6200,10 +6200,10 @@ ${f.obsGenerales}`;
                   await db.collection('energy_nodes').doc(nId).collection('energy_equipment').doc(eqDoc.id).update(updateObj);
                   updatedCount++;
                   
-                  let logMsg = `Match: Excel "${match.name}" ➔ BD Tag "${eqData.tag}" (Nodo: ${nName}). `;
-                  logMsg += `Último Mantt: ${formatHHMMSS(oldLastMaint)} ➔ ${formatHHMMSS(match.lastMaintH)}. `;
+                  let logMsg = `Match: Excel "${match.name}" -> BD Tag "${eqData.tag}" (Nodo: ${nName}). `;
+                  logMsg += `Último Mantt: ${formatHHMMSS(oldLastMaint)} -> ${formatHHMMSS(match.lastMaintH)}. `;
                   if (horometerUpdated) {
-                    logMsg += `Horómetro: ${formatHHMMSS(oldHorometer)} ➔ ${formatHHMMSS(match.currentH)}. `;
+                    logMsg += `Horómetro: ${formatHHMMSS(oldHorometer)} -> ${formatHHMMSS(match.currentH)}. `;
                   } else {
                     logMsg += `Horómetro: ${formatHHMMSS(oldHorometer)} (sin cambios, Excel: ${formatHHMMSS(match.currentH)}). `;
                   }
@@ -6216,13 +6216,13 @@ ${f.obsGenerales}`;
             setLog(prev => [
               ...prev,
               ...logBuffer,
-              `✅ Sincronización completada: ${updatedCount} plantas eléctricas actualizadas exitosamente en Firebase.`
+              `Sincronización completada: ${updatedCount} plantas eléctricas actualizadas exitosamente en Firebase.`
             ]);
             toast(`Sincronización finalizada. ${updatedCount} plantas actualizadas.`, 'success');
 
           } catch (err) {
             console.error(err);
-            setLog(prev => [...prev, `❌ Error: ${err.message}`]);
+            setLog(prev => [...prev, `Error: ${err.message}`]);
             toast('Error al sincronizar plantas.', 'error');
           } finally {
             setLoading(false);
@@ -6251,7 +6251,7 @@ ${f.obsGenerales}`;
             <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, maxHeight: 300, overflowY: 'auto' }}>
               <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 700 }}>Historial de Sincronización</div>
               {log.map((line, idx) => (
-                <div key={idx} className="fm" style={{ fontSize: '.76rem', color: line.startsWith('❌') ? 'var(--red)' : line.startsWith('✅') ? 'var(--green)' : 'var(--tx2)', marginBottom: 4, lineHeight: 1.4 }}>
+                <div key={idx} className="fm" style={{ fontSize: '.76rem', color: line.startsWith('Error:') ? 'var(--red)' : line.startsWith('Sincronización') ? 'var(--green)' : 'var(--tx2)', marginBottom: 4, lineHeight: 1.4 }}>
                   {line}
                 </div>
               ))}
@@ -6262,7 +6262,7 @@ ${f.obsGenerales}`;
     }
 
     // ═══════════════════════════════════════════════════
-    // 🛡️  PANEL DE ADMINISTRACIÓN
+    //  PANEL DE ADMINISTRACIÓN
     // ═══════════════════════════════════════════════════
     function AdminPanel({ userProfile, toast }) {
       const [confirmModal, setConfirmModal] = useState(null);
@@ -6566,7 +6566,7 @@ ${f.obsGenerales}`;
                       const ti = EQ_TYPES[eq.type] || EQ_TYPES.OTR;
                       return (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', borderBottom: '1px solid var(--border)', background: eq.valid ? 'transparent' : 'rgba(245, 91, 93,.05)', flexWrap: 'wrap' }}>
-                          {!eq.valid && <span style={{ color: '#f55b5d', fontSize: .7 + 'rem' }}>⚠ línea {eq._line}</span>}
+                          {!eq.valid && <span style={{ color: '#f55b5d', fontSize: .7 + 'rem' }}>Línea {eq._line}</span>}
                           <span className="badge" style={{ background: ti.bg, color: ti.color, flexShrink: 0 }}>{eq.type}</span>
                           <span className="fm" style={{ fontSize: '.85rem', color: 'var(--tx1)', fontWeight: 600 }}>{eq.tag || '(sin tag)'}</span>
                           {eq.voltage && eq.type === 'INV' && <span style={{ color: 'var(--tx3)', fontSize: '.73rem' }}>{eq.voltage}</span>}
@@ -6715,7 +6715,7 @@ ${f.obsGenerales}`;
     }
 
     // ═══════════════════════════════════════════════════
-    // 🔝 TOPBAR
+    // TOPBAR
     // ═══════════════════════════════════════════════════
     function ChangePasswordModal({ onClose, toast }) {
       const [cur, setCur] = useState('');
@@ -6922,7 +6922,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         <React.Fragment>
           {pwModal && <ChangePasswordModal onClose={() => setPwModal(false)} toast={toast} />}
 
-          {/* 🖥️ DESKTOP SIDEBAR */}
+          {/* DESKTOP SIDEBAR */}
           <div 
             className={`sidebar desktop-sidebar ${isExpanded ? 'expanded' : ''}`}
             onMouseEnter={() => { if (window.innerWidth > 768) setIsExpanded(true); }}
@@ -6999,7 +6999,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* 📱 MOBILE TOP BAR */}
+          {/* MOBILE TOP BAR */}
           <header className="mobile-top-bar">
             <div className="mobile-brand" onClick={() => setView('nodes')}>
               <img src={theme === 'dark' ? './img/user-logo-white.png' : './img/user-logo-black.png'} alt="AIRTEK" />
@@ -7019,7 +7019,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </header>
 
-          {/* 📱 MOBILE BOTTOM BAR */}
+          {/* MOBILE BOTTOM BAR */}
           <nav className="mobile-bottom-bar">
             {navItems.map(item => {
               const IconComp = item.icon;
@@ -7372,7 +7372,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </div>
 
                 {!b.resultado && b.capacidad && b.carga && (
-                  <div style={{ marginTop: 8, fontSize: '.75rem', color: '#0166ff' }}>⚠ Completa capacidad y carga para calcular.</div>
+                  <div style={{ marginTop: 8, fontSize: '.75rem', color: '#0166ff' }}>Completa capacidad y carga para calcular.</div>
                 )}
               </div>
             );
@@ -7490,7 +7490,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ═══════════════════════════════════════════════════
-    // 🧮 CALCULADORA DE MATERIALES
+    // CALCULADORA DE MATERIALES
     // ═══════════════════════════════════════════════════
     function MaterialesCalc() {
       const [showConfirm, setShowConfirm] = useState(false);
@@ -7918,7 +7918,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ═══════════════════════════════════════════════════
-    // 🚀 APP ROOT
+    // APP ROOT
     // ═══════════════════════════════════════════════════
     
     function ConfirmModal({ title, msg, type = 'confirm', confirmText, cancelText, onConfirm, onCancel }) {
