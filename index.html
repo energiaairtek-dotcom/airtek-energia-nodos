@@ -1364,48 +1364,86 @@
     // 📝 FORMULARIO DE REGISTRO
     // ═══════════════════════════════════════════════════
     function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel, toast }) {
-      const [type, setType] = useState('inspeccion');
-      const [date, setDate] = useState(new Date().toISOString().slice(0, 16));
-      const [shift, setShift] = useState('dia');
-      const [obs, setObs] = useState('');
-      const [participants, setParticipants] = useState('');
-      const [meas, setMeas] = useState({});
+      const DRAFT_KEY = `airtek_draft_general_${nodeId}`;
+      
+      const getDraft = () => {
+        try {
+          const saved = localStorage.getItem(DRAFT_KEY);
+          return saved ? JSON.parse(saved) : null;
+        } catch (e) { return null; }
+      };
+
+      const initialDraft = getDraft();
+
+      const [type, setType] = useState(() => initialDraft?.type || 'inspeccion');
+      const [date, setDate] = useState(() => initialDraft?.date || new Date().toISOString().slice(0, 16));
+      const [shift, setShift] = useState(() => initialDraft?.shift || 'dia');
+      const [obs, setObs] = useState(() => initialDraft?.obs || '');
+      const [participants, setParticipants] = useState(() => initialDraft?.participants || '');
+      const [meas, setMeas] = useState(() => initialDraft?.meas || {});
       const [saving, setSaving] = useState(false);
-      const [eqAction, setEqA] = useState({
+      const [lastSavedTime, setLastSavedTime] = useState(() => initialDraft?.savedAt ? new Date(initialDraft.savedAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : null);
+      const [eqAction, setEqA] = useState(() => initialDraft?.eqAction || {
         tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false,
         batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '',
         batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador',
         capacity: '', phases: '', horometer: '', lastMaintenanceHorometer: '', maintenanceInterval: 250
       });
 
-      // 🛡️ SECURITY: Usar sessionStorage en vez de localStorage — expira al cerrar pestaña (CWE-922)
-      useEffect(() => {
+      // Guardar borrador en localStorage automáticamente ante cambios
+      const saveDraftToStorage = useCallback(() => {
         try {
-          const saved = sessionStorage.getItem(`energy_draft_${nodeId}_general`);
-          if (saved) {
-            const draft = JSON.parse(saved);
-            if (draft.type) setType(draft.type);
-            if (draft.date) setDate(draft.date);
-            if (draft.shift) setShift(draft.shift);
-            if (draft.obs) setObs(draft.obs);
-            if (draft.participants) setParticipants(draft.participants);
-            if (draft.meas) setMeas(draft.meas);
-            if (draft.eqAction) setEqA(draft.eqAction);
-          }
+          const hasData = (obs && obs.trim()) || (participants && participants.trim()) || Object.keys(meas).length > 0 || eqAction.tag;
+          if (!hasData) return;
+          const now = new Date();
+          const draft = {
+            type, date, shift, obs, participants, meas, eqAction,
+            nodeId, nodeName, formType: 'general',
+            savedAt: now.toISOString()
+          };
+          localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+          localStorage.setItem('airtek_active_inspection', JSON.stringify({
+            nodeId, nodeName, formType: 'general', key: DRAFT_KEY, savedAt: now.toISOString()
+          }));
+          setLastSavedTime(now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
         } catch (e) {
-          // silenciado intencionalmente
+          // silenciado
         }
-      }, [nodeId]);
+      }, [type, date, shift, obs, participants, meas, eqAction, nodeId, nodeName, DRAFT_KEY]);
 
-      // Guardar borrador en sessionStorage automáticamente ante cambios
       useEffect(() => {
+        saveDraftToStorage();
+      }, [saveDraftToStorage]);
+
+      // Guardar ante salida de pantalla o cambio de app
+      useEffect(() => {
+        const handleVisibility = () => {
+          if (document.visibilityState === 'hidden') saveDraftToStorage();
+        };
+        window.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('pagehide', saveDraftToStorage);
+        window.addEventListener('beforeunload', saveDraftToStorage);
+        return () => {
+          window.removeEventListener('visibilitychange', handleVisibility);
+          window.removeEventListener('pagehide', saveDraftToStorage);
+          window.removeEventListener('beforeunload', saveDraftToStorage);
+        };
+      }, [saveDraftToStorage]);
+
+      const clearDraft = () => {
         try {
-          const draft = { type, date, shift, obs, participants, meas, eqAction };
-          sessionStorage.setItem(`energy_draft_${nodeId}_general`, JSON.stringify(draft));
-        } catch (e) {
-          // silenciado intencionalmente
-        }
-      }, [type, date, shift, obs, participants, meas, eqAction, nodeId]);
+          localStorage.removeItem(DRAFT_KEY);
+          const active = localStorage.getItem('airtek_active_inspection');
+          if (active && JSON.parse(active)?.key === DRAFT_KEY) {
+            localStorage.removeItem('airtek_active_inspection');
+          }
+        } catch (e) {}
+        setMeas({});
+        setObs('');
+        setParticipants('');
+        setLastSavedTime(null);
+        toast('Borrador eliminado', 'info');
+      };
 
       const onBatTypeChange = (val) => {
         let vdc = '';
@@ -1463,7 +1501,13 @@
             if (eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({ active: false, retiredAt: new Date(date) });
           }
           toast('Registro guardado exitosamente.', 'success');
-          sessionStorage.removeItem(`energy_draft_${nodeId}_general`);
+          localStorage.removeItem(DRAFT_KEY);
+          try {
+            const activeDraft = localStorage.getItem('airtek_active_inspection');
+            if (activeDraft && JSON.parse(activeDraft)?.key === DRAFT_KEY) {
+              localStorage.removeItem('airtek_active_inspection');
+            }
+          } catch (e) {}
           // Verificar alarmas de conductores ATS
           if (type === 'inspeccion') {
             const alarms = checkAtsAlarms(cleanMeas, active);
@@ -1497,11 +1541,23 @@
 
       return (
         <div className="fin">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 22 }}>
-            <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 22 }}>←</button>
-            <div>
-              <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--tx1)' }}>Nuevo Registro</h2>
-              <p style={{ color: 'var(--tx3)', fontSize: '.8rem' }}>{nodeName}</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 22 }}>←</button>
+              <div>
+                <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--tx1)' }}>Nuevo Registro</h2>
+                <p style={{ color: 'var(--tx3)', fontSize: '.8rem' }}>{nodeName}</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {lastSavedTime && (
+                <span style={{ fontSize: '.72rem', color: '#10b981', background: 'rgba(16,185,129,.12)', padding: '4px 8px', borderRadius: 4 }}>
+                  💾 Guardado local {lastSavedTime}
+                </span>
+              )}
+              <button className="bd" style={{ padding: '5px 10px', fontSize: '.72rem' }} onClick={clearDraft} title="Limpiar los campos del borrador">
+                🗑️ Limpiar
+              </button>
             </div>
           </div>
 
@@ -3235,60 +3291,103 @@ ${alertData.body}`,
     // ═══════════════════════════════════════════════════
     function PlantRecordForm({ nodeId, nodeName, plantEq, userProfile, onSave, onCancel, toast }) {
       const isTri = plantEq && plantEq.phases && plantEq.phases.toLowerCase().includes('tri');
+      const DRAFT_KEY = `airtek_draft_plant_${nodeId}_${plantEq.tag}`;
 
-      const [f, setF] = useState({
-        horometer: plantEq ? formatHHMMSS(parseFloat(plantEq.horometer)) : '',
-        mantenimientoRealizado: false,
-        autonomia: '',
-        
-        voltajeRed: '', voltajeL1L2: '', voltajeL2L3: '', voltajeL1L3: '',
-        voltajeL1N: '', voltajeL2N: '', voltajeLN: '',
-        ampF1: '', ampF2: '', ampF3: '', ampN: '',
+      const getDraft = () => {
+        try {
+          const saved = localStorage.getItem(DRAFT_KEY);
+          return saved ? JSON.parse(saved) : null;
+        } catch (e) { return null; }
+      };
 
-        presionAceite: '', obsPresionAceite: '',
-        fluidosStatus: 'OK', obsFluidos: '',
-        manguerasStatus: 'OK', obsMangueras: '',
-        correaStatus: 'OK', obsCorrea: '',
+      const initialDraft = getDraft();
 
-        atsStatus: 'OK', obsATS: '',
-        batVCG: '', batVAT: '', batCTS: '', obsBat: '',
-        cableadoStatus: 'OK', obsCableado: '',
-        puntosCalStatus: 'SI', obsPuntosCal: '',
-        sonoffStatus: 'SI', obsSonoff: '',
+      const [f, setF] = useState(() => {
+        const defaults = {
+          horometer: plantEq ? formatHHMMSS(parseFloat(plantEq.horometer)) : '',
+          mantenimientoRealizado: false,
+          autonomia: '',
+          
+          voltajeRed: '', voltajeL1L2: '', voltajeL2L3: '', voltajeL1L3: '',
+          voltajeL1N: '', voltajeL2N: '', voltajeLN: '',
+          ampF1: '', ampF2: '', ampF3: '', ampN: '',
 
-        encendidoStatus: 'SI', obsEncendido: '',
-        ruidosStatus: 'SI', obsRuidos: '',
-        surtidoStatus: 'SI', obsSurtido: '',
-        reservaMin: '', reservaAutonomia: '', obsReserva: '',
+          presionAceite: '', obsPresionAceite: '',
+          fluidosStatus: 'OK', obsFluidos: '',
+          manguerasStatus: 'OK', obsMangueras: '',
+          correaStatus: 'OK', obsCorrea: '',
 
-        resultado: 'Aprobado – Opera dentro de parámetros.',
-        obsGenerales: '',
-        firmaTecnico: userProfile.name || ''
+          atsStatus: 'OK', obsATS: '',
+          batVCG: '', batVAT: '', batCTS: '', obsBat: '',
+          cableadoStatus: 'OK', obsCableado: '',
+          puntosCalStatus: 'SI', obsPuntosCal: '',
+          sonoffStatus: 'SI', obsSonoff: '',
+
+          encendidoStatus: 'SI', obsEncendido: '',
+          ruidosStatus: 'SI', obsRuidos: '',
+          surtidoStatus: 'SI', obsSurtido: '',
+          reservaMin: '', reservaAutonomia: '', obsReserva: '',
+
+          resultado: 'Aprobado – Opera dentro de parámetros.',
+          obsGenerales: '',
+          firmaTecnico: userProfile?.name || ''
+        };
+        return initialDraft ? { ...defaults, ...initialDraft } : defaults;
       });
+
       const [saving, setSaving] = useState(false);
       const [odooText, setOdooText] = useState('');
+      const [lastSavedTime, setLastSavedTime] = useState(() => initialDraft?.savedAt ? new Date(initialDraft.savedAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : null);
 
-      // 🛡️ SECURITY: Usar sessionStorage en vez de localStorage (CWE-922)
-      useEffect(() => {
+      // Guardar borrador en localStorage automáticamente
+      const saveDraftToStorage = useCallback(() => {
         try {
-          const saved = sessionStorage.getItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
-          if (saved) {
-            const draft = JSON.parse(saved);
-            setF(prev => ({ ...prev, ...draft }));
+          const now = new Date();
+          const draft = {
+            ...f,
+            nodeId, nodeName, plantTag: plantEq.tag, formType: 'plant',
+            savedAt: now.toISOString()
+          };
+          localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+          localStorage.setItem('airtek_active_inspection', JSON.stringify({
+            nodeId, nodeName, plantTag: plantEq.tag, formType: 'plant', key: DRAFT_KEY, savedAt: now.toISOString()
+          }));
+          setLastSavedTime(now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
+        } catch (e) {
+          // silenciado
+        }
+      }, [f, DRAFT_KEY, nodeId, nodeName, plantEq.tag]);
+
+      useEffect(() => {
+        saveDraftToStorage();
+      }, [saveDraftToStorage]);
+
+      // Guardar ante salida de pantalla o cambio de app
+      useEffect(() => {
+        const handleVisibility = () => {
+          if (document.visibilityState === 'hidden') saveDraftToStorage();
+        };
+        window.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('pagehide', saveDraftToStorage);
+        window.addEventListener('beforeunload', saveDraftToStorage);
+        return () => {
+          window.removeEventListener('visibilitychange', handleVisibility);
+          window.removeEventListener('pagehide', saveDraftToStorage);
+          window.removeEventListener('beforeunload', saveDraftToStorage);
+        };
+      }, [saveDraftToStorage]);
+
+      const clearDraft = () => {
+        try {
+          localStorage.removeItem(DRAFT_KEY);
+          const active = localStorage.getItem('airtek_active_inspection');
+          if (active && JSON.parse(active)?.key === DRAFT_KEY) {
+            localStorage.removeItem('airtek_active_inspection');
           }
-        } catch (e) {
-          // silenciado intencionalmente
-        }
-      }, [nodeId, plantEq.tag]);
-
-      // Guardar borrador en sessionStorage automáticamente ante cualquier cambio en f
-      useEffect(() => {
-        try {
-          sessionStorage.setItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`, JSON.stringify(f));
-        } catch (e) {
-          // silenciado intencionalmente
-        }
-      }, [f, nodeId, plantEq.tag]);
+        } catch (e) {}
+        toast('Borrador de planta eliminado', 'info');
+        onCancel();
+      };
 
       const generarTextoOdoo = () => {
         const dateStr = new Date().toLocaleDateString('es-VE');
@@ -3424,7 +3523,13 @@ ${f.obsGenerales}`;
           await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update(equipUpdate);
 
           toast('Chequeo de Grupo Electrógeno guardado', 'success');
-          sessionStorage.removeItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
+          localStorage.removeItem(DRAFT_KEY);
+          try {
+            const activeDraft = localStorage.getItem('airtek_active_inspection');
+            if (activeDraft && JSON.parse(activeDraft)?.key === DRAFT_KEY) {
+              localStorage.removeItem('airtek_active_inspection');
+            }
+          } catch (e) {}
           setOdooText(text);
         } catch (e) {
           // 🛡️ SECURITY: No exponer e.message al usuario (CWE-209)
@@ -3459,7 +3564,22 @@ ${f.obsGenerales}`;
 
       return (
         <div className="card fin">
-          <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800, marginBottom: 16 }}>🔋 Chequeo Preventivo / Correctivo: {plantEq.tag}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button onClick={onCancel} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 22 }}>←</button>
+              <h2 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800 }}>🔋 Chequeo: {plantEq.tag}</h2>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {lastSavedTime && (
+                <span style={{ fontSize: '.72rem', color: '#10b981', background: 'rgba(16,185,129,.12)', padding: '4px 8px', borderRadius: 4 }}>
+                  💾 Guardado local {lastSavedTime}
+                </span>
+              )}
+              <button className="bd" style={{ padding: '5px 10px', fontSize: '.72rem' }} onClick={clearDraft} title="Limpiar los campos del borrador">
+                🗑️ Limpiar
+              </button>
+            </div>
+          </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 20 }}>
             
@@ -3650,8 +3770,22 @@ ${f.obsGenerales}`;
 
     function NodePlantas({ nodeId, nodeName, equipment, records, userProfile, toast, onSubViewChange, setSelRecord }) {
       const genEqs = sortEquipment(equipment.filter(e => e.type === 'GEN' && e.active !== false));
-      const [viewForm, setViewForm] = useState(false);
-      const [selPlant, setSelPlant] = useState(null);
+      
+      // Auto-recuperar si el técnico estaba en este formulario de planta
+      const activePlantDraft = (() => {
+        try {
+          const s = localStorage.getItem('airtek_active_inspection');
+          if (!s) return null;
+          const parsed = JSON.parse(s);
+          if (parsed.nodeId === nodeId && parsed.formType === 'plant' && parsed.plantTag) {
+            return genEqs.find(e => e.tag === parsed.plantTag) || null;
+          }
+          return null;
+        } catch { return null; }
+      })();
+
+      const [viewForm, setViewForm] = useState(() => !!activePlantDraft);
+      const [selPlant, setSelPlant] = useState(() => activePlantDraft || null);
       const [expandedHist, setExpandedHist] = useState({});
 
       const handleInspect = (eq) => {
@@ -3886,11 +4020,26 @@ ${f.obsGenerales}`;
     // 🏭 DETALLE DE NODO
     // ═══════════════════════════════════════════════════
     function NodeDetail({ node, userProfile, onBack, toast }) {
-      const [tab, setTab] = useState('equipos');
+      const activeDraftInfo = (() => {
+        try {
+          const s = localStorage.getItem('airtek_active_inspection');
+          if (!s) return null;
+          const parsed = JSON.parse(s);
+          return parsed.nodeId === node.id ? parsed : null;
+        } catch { return null; }
+      })();
+
+      const [tab, setTab] = useState(() => {
+        if (activeDraftInfo?.formType === 'plant') return 'plantas';
+        return 'equipos';
+      });
       const [equipment, setEquipment] = useState([]);
       const [records, setRecords] = useState([]);
       const [loading, setLoading] = useState(true);
-      const [subView, setSubView] = useState('main'); // main | newRecord | recordDetail
+      const [subView, setSubView] = useState(() => {
+        if (activeDraftInfo?.formType === 'general') return 'newRecord';
+        return 'main';
+      }); // main | newRecord | recordDetail
       const [selRecord, setSelRecord] = useState(null);
       const [qrOpen, setQrOpen] = useState(false);
       const [filterType, setFilterType] = useState('all');
@@ -4408,6 +4557,47 @@ ${f.obsGenerales}`;
       const [search, setSearch] = useState('');
       const [fType, setFType] = useState('all');
       const [fState, setFState] = useState('all');
+      const [activeInspection, setActiveInspection] = useState(() => {
+        try {
+          const s = localStorage.getItem('airtek_active_inspection');
+          return s ? JSON.parse(s) : null;
+        } catch { return null; }
+      });
+
+      // Refrescar estado de borrador al volver a la pestaña
+      useEffect(() => {
+        const updateActive = () => {
+          try {
+            const s = localStorage.getItem('airtek_active_inspection');
+            setActiveInspection(s ? JSON.parse(s) : null);
+          } catch {}
+        };
+        window.addEventListener('focus', updateActive);
+        document.addEventListener('visibilitychange', updateActive);
+        return () => {
+          window.removeEventListener('focus', updateActive);
+          document.removeEventListener('visibilitychange', updateActive);
+        };
+      }, []);
+
+      const resumeInspection = () => {
+        if (!activeInspection) return;
+        const node = nodes.find(n => n.id === activeInspection.nodeId);
+        if (node) {
+          setSel(node);
+        } else {
+          toast('No se encontró el nodo del borrador', 'warn');
+        }
+      };
+
+      const discardActiveInspection = () => {
+        try {
+          if (activeInspection?.key) localStorage.removeItem(activeInspection.key);
+          localStorage.removeItem('airtek_active_inspection');
+          setActiveInspection(null);
+          toast('Borrador descartado', 'info');
+        } catch (e) {}
+      };
 
       useEffect(() => {
         const u = db.collection('energy_nodes').where('active', '==', true).onSnapshot(s => {
@@ -4442,6 +4632,43 @@ ${f.obsGenerales}`;
               <p style={{ color: 'var(--tx3)', fontSize: '.85rem' }}>{nodes.length} nodos activos registrados</p>
             </div>
           </div>
+
+          {/* Banner de Borrador Activo */}
+          {activeInspection && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              border: '1px solid rgba(245, 158, 11, 0.4)',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: '1.4rem' }}>📝</span>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#f59e0b', fontSize: '.9rem' }}>
+                    Inspección en progreso: {activeInspection.nodeName}
+                  </div>
+                  <div style={{ fontSize: '.76rem', color: 'var(--tx2)' }}>
+                    {activeInspection.formType === 'plant' ? `Planta ${activeInspection.plantTag}` : 'Inspección general de equipos'} · Guardado local {activeInspection.savedAt ? new Date(activeInspection.savedAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="bp" style={{ padding: '7px 14px', fontSize: '.8rem' }} onClick={resumeInspection}>
+                  Continuar Inspección →
+                </button>
+                <button className="bs" style={{ padding: '7px 10px', fontSize: '.8rem', borderColor: 'rgba(239,68,68,.4)', color: '#ef4444' }} onClick={discardActiveInspection}>
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Filtros */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
             <input className="fi" style={{ maxWidth: 260, flex: 1 }} placeholder="Buscar nodo o zona..." value={search} onChange={e => setSearch(e.target.value)} />
