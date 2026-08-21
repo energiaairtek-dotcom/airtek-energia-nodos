@@ -1623,32 +1623,33 @@
       const [forgotEmail, setForgotEmail] = useState('');
       const [forgotMsg, setForgotMsg] = useState('');
       const [forgotLoading, setForgotLoading] = useState(false);
-      const [theme, setTheme] = useState(() => localStorage.getItem('airtek_theme') || 'light');
-
-      const toggleTheme = () => {
-        const next = theme === 'light' ? 'dark' : 'light';
-        setTheme(next);
-        localStorage.setItem('airtek_theme', next);
-        document.documentElement.setAttribute('data-theme', next);
-      };
-
-      useEffect(() => {
-        document.documentElement.setAttribute('data-theme', theme);
-      }, [theme]);
 
       const go = async () => {
         if (!email.trim() || !pass) {
-          setErr('Ingresa tu correo electrónico y contraseña.');
+          setErr('Ingresa tu usuario/correo y contraseña.');
           return;
         }
         setErr(''); 
         setLoading(true);
         try {
-          await auth.signInWithEmailAndPassword(email.trim(), pass);
+          // Si el usuario ingresa solo el username sin @, autocompletar con @airtek.com.ve o el dominio
+          let loginEmail = email.trim();
+          if (!loginEmail.includes('@')) {
+            loginEmail = `${loginEmail}@airtek.com.ve`;
+          }
+          await auth.signInWithEmailAndPassword(loginEmail, pass);
         } catch (e) {
+          // Si falló con @airtek.com.ve, intentar tal cual o con @airtek.com
+          if (!email.includes('@')) {
+            try {
+              await auth.signInWithEmailAndPassword(`${email.trim()}@airtek.com`, pass);
+              setLoading(false);
+              return;
+            } catch (e2) {}
+          }
           console.warn('Login error:', e?.code);
-          let msg = 'Credenciales incorrectas. Verifica tus datos e intenta de nuevo.';
-          if (e.code === 'auth/user-not-found') msg = 'No existe una cuenta registrada con este correo.';
+          let msg = 'Usuario o contraseña incorrectos. Verifica e intenta de nuevo.';
+          if (e.code === 'auth/user-not-found') msg = 'No existe una cuenta registrada con este usuario.';
           else if (e.code === 'auth/wrong-password') msg = 'Contraseña incorrecta. Intenta de nuevo.';
           else if (e.code === 'auth/invalid-email') msg = 'Formato de correo electrónico inválido.';
           else if (e.code === 'auth/user-disabled') msg = 'Esta cuenta ha sido inhabilitada por un administrador.';
@@ -1667,12 +1668,14 @@
         setForgotMsg('');
         setForgotLoading(true);
         try {
-          await auth.sendPasswordResetEmail(forgotEmail.trim());
-          setForgotMsg('Se ha enviado un enlace de restablecimiento a tu correo. Revisa tu bandeja de entrada.');
+          let resetEmail = forgotEmail.trim();
+          if (!resetEmail.includes('@')) resetEmail = `${resetEmail}@airtek.com.ve`;
+          await auth.sendPasswordResetEmail(resetEmail);
+          setForgotMsg('Se ha enviado un enlace a tu correo para restablecer tu contraseña.');
         } catch (e) {
           console.warn('Reset error:', e?.code);
-          let msg = 'Error al enviar el correo. Verifica que el correo esté registrado.';
-          if (e.code === 'auth/user-not-found') msg = 'No existe ninguna cuenta registrada con este correo.';
+          let msg = 'Error al enviar el correo. Verifica que esté registrado.';
+          if (e.code === 'auth/user-not-found') msg = 'No existe ninguna cuenta con este correo.';
           else if (e.code === 'auth/invalid-email') msg = 'Formato de correo electrónico inválido.';
           setErr(msg);
         }
@@ -1680,72 +1683,36 @@
       };
 
       return (
-        <div className="figma-login-container">
-          {/* Columna Izquierda: Branding */}
+        <div className="figma-login-container fin">
           <div className="figma-login-left">
-            <div style={{ position: 'absolute', top: 24, left: 24, zIndex: 10 }}>
-              <div 
-                className="theme-switch-track" 
-                onClick={toggleTheme}
-                title={`Cambiar a modo ${theme === 'light' ? 'oscuro' : 'claro'}`}
-              >
-                <div className="theme-switch-icon-slot">
-                  <IconSun size={14} color={theme === 'light' ? '#71717a' : '#ffffff'} />
-                </div>
-                <div className="theme-switch-icon-slot">
-                  <IconMoon size={13} color={theme === 'dark' ? '#71717a' : '#ffffff'} />
-                </div>
-                <div className={`theme-switch-knob ${theme === 'light' ? 'light-mode' : 'dark-mode'}`}>
-                  {theme === 'light' ? <IconSun size={13} color="#ffffff" /> : <IconMoon size={12} color="#ffffff" />}
-                </div>
-              </div>
-            </div>
-
             <div className="figma-login-left-brand">
-              <div style={{
-                width: 64,
-                height: 64,
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, #0166ff 0%, #004ecc 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 8px 32px rgba(1, 102, 255, 0.4)',
-                marginBottom: 12
-              }}>
-                <IconPlug size={32} color="#ffffff" />
-              </div>
-              <div className="figma-login-left-title">
-                SISTEMA DE GESTIÓN DE ENERGÍA
-              </div>
-              <p style={{ color: '#a1a1aa', fontSize: '0.9rem', maxWidth: 360, lineHeight: 1.6, textAlign: 'center' }}>
-                Monitoreo, inventario, telemetría y registro de inspecciones en nodos y datacenters Airtek.
-              </p>
+              <img src="./img/airtek-blanco.png" alt="AIRTEK" />
+              <div className="figma-login-left-title">Gerencia Operativa De Energia</div>
             </div>
           </div>
-
-          {/* Columna Derecha: Formulario */}
-          <div className="figma-login-right" style={{ background: 'var(--bg-card)' }}>
-            <div className="figma-login-form-box fin">
-              <div style={{ marginBottom: 28, textAlign: 'center' }}>
-                <h2 className="fd" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 6 }}>
-                  {forgotMode ? 'Recuperar Contraseña' : 'Iniciar Sesión'}
-                </h2>
-                <p style={{ color: 'var(--tx3)', fontSize: '0.86rem' }}>
-                  {forgotMode ? 'Ingresa tu correo para recibir el enlace' : 'Ingresa tus credenciales para acceder'}
-                </p>
-              </div>
+          <div className="figma-login-right">
+            <div className="figma-login-form-box">
+              <h2 style={{
+                textAlign: 'center',
+                fontSize: '1.45rem',
+                fontWeight: 700,
+                color: '#111111',
+                marginBottom: 28,
+                fontFamily: "'Outfit', 'Montserrat', sans-serif"
+              }}>
+                {forgotMode ? 'Recuperar contraseña' : 'Iniciar sesión'}
+              </h2>
 
               {err && (
                 <div style={{
-                  background: 'var(--error-bg)',
-                  border: '1px solid var(--error-border)',
-                  color: 'var(--red)',
-                  borderRadius: 10,
+                  background: 'rgba(245, 91, 93, 0.1)',
+                  border: '1px solid rgba(245, 91, 93, 0.3)',
+                  borderRadius: 12,
                   padding: '10px 14px',
-                  marginBottom: 16,
-                  fontSize: '0.84rem',
-                  lineHeight: 1.4
+                  marginBottom: 20,
+                  color: '#dc2626',
+                  fontSize: '.85rem',
+                  textAlign: 'center'
                 }}>
                   {err}
                 </div>
@@ -1753,14 +1720,14 @@
 
               {forgotMsg && (
                 <div style={{
-                  background: 'var(--success-bg)',
-                  border: '1px solid var(--success-border)',
-                  color: 'var(--green)',
-                  borderRadius: 10,
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: 12,
                   padding: '10px 14px',
-                  marginBottom: 16,
-                  fontSize: '0.84rem',
-                  lineHeight: 1.4
+                  marginBottom: 20,
+                  color: '#15803d',
+                  fontSize: '.85rem',
+                  textAlign: 'center'
                 }}>
                   {forgotMsg}
                 </div>
@@ -1768,41 +1735,38 @@
 
               {forgotMode ? (
                 <>
-                  <div style={{ marginBottom: 20 }}>
-                    <label className="lbl">Correo Electrónico</label>
-                    <div className="figma-input-wrapper">
-                      <span className="figma-input-icon-left">
-                        <IconUser size={18} />
-                      </span>
-                      <input
-                        className="figma-input"
-                        type="email"
-                        value={forgotEmail}
-                        onChange={e => setForgotEmail(e.target.value)}
-                        placeholder="usuario@airtek.com"
-                        onKeyDown={e => e.key === 'Enter' && handleResetPassword()}
-                        autoFocus
-                      />
-                    </div>
+                  <div className="figma-input-wrapper" style={{ marginBottom: 20 }}>
+                    <span className="figma-input-icon-left">
+                      <IconUser size={18} color="#333333" />
+                    </span>
+                    <input 
+                      className="figma-input"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={e => setForgotEmail(e.target.value)}
+                      placeholder="Correo electrónico o usuario"
+                      onKeyDown={e => e.key === 'Enter' && handleResetPassword()}
+                      autoFocus
+                    />
                   </div>
 
-                  <button
+                  <button 
                     className="figma-login-btn"
                     onClick={handleResetPassword}
                     disabled={forgotLoading}
                   >
-                    {forgotLoading ? 'Enviando enlace...' : 'Enviar enlace de recuperación'}
+                    {forgotLoading ? 'Enviando enlace...' : 'Enviar enlace'}
                   </button>
 
-                  <div style={{ textAlign: 'center', marginTop: 20 }}>
+                  <div style={{ textAlign: 'center', marginTop: 22 }}>
                     <button
                       onClick={() => { setForgotMode(false); setErr(''); setForgotMsg(''); }}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: 'var(--primary)',
+                        color: '#0166ff',
                         cursor: 'pointer',
-                        fontSize: '0.86rem',
+                        fontSize: '.86rem',
                         fontWeight: 600
                       }}
                     >
@@ -1812,81 +1776,78 @@
                 </>
               ) : (
                 <>
-                  <div style={{ marginBottom: 14 }}>
-                    <label className="lbl">Correo Electrónico</label>
-                    <div className="figma-input-wrapper">
-                      <span className="figma-input-icon-left">
-                        <IconUser size={18} />
-                      </span>
-                      <input
-                        className="figma-input"
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        placeholder="usuario@airtek.com"
-                        onKeyDown={e => e.key === 'Enter' && go()}
-                      />
-                    </div>
+                  <div className="figma-input-wrapper">
+                    <span className="figma-input-icon-left">
+                      <IconUser size={18} color="#333333" />
+                    </span>
+                    <input 
+                      className="figma-input"
+                      type="text"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="Usuario"
+                      onKeyDown={e => e.key === 'Enter' && go()}
+                    />
                   </div>
 
-                  <div style={{ marginBottom: 18 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <label className="lbl" style={{ marginBottom: 0 }}>Contraseña</label>
-                      <button
-                        onClick={() => { setForgotMode(true); setForgotEmail(email); setErr(''); setForgotMsg(''); }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--primary)',
-                          cursor: 'pointer',
-                          fontSize: '0.74rem',
-                          fontWeight: 600
-                        }}
-                      >
-                        ¿Olvidaste tu contraseña?
-                      </button>
-                    </div>
-                    <div className="figma-input-wrapper">
-                      <span className="figma-input-icon-left">
-                        <IconKey size={18} />
-                      </span>
-                      <input
-                        className="figma-input"
-                        type={showPass ? 'text' : 'password'}
-                        value={pass}
-                        onChange={e => setPass(e.target.value)}
-                        placeholder="••••••••"
-                        onKeyDown={e => e.key === 'Enter' && go()}
-                      />
-                      <button
-                        type="button"
-                        className="figma-input-icon-right"
-                        onClick={() => setShowPass(!showPass)}
-                        title={showPass ? 'Ocultar contraseña' : 'Ver contraseña'}
-                      >
-                        {showPass ? <IconEyeOff size={18} /> : <IconEye size={18} />}
-                      </button>
-                    </div>
+                  <div className="figma-input-wrapper" style={{ marginBottom: 12 }}>
+                    <span className="figma-input-icon-left">
+                      <IconKey size={18} color="#333333" />
+                    </span>
+                    <input 
+                      className="figma-input"
+                      type={showPass ? "text" : "password"}
+                      value={pass}
+                      onChange={e => setPass(e.target.value)}
+                      placeholder="Contraseña"
+                      onKeyDown={e => e.key === 'Enter' && go()}
+                    />
+                    <button 
+                      type="button"
+                      className="figma-input-icon-right"
+                      onClick={() => setShowPass(!showPass)}
+                      title={showPass ? "Ocultar contraseña" : "Ver contraseña"}
+                    >
+                      {showPass ? <IconEye size={18} color="#555" /> : <IconEyeOff size={18} color="#555" />}
+                    </button>
                   </div>
 
-                  <button
+                  <div style={{ textAlign: 'right', marginBottom: 20 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotMode(true); setForgotEmail(email); setErr(''); setForgotMsg(''); }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#0166ff',
+                        cursor: 'pointer',
+                        fontSize: '.78rem',
+                        fontWeight: 600
+                      }}
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
+                  </div>
+
+                  <button 
                     className="figma-login-btn"
                     onClick={go}
                     disabled={loading}
                   >
-                    {loading ? 'Ingresando...' : 'Iniciar Sesión'}
+                    {loading ? 'Ingresando...' : 'Ingresar'}
                   </button>
 
                   <div style={{ textAlign: 'center', marginTop: 22 }}>
-                    <span style={{ color: 'var(--tx3)', fontSize: '0.85rem' }}>¿No tienes cuenta? </span>
+                    <span style={{ color: '#666666', fontSize: '.85rem' }}>¿No tienes cuenta? </span>
                     <button
+                      type="button"
                       onClick={onRegister}
                       style={{
-                        color: 'var(--primary)',
+                        color: '#0166ff',
                         background: 'none',
                         border: 'none',
                         cursor: 'pointer',
-                        fontSize: '0.85rem',
+                        fontSize: '.85rem',
                         fontWeight: 700
                       }}
                     >
@@ -1925,10 +1886,13 @@
         try {
           const allowedRoles = ['tecnico', 'supervisor', 'directivo'];
           const selectedRole = allowedRoles.includes(f.role) ? f.role : 'tecnico';
-          const cred = await auth.createUserWithEmailAndPassword(f.email.trim(), f.pass);
+          let regEmail = f.email.trim();
+          if (!regEmail.includes('@')) regEmail = `${regEmail}@airtek.com.ve`;
+
+          const cred = await auth.createUserWithEmailAndPassword(regEmail, f.pass);
           const profile = {
             name: sanitize(f.name.trim()),
-            email: sanitize(f.email.trim().toLowerCase()),
+            email: sanitize(regEmail.toLowerCase()),
             role: selectedRole,
             approved: false,
             createdAt: TS()
@@ -1942,7 +1906,7 @@
           setDone(true);
         } catch (e) {
           console.warn('Register error:', e?.code);
-          if (e.code === 'auth/email-already-in-use') setErr('Este correo ya está registrado.');
+          if (e.code === 'auth/email-already-in-use') setErr('Este correo o usuario ya está registrado.');
           else if (e.code === 'auth/invalid-email') setErr('Formato de correo inválido.');
           else if (e.code === 'auth/weak-password') setErr('La contraseña es demasiado débil.');
           else setErr('Error al registrar. Intenta de nuevo.');
@@ -1951,70 +1915,79 @@
       };
 
       if (done) return (
-        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div className="card fin" style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 32 }}>
-            <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: 'var(--green)' }}>
-              <IconCheckCircle size={32} />
+        <div className="figma-login-container fin">
+          <div className="figma-login-left">
+            <div className="figma-login-left-brand">
+              <img src="./img/airtek-blanco.png" alt="AIRTEK" />
+              <div className="figma-login-left-title">Gerencia Operativa De Energia</div>
             </div>
-            <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 8 }}>Solicitud Enviada</h2>
-            <p style={{ color: 'var(--tx3)', fontSize: '.88rem', marginBottom: 24, lineHeight: 1.5 }}>
-              Tu cuenta ha sido creada exitosamente. Un administrador aprobará tu acceso pronto.
-            </p>
-            <button className="bp" style={{ width: '100%' }} onClick={onBack}>Volver al inicio de sesión</button>
+          </div>
+          <div className="figma-login-right">
+            <div className="figma-login-form-box" style={{ textAlign: 'center' }}>
+              <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(16,185,129,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: '#15803d' }}>
+                <IconCheckCircle size={32} />
+              </div>
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#111111', marginBottom: 8, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>Solicitud Enviada</h2>
+              <p style={{ color: '#555555', fontSize: '.88rem', marginBottom: 24, lineHeight: 1.5 }}>
+                Tu cuenta ha sido creada exitosamente. Un administrador aprobará tu acceso pronto.
+              </p>
+              <button className="figma-login-btn" onClick={onBack}>Volver al inicio de sesión</button>
+            </div>
           </div>
         </div>
       );
 
       return (
-        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div style={{ width: '100%', maxWidth: 440 }} className="fin">
-            <div className="card" style={{ padding: 28 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-                <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 22, display: 'flex', alignItems: 'center' }}>←</button>
-                <div>
-                  <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--tx1)' }}>Crear Cuenta</h2>
-                  <p style={{ color: 'var(--tx3)', fontSize: '.8rem' }}>Sistema de Gestión de Energía</p>
-                </div>
+        <div className="figma-login-container fin">
+          <div className="figma-login-left">
+            <div className="figma-login-left-brand">
+              <img src="./img/airtek-blanco.png" alt="AIRTEK" />
+              <div className="figma-login-left-title">Gerencia Operativa De Energia</div>
+            </div>
+          </div>
+          <div className="figma-login-right">
+            <div className="figma-login-form-box">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <button onClick={onBack} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 22, display: 'flex', alignItems: 'center' }}>←</button>
+                <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#111111', fontFamily: "'Outfit', 'Montserrat', sans-serif", margin: 0 }}>Crear Cuenta</h2>
               </div>
 
               {err && (
-                <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--red)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '.84rem' }}>
+                <div style={{ background: 'rgba(245, 91, 93, 0.1)', border: '1px solid rgba(245, 91, 93, 0.3)', color: '#dc2626', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: '.84rem', textAlign: 'center' }}>
                   {err}
                 </div>
               )}
 
-              <div style={{ marginBottom: 13 }}>
-                <label className="lbl">Nombre Completo</label>
-                <input className="fi" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Ej: Juan Pérez" />
+              <div className="figma-input-wrapper">
+                <span className="figma-input-icon-left"><IconUser size={18} color="#333333" /></span>
+                <input className="figma-input" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Nombre y Apellido" />
               </div>
 
-              <div style={{ marginBottom: 13 }}>
-                <label className="lbl">Correo Electrónico</label>
-                <input className="fi" type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} placeholder="usuario@airtek.com" />
+              <div className="figma-input-wrapper">
+                <span className="figma-input-icon-left"><IconUser size={18} color="#333333" /></span>
+                <input className="figma-input" type="text" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} placeholder="Correo o usuario" />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 13 }}>
-                <div>
-                  <label className="lbl">Contraseña</label>
-                  <input className="fi" type="password" value={f.pass} onChange={e => setF({ ...f, pass: e.target.value })} placeholder="••••••••" />
-                </div>
-                <div>
-                  <label className="lbl">Confirmar</label>
-                  <input className="fi" type="password" value={f.pass2} onChange={e => setF({ ...f, pass2: e.target.value })} placeholder="••••••••" />
-                </div>
+              <div className="figma-input-wrapper">
+                <span className="figma-input-icon-left"><IconKey size={18} color="#333333" /></span>
+                <input className="figma-input" type="password" value={f.pass} onChange={e => setF({ ...f, pass: e.target.value })} placeholder="Contraseña" />
+              </div>
+
+              <div className="figma-input-wrapper">
+                <span className="figma-input-icon-left"><IconKey size={18} color="#333333" /></span>
+                <input className="figma-input" type="password" value={f.pass2} onChange={e => setF({ ...f, pass2: e.target.value })} placeholder="Confirmar contraseña" />
               </div>
 
               <div style={{ marginBottom: 20 }}>
-                <label className="lbl">Rol Solicitado</label>
-                <select className="fi" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
-                  <option value="tecnico">Técnico (Inspecciones y Registro de Equipos)</option>
-                  <option value="supervisor">Supervisor (Control, Edición e Inspecciones)</option>
-                  <option value="directivo">Directivo (Reportes, Exportación y Lectura)</option>
+                <select className="figma-input" value={f.role} onChange={e => setF({ ...f, role: e.target.value })} style={{ padding: '12px 18px' }}>
+                  <option value="tecnico">Técnico (Inspecciones y Equipos)</option>
+                  <option value="supervisor">Supervisor (Control y Aprobaciones)</option>
+                  <option value="directivo">Directivo (Reportes y Lectura)</option>
                 </select>
               </div>
 
-              <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>
-                {loading ? 'Registrando...' : 'Enviar Solicitud de Acceso'}
+              <button className="figma-login-btn" onClick={go} disabled={loading}>
+                {loading ? 'Registrando...' : 'Solicitar Acceso'}
               </button>
             </div>
           </div>
