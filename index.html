@@ -1396,27 +1396,31 @@
     };
 
     // ═══════════════════════════════════════════════════
-    // NOTIFICACIONES CORPORATIVAS (notification-ms)
+    // EMAILJS CONFIG & NOTIFICACIONES POR CORREO
     // ═══════════════════════════════════════════════════
-    const API_BASE = (typeof window !== 'undefined' && window.location.origin.includes('localhost'))
-      ? 'http://127.0.0.1:8000'
-      : (typeof window !== 'undefined' ? window.location.origin + '/api' : 'https://energia.airtek.com.ve/api');
+    const EMAILJS_SERVICE_ID = 'service_5h5jm6b';
+    const EMAILJS_TEMPLATE_ID = 'template_44sb0ou';
+    const EMAILJS_PUBLIC_KEY = '8l66LkMpqKzhPJ4cq';
+    const ALERT_EMAIL = ''; // Destinatario configurado en el template de EmailJS
 
     const sendNotificationAlert = async (params) => {
+      if (typeof window === 'undefined' || !window.emailjs || !EMAILJS_SERVICE_ID || EMAILJS_SERVICE_ID === 'TU_SERVICE_ID') {
+        console.warn('[EmailJS] Librería no disponible o servicio no configurado.');
+        return;
+      }
       try {
-        const apiUrl = API_BASE + '/notifications/email';
-        console.log('[Notificación Corporativa] Enviando alerta a:', apiUrl, params);
-        const resp = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(params),
-        });
-        if (!resp.ok) throw new Error('Notification API error: ' + resp.status);
-        const resJson = await resp.json();
-        console.log('[Notificación Corporativa] Enviada exitosamente:', resJson);
-        return resJson;
+        console.log('[EmailJS] Enviando alerta por EmailJS:', params);
+        await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+          nodo_nombre: params.nodo || '',
+          tecnico_nombre: params.tecnico || 'Técnico',
+          fecha: params.fecha || new Date().toLocaleString('es-VE'),
+          tipo_alarma: params.alarmas || 'Alerta técnica de energía',
+          observaciones: params.observaciones || 'Sin observaciones adicionales.',
+          link_nodo: typeof window !== 'undefined' ? window.location.href : '',
+        }, EMAILJS_PUBLIC_KEY);
+        console.log('[EmailJS] Alerta de correo enviada exitosamente.');
       } catch (e) {
-        console.warn('[X Notificación Corporativa Error]', e.message);
+        console.warn('[EmailJS Error]:', e);
       }
     };
 
