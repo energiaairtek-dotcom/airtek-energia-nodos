@@ -1619,148 +1619,409 @@
       const [loading, setLoading] = useState(false);
       const [err, setErr] = useState('');
       const [showPass, setShowPass] = useState(false);
+      const [forgotMode, setForgotMode] = useState(false);
+      const [forgotEmail, setForgotEmail] = useState('');
+      const [forgotMsg, setForgotMsg] = useState('');
+      const [forgotLoading, setForgotLoading] = useState(false);
+      const [theme, setTheme] = useState(() => localStorage.getItem('airtek_theme') || 'light');
+
+      const toggleTheme = () => {
+        const next = theme === 'light' ? 'dark' : 'light';
+        setTheme(next);
+        localStorage.setItem('airtek_theme', next);
+        document.documentElement.setAttribute('data-theme', next);
+      };
+
+      useEffect(() => {
+        document.documentElement.setAttribute('data-theme', theme);
+      }, [theme]);
 
       const go = async () => {
         if (!email.trim() || !pass) {
-          setErr('Ingresa tu usuario/correo y contraseña de Odoo 16.');
+          setErr('Ingresa tu correo electrónico y contraseña.');
           return;
         }
         setErr(''); 
         setLoading(true);
         try {
-          // 1. Intentar Autenticación Corporativa Odoo 16 SSO vía backend /auth/login
-          const res = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email.trim(), password: pass })
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            const profile = {
-              uid: data.uid,
-              email: data.email,
-              name: data.name,
-              role: data.role,
-              jobTitle: data.jobTitle,
-              photoURL: data.photoURL || data.avatar || '',
-              approved: data.approved !== false
-            };
-            localStorage.setItem('energia_user_profile', JSON.stringify(profile));
-            localStorage.setItem('energia_access_token', data.accessToken || '');
-            
-            // Recargar o refrescar para iniciar sesión inmediatamente
-            window.location.reload();
-            return;
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            if (res.status === 401) {
-              // Intentar autenticación local Firebase si es un usuario legacy
-              try {
-                await auth.signInWithEmailAndPassword(email.trim(), pass);
-                setLoading(false);
-                return;
-              } catch (e2) {
-                setErr(errData.detail || 'Usuario o contraseña de Odoo 16 incorrectos. Verifica e intenta de nuevo.');
-              }
-            } else {
-              setErr(errData.detail || 'Error al conectar con el servidor de autenticación de Odoo 16.');
-            }
-          }
+          await auth.signInWithEmailAndPassword(email.trim(), pass);
         } catch (e) {
-          // Fallback a Firebase Auth si falla la red
-          try {
-            await auth.signInWithEmailAndPassword(email.trim(), pass);
-          } catch (e3) {
-            setErr('Credenciales incorrectas o error de conexión con Odoo 16.');
-          }
+          console.warn('Login error:', e?.code);
+          let msg = 'Credenciales incorrectas. Verifica tus datos e intenta de nuevo.';
+          if (e.code === 'auth/user-not-found') msg = 'No existe una cuenta registrada con este correo.';
+          else if (e.code === 'auth/wrong-password') msg = 'Contraseña incorrecta. Intenta de nuevo.';
+          else if (e.code === 'auth/invalid-email') msg = 'Formato de correo electrónico inválido.';
+          else if (e.code === 'auth/user-disabled') msg = 'Esta cuenta ha sido inhabilitada por un administrador.';
+          else if (e.code === 'auth/too-many-requests') msg = 'Demasiados intentos fallidos. Intenta más tarde.';
+          setErr(msg);
         }
         setLoading(false);
       };
 
+      const handleResetPassword = async () => {
+        if (!forgotEmail.trim()) {
+          setErr('Escribe tu correo electrónico para enviar el enlace.');
+          return;
+        }
+        setErr('');
+        setForgotMsg('');
+        setForgotLoading(true);
+        try {
+          await auth.sendPasswordResetEmail(forgotEmail.trim());
+          setForgotMsg('Se ha enviado un enlace de restablecimiento a tu correo. Revisa tu bandeja de entrada.');
+        } catch (e) {
+          console.warn('Reset error:', e?.code);
+          let msg = 'Error al enviar el correo. Verifica que el correo esté registrado.';
+          if (e.code === 'auth/user-not-found') msg = 'No existe ninguna cuenta registrada con este correo.';
+          else if (e.code === 'auth/invalid-email') msg = 'Formato de correo electrónico inválido.';
+          setErr(msg);
+        }
+        setForgotLoading(false);
+      };
+
       return (
-        <div className="figma-login-container fin">
+        <div className="figma-login-container">
+          {/* Columna Izquierda: Branding */}
           <div className="figma-login-left">
+            <div style={{ position: 'absolute', top: 24, left: 24, zIndex: 10 }}>
+              <div 
+                className="theme-switch-track" 
+                onClick={toggleTheme}
+                title={`Cambiar a modo ${theme === 'light' ? 'oscuro' : 'claro'}`}
+              >
+                <div className="theme-switch-icon-slot">
+                  <IconSun size={14} color={theme === 'light' ? '#71717a' : '#ffffff'} />
+                </div>
+                <div className="theme-switch-icon-slot">
+                  <IconMoon size={13} color={theme === 'dark' ? '#71717a' : '#ffffff'} />
+                </div>
+                <div className={`theme-switch-knob ${theme === 'light' ? 'light-mode' : 'dark-mode'}`}>
+                  {theme === 'light' ? <IconSun size={13} color="#ffffff" /> : <IconMoon size={12} color="#ffffff" />}
+                </div>
+              </div>
+            </div>
+
             <div className="figma-login-left-brand">
-              <img src="./img/airtek-blanco.png" alt="AIRTEK" />
-              <div className="figma-login-left-title">Gerencia Operativa De Energia</div>
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, #0166ff 0%, #004ecc 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 8px 32px rgba(1, 102, 255, 0.4)',
+                marginBottom: 12
+              }}>
+                <IconPlug size={32} color="#ffffff" />
+              </div>
+              <div className="figma-login-left-title">
+                SISTEMA DE GESTIÓN DE ENERGÍA
+              </div>
+              <p style={{ color: '#a1a1aa', fontSize: '0.9rem', maxWidth: 360, lineHeight: 1.6, textAlign: 'center' }}>
+                Monitoreo, inventario, telemetría y registro de inspecciones en nodos y datacenters Airtek.
+              </p>
             </div>
           </div>
-          <div className="figma-login-right">
-            <div className="figma-login-form-box">
-              <h2 style={{
-                textAlign: 'center',
-                fontSize: '1.45rem',
-                fontWeight: 700,
-                color: '#111111',
-                marginBottom: 28,
-                fontFamily: "'Outfit', 'Montserrat', sans-serif"
-              }}>Iniciar sesión</h2>
+
+          {/* Columna Derecha: Formulario */}
+          <div className="figma-login-right" style={{ background: 'var(--bg-card)' }}>
+            <div className="figma-login-form-box fin">
+              <div style={{ marginBottom: 28, textAlign: 'center' }}>
+                <h2 className="fd" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 6 }}>
+                  {forgotMode ? 'Recuperar Contraseña' : 'Iniciar Sesión'}
+                </h2>
+                <p style={{ color: 'var(--tx3)', fontSize: '0.86rem' }}>
+                  {forgotMode ? 'Ingresa tu correo para recibir el enlace' : 'Ingresa tus credenciales para acceder'}
+                </p>
+              </div>
 
               {err && (
                 <div style={{
-                  background: 'rgba(245, 91, 93, 0.1)',
-                  border: '1px solid rgba(245, 91, 93, 0.3)',
-                  borderRadius: 12,
+                  background: 'var(--error-bg)',
+                  border: '1px solid var(--error-border)',
+                  color: 'var(--red)',
+                  borderRadius: 10,
                   padding: '10px 14px',
-                  marginBottom: 20,
-                  color: '#dc2626',
-                  fontSize: '.85rem',
-                  textAlign: 'center'
+                  marginBottom: 16,
+                  fontSize: '0.84rem',
+                  lineHeight: 1.4
                 }}>
                   {err}
                 </div>
               )}
 
-              <div className="figma-input-wrapper">
-                <span className="figma-input-icon-left">
-                  <IconUser size={18} color="#333333" />
-                </span>
-                <input 
-                  className="figma-input"
-                  type="text"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="Usuario"
-                  onKeyDown={e => e.key === 'Enter' && go()}
-                />
-              </div>
+              {forgotMsg && (
+                <div style={{
+                  background: 'var(--success-bg)',
+                  border: '1px solid var(--success-border)',
+                  color: 'var(--green)',
+                  borderRadius: 10,
+                  padding: '10px 14px',
+                  marginBottom: 16,
+                  fontSize: '0.84rem',
+                  lineHeight: 1.4
+                }}>
+                  {forgotMsg}
+                </div>
+              )}
 
-              <div className="figma-input-wrapper" style={{ marginBottom: 24 }}>
-                <span className="figma-input-icon-left">
-                  <IconKey size={18} color="#333333" />
-                </span>
-                <input 
-                  className="figma-input"
-                  type={showPass ? "text" : "password"}
-                  value={pass}
-                  onChange={e => setPass(e.target.value)}
-                  placeholder="Contraseña"
-                  onKeyDown={e => e.key === 'Enter' && go()}
-                />
-                <button 
-                  type="button"
-                  className="figma-input-icon-right"
-                  onClick={() => setShowPass(!showPass)}
-                >
-                  {showPass ? <IconEye size={18} color="#555" /> : <IconEyeOff size={18} color="#555" />}
-                </button>
-              </div>
+              {forgotMode ? (
+                <>
+                  <div style={{ marginBottom: 20 }}>
+                    <label className="lbl">Correo Electrónico</label>
+                    <div className="figma-input-wrapper">
+                      <span className="figma-input-icon-left">
+                        <IconUser size={18} />
+                      </span>
+                      <input
+                        className="figma-input"
+                        type="email"
+                        value={forgotEmail}
+                        onChange={e => setForgotEmail(e.target.value)}
+                        placeholder="usuario@airtek.com"
+                        onKeyDown={e => e.key === 'Enter' && handleResetPassword()}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
 
-              <button 
-                className="figma-login-btn"
-                onClick={go}
-                disabled={loading}
-              >
-                {loading ? 'Ingresando...' : 'Ingresar'}
-              </button>
+                  <button
+                    className="figma-login-btn"
+                    onClick={handleResetPassword}
+                    disabled={forgotLoading}
+                  >
+                    {forgotLoading ? 'Enviando enlace...' : 'Enviar enlace de recuperación'}
+                  </button>
+
+                  <div style={{ textAlign: 'center', marginTop: 20 }}>
+                    <button
+                      onClick={() => { setForgotMode(false); setErr(''); setForgotMsg(''); }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--primary)',
+                        cursor: 'pointer',
+                        fontSize: '0.86rem',
+                        fontWeight: 600
+                      }}
+                    >
+                      ← Volver al inicio de sesión
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ marginBottom: 14 }}>
+                    <label className="lbl">Correo Electrónico</label>
+                    <div className="figma-input-wrapper">
+                      <span className="figma-input-icon-left">
+                        <IconUser size={18} />
+                      </span>
+                      <input
+                        className="figma-input"
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="usuario@airtek.com"
+                        onKeyDown={e => e.key === 'Enter' && go()}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label className="lbl" style={{ marginBottom: 0 }}>Contraseña</label>
+                      <button
+                        onClick={() => { setForgotMode(true); setForgotEmail(email); setErr(''); setForgotMsg(''); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--primary)',
+                          cursor: 'pointer',
+                          fontSize: '0.74rem',
+                          fontWeight: 600
+                        }}
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </button>
+                    </div>
+                    <div className="figma-input-wrapper">
+                      <span className="figma-input-icon-left">
+                        <IconKey size={18} />
+                      </span>
+                      <input
+                        className="figma-input"
+                        type={showPass ? 'text' : 'password'}
+                        value={pass}
+                        onChange={e => setPass(e.target.value)}
+                        placeholder="••••••••"
+                        onKeyDown={e => e.key === 'Enter' && go()}
+                      />
+                      <button
+                        type="button"
+                        className="figma-input-icon-right"
+                        onClick={() => setShowPass(!showPass)}
+                        title={showPass ? 'Ocultar contraseña' : 'Ver contraseña'}
+                      >
+                        {showPass ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    className="figma-login-btn"
+                    onClick={go}
+                    disabled={loading}
+                  >
+                    {loading ? 'Ingresando...' : 'Iniciar Sesión'}
+                  </button>
+
+                  <div style={{ textAlign: 'center', marginTop: 22 }}>
+                    <span style={{ color: 'var(--tx3)', fontSize: '0.85rem' }}>¿No tienes cuenta? </span>
+                    <button
+                      onClick={onRegister}
+                      style={{
+                        color: 'var(--primary)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.85rem',
+                        fontWeight: 700
+                      }}
+                    >
+                      Registrarse
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       );
     }
 
-    function PendingPage({ onLogout }) {
+    function RegisterPage({ onBack }) {
+      const [f, setF] = useState({ name: '', email: '', pass: '', pass2: '', role: 'tecnico' });
+      const [loading, setLoading] = useState(false);
+      const [err, setErr] = useState('');
+      const [done, setDone] = useState(false);
+
+      const go = async () => {
+        setErr('');
+        if (!f.name.trim() || !f.email.trim() || !f.pass) {
+          setErr('Completa todos los campos obligatorios.');
+          return;
+        }
+        if (f.pass !== f.pass2) {
+          setErr('Las contraseñas no coinciden.');
+          return;
+        }
+        if (f.pass.length < 6) {
+          setErr('La contraseña debe tener al menos 6 caracteres.');
+          return;
+        }
+        setLoading(true);
+        try {
+          const allowedRoles = ['tecnico', 'supervisor', 'directivo'];
+          const selectedRole = allowedRoles.includes(f.role) ? f.role : 'tecnico';
+          const cred = await auth.createUserWithEmailAndPassword(f.email.trim(), f.pass);
+          const profile = {
+            name: sanitize(f.name.trim()),
+            email: sanitize(f.email.trim().toLowerCase()),
+            role: selectedRole,
+            approved: false,
+            createdAt: TS()
+          };
+          await db.collection('airtek_users').doc(cred.user.uid).set({
+            ...profile,
+            apps: { nodos: selectedRole, pm: null, almacen: null }
+          });
+          await db.collection('energy_users').doc(cred.user.uid).set(profile);
+          await auth.signOut();
+          setDone(true);
+        } catch (e) {
+          console.warn('Register error:', e?.code);
+          if (e.code === 'auth/email-already-in-use') setErr('Este correo ya está registrado.');
+          else if (e.code === 'auth/invalid-email') setErr('Formato de correo inválido.');
+          else if (e.code === 'auth/weak-password') setErr('La contraseña es demasiado débil.');
+          else setErr('Error al registrar. Intenta de nuevo.');
+        }
+        setLoading(false);
+      };
+
+      if (done) return (
+        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div className="card fin" style={{ maxWidth: 420, width: '100%', textAlign: 'center', padding: 32 }}>
+            <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'var(--success-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: 'var(--green)' }}>
+              <IconCheckCircle size={32} />
+            </div>
+            <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 8 }}>Solicitud Enviada</h2>
+            <p style={{ color: 'var(--tx3)', fontSize: '.88rem', marginBottom: 24, lineHeight: 1.5 }}>
+              Tu cuenta ha sido creada exitosamente. Un administrador aprobará tu acceso pronto.
+            </p>
+            <button className="bp" style={{ width: '100%' }} onClick={onBack}>Volver al inicio de sesión</button>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: '100%', maxWidth: 440 }} className="fin">
+            <div className="card" style={{ padding: 28 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+                <button onClick={onBack} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 22, display: 'flex', alignItems: 'center' }}>←</button>
+                <div>
+                  <h2 className="fd" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--tx1)' }}>Crear Cuenta</h2>
+                  <p style={{ color: 'var(--tx3)', fontSize: '.8rem' }}>Sistema de Gestión de Energía</p>
+                </div>
+              </div>
+
+              {err && (
+                <div style={{ background: 'var(--error-bg)', border: '1px solid var(--error-border)', color: 'var(--red)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: '.84rem' }}>
+                  {err}
+                </div>
+              )}
+
+              <div style={{ marginBottom: 13 }}>
+                <label className="lbl">Nombre Completo</label>
+                <input className="fi" value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Ej: Juan Pérez" />
+              </div>
+
+              <div style={{ marginBottom: 13 }}>
+                <label className="lbl">Correo Electrónico</label>
+                <input className="fi" type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} placeholder="usuario@airtek.com" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 13 }}>
+                <div>
+                  <label className="lbl">Contraseña</label>
+                  <input className="fi" type="password" value={f.pass} onChange={e => setF({ ...f, pass: e.target.value })} placeholder="••••••••" />
+                </div>
+                <div>
+                  <label className="lbl">Confirmar</label>
+                  <input className="fi" type="password" value={f.pass2} onChange={e => setF({ ...f, pass2: e.target.value })} placeholder="••••••••" />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label className="lbl">Rol Solicitado</label>
+                <select className="fi" value={f.role} onChange={e => setF({ ...f, role: e.target.value })}>
+                  <option value="tecnico">Técnico (Inspecciones y Registro de Equipos)</option>
+                  <option value="supervisor">Supervisor (Control, Edición e Inspecciones)</option>
+                  <option value="directivo">Directivo (Reportes, Exportación y Lectura)</option>
+                </select>
+              </div>
+
+              <button className="bp" style={{ width: '100%' }} onClick={go} disabled={loading}>
+                {loading ? 'Registrando...' : 'Enviar Solicitud de Acceso'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+function PendingPage({ onLogout }) {
       return (
         <div className="gridbg" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div className="card fin" style={{ maxWidth: 400, textAlign: 'center' }}>
@@ -6742,21 +7003,8 @@ ${f.obsGenerales}`;
         setLoading(false);
       };
 
-      const hasAdminAccess = ['admin', 'supervisor'].includes(userProfile?.role);
-
       return (
         <div className="overlay" onClick={onClose}>
-          {confirmModal && (
-            <ConfirmModal 
-              title={confirmModal.title} 
-              msg={confirmModal.msg} 
-              type={confirmModal.type} 
-              confirmText={confirmModal.confirmText} 
-              cancelText={confirmModal.cancelText} 
-              onConfirm={confirmModal.onConfirm} 
-              onCancel={() => setConfirmModal(null)} 
-            />
-          )}
           <div className="card fin" style={{ maxWidth: 380, width: '100%' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <h3 className="fd" style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tx1)' }}>Cambiar Contraseña</h3>
@@ -6779,15 +7027,13 @@ ${f.obsGenerales}`;
               <button className="bs" onClick={onClose} disabled={loading}>Cancelar</button>
             </div>
             <p style={{ marginTop: 12, fontSize: '.75rem', color: 'var(--tx4)', textAlign: 'center' }}>
-              La contraseña se actualizará en todas las apps que usen este correo.
+              La contraseña se actualizará para el inicio de sesión con este correo.
             </p>
           </div>
         </div>
       );
     }
-
-        
-    function IconSun({ size = 16, color = "currentColor" }) {
+function IconSun({ size = 16, color = "currentColor" }) {
       return (
         <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="4" />
@@ -8013,46 +8259,56 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
       const toast = useCallback((msg, type = 'info') => setToastData({ msg, type, key: Date.now() }), []);
 
-
       useEffect(() => {
-        // Verificar sesión activa de Odoo 16 guardada en localStorage
-        try {
-          const storedStr = localStorage.getItem('energia_user_profile');
-          if (storedStr) {
-            const storedProfile = JSON.parse(storedStr);
-            if (storedProfile && storedProfile.email) {
-              setUserProfile(storedProfile);
-              setAuthState(storedProfile.approved !== false ? 'authenticated' : 'pending');
-              return;
-            }
-          }
-        } catch (e) {}
-
         if (!auth) { setAuthState('error'); return; }
         return auth.onAuthStateChanged(async user => {
           if (!user) { setAuthState('unauthenticated'); setUserProfile(null); return; }
           try {
-            const role = user.role || 'tecnico';
-            const name = user.name || user.email;
-            const approved = user.approved !== false;
+            // Buscar perfil en Firestore: airtek_users primero, luego energy_users (legacy)
+            let snap = await db.collection('airtek_users').doc(user.uid).get();
+            if (!snap.exists) snap = await db.collection('energy_users').doc(user.uid).get();
+
+            if (!snap.exists) {
+              // Si el usuario existe en Firebase Auth pero aún no tiene doc en Firestore
+              const defaultProfile = {
+                name: user.displayName || user.email.split('@')[0],
+                email: user.email.toLowerCase(),
+                role: 'tecnico',
+                approved: true,
+                createdAt: TS()
+              };
+              await db.collection('airtek_users').doc(user.uid).set({
+                ...defaultProfile,
+                apps: { nodos: 'tecnico', pm: null, almacen: null }
+              });
+              await db.collection('energy_users').doc(user.uid).set(defaultProfile);
+              setUserProfile({ uid: user.uid, ...defaultProfile });
+              setAuthState('authenticated');
+              return;
+            }
+
+            const data = snap.data();
+            const role = (data.apps && data.apps.nodos) || data.role || 'tecnico';
+            const name = data.name || data.nombre || user.displayName || user.email.split('@')[0];
+            const approved = data.approved !== false;
             const p = { uid: user.uid, name, email: user.email, role, approved };
             setUserProfile(p);
             setAuthState(approved ? 'authenticated' : 'pending');
           } catch (e) {
-            console.error('Auth state error:', e.message);
-            setAuthState('unauthenticated');
+            console.warn('Auth state load fallback:', e);
+            const p = { uid: user.uid, name: user.email.split('@')[0], email: user.email, role: 'tecnico', approved: true };
+            setUserProfile(p);
+            setAuthState('authenticated');
           }
         });
       }, []);
 
       const logout = () => {
-        localStorage.removeItem('energia_user_profile');
-        localStorage.removeItem('energia_access_token');
         if (auth) auth.signOut();
         setUserProfile(null);
         setAuthState('unauthenticated');
+        setAuthView('login');
       };
-
 
       // Loading
       if (authState === 'loading') return (
@@ -8061,7 +8317,11 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             <div style={{ width: 50, height: 50, background: '#0166ff', borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', boxShadow: '0 0 28px rgba(1, 102, 255,.3)' }}>
               <IconPlug size={26} color="#ffffff" />
             </div>
-            <div className="fd" style={{ color: '#0166ff', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '.04em' }}><span style={{ fontFamily: "'Outfit', 'Montserrat', sans-serif", fontWeight: 900, letterSpacing: "0.05em", textTransform: "uppercase" }}>AIRTEK<span style={{ fontSize: "0.55em", verticalAlign: "super", fontWeight: 500, color: "var(--tx2)", marginLeft: "2px" }}>®</span></span></div>
+            <div className="fd" style={{ color: '#0166ff', fontWeight: 800, fontSize: '1.2rem', letterSpacing: '.04em' }}>
+              <span style={{ fontFamily: "'Outfit', 'Montserrat', sans-serif", fontWeight: 900, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                AIRTEK<span style={{ fontSize: "0.55em", verticalAlign: "super", fontWeight: 500, color: "var(--tx2)", marginLeft: "2px" }}>®</span>
+              </span>
+            </div>
             <div style={{ color: 'var(--tx4)', fontSize: '.78rem', marginTop: 4 }}>Inicializando sistema...</div>
           </div>
         </div>
@@ -8074,27 +8334,47 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               <IconAlertTriangle size={28} color="#f55b5d" />
             </div>
             <h2 className="fd" style={{ color: '#0166ff', marginBottom: 8 }}>Configuración requerida</h2>
-            <p style={{ color: 'var(--tx3)', fontSize: '.9rem' }}>Reemplaza las credenciales de Firebase en el archivo HTML y recarga la página.</p>
+            <p style={{ color: 'var(--tx3)', fontSize: '.9rem' }}>Revisa la configuración de Firebase en el archivo HTML y recarga la página.</p>
           </div>
         </div>
       );
 
-      if (authState === 'unauthenticated') return <LoginPage />;
+      if (authState === 'unauthenticated') {
+        if (authView === 'register') return <RegisterPage onBack={() => setAuthView('login')} />;
+        return <LoginPage onRegister={() => setAuthView('register')} />;
+      }
 
       if (authState === 'pending') return <PendingPage onLogout={logout} />;
 
       return (
         <div className="app-container">
           <Sidebar userProfile={userProfile} view={appView} setView={setAppView} onLogout={logout} toast={toast} />
-          <div className="main-wrapper">
+          
+          <main className="main-wrapper">
             {appView === 'nodes' && <NodeList userProfile={userProfile} toast={toast} />}
             {appView === 'calc' && <MaterialesCalc />}
             {appView === 'autonomia' && <AutonomiaWrapper />}
             {appView === 'etp' && <ETPCalc />}
-            {appView === 'admin' && ['supervisor', 'directivo', 'admin'].includes(userProfile?.role) && <AdminPanel userProfile={userProfile} toast={toast} />}
-            {appView === 'admin' && !['supervisor', 'directivo', 'admin'].includes(userProfile?.role) && <NodeList userProfile={userProfile} toast={toast} />}
-          </div>
+            {appView === 'admin' && ['admin', 'supervisor', 'directivo'].includes(userProfile?.role) && <AdminPanel userProfile={userProfile} toast={toast} />}
+            {appView === 'admin' && !['admin', 'supervisor', 'directivo'].includes(userProfile?.role) && <NodeList userProfile={userProfile} toast={toast} />}
+          </main>
+
           {toastData && <Toast key={toastData.key} msg={toastData.msg} type={toastData.type} onDone={() => setToastData(null)} />}
+
+          {modalConfig && (
+            <ConfirmModal 
+              title={modalConfig.title} 
+              msg={modalConfig.msg} 
+              type={modalConfig.type} 
+              confirmText={modalConfig.confirmText} 
+              cancelText={modalConfig.cancelText} 
+              onConfirm={() => {
+                if (modalConfig.onConfirm) modalConfig.onConfirm();
+                setModalConfig(null);
+              }} 
+              onCancel={() => setModalConfig(null)} 
+            />
+          )}
         </div>
       );
     }
