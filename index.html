@@ -3355,6 +3355,25 @@ function PendingPage({ onLogout }) {
               <textarea className="fi" readOnly value={odooReportText} style={{ height: '220px', fontFamily: 'monospace', fontSize: '0.82rem', resize: 'vertical' }} />
             </div>
           )}
+          {confirmModal && (
+            <ConfirmModal
+              title={confirmModal.title}
+              msg={confirmModal.msg}
+              type={confirmModal.type}
+              confirmText={confirmModal.confirmText}
+              cancelText={confirmModal.cancelText}
+              onConfirm={async () => {
+                const fn = confirmModal.onConfirm;
+                setConfirmModal(null);
+                if (fn) await fn();
+              }}
+              onCancel={() => {
+                const fn = confirmModal.onCancel;
+                setConfirmModal(null);
+                if (fn) fn();
+              }}
+            />
+          )}
         </div>
       );
     }
