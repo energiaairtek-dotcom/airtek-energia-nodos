@@ -7818,6 +7818,24 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     // ═══════════════════════════════════════════════════
     // CALCULADORA DE MATERIALES
     // ═══════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════
+    // 🧮 CALCULADORA DE MATERIALES
+    // ═══════════════════════════════════════════════════
+    function MaterialesWrapper() {
+      const [tab, setTab] = useState('proyecto');
+      return (
+        <div className="fin">
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
+            <div className="segmented-control">
+              <button className={`segmented-btn ${tab === 'proyecto' ? 'active' : ''}`} onClick={() => setTab('proyecto')}>Materiales Proyecto</button>
+              <button className={`segmented-btn ${tab === 'comunidades' ? 'active' : ''}`} onClick={() => setTab('comunidades')}>Activación Comunidades</button>
+            </div>
+          </div>
+          {tab === 'proyecto' ? <MaterialesCalc /> : <ComunidadesCalc />}
+        </div>
+      );
+    }
+
     function MaterialesCalc() {
       const [showConfirm, setShowConfirm] = useState(false);
       const [proyecto, setProyecto] = useState('');
@@ -8247,6 +8265,252 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     // APP ROOT
     // ═══════════════════════════════════════════════════
     
+    const MATERIALES_ACTIVACION = [
+      { id: 1, nombre: "PANEL SOLAR DE 580W A 600W", base: 1, extra: 0 },
+      { id: 2, nombre: "RIEL UNISTRUT LARGO DOS METROS CUARENTA", base: 1, extra: 0 },
+      { id: 3, nombre: "CONECTORES END CLAMP R2", base: 4, extra: 0 },
+      { id: 4, nombre: "TORNILLOS PARA RAMPLUNG NARANJA", base: 10, extra: 2 },
+      { id: 5, nombre: "RAMPLUG NARANJA 3/8\"", base: 10, extra: 2 },
+      { id: 6, nombre: "ARANDELA DE 1/4", base: 10, extra: 2 },
+      { id: 7, nombre: "KIT DE TORNILLO Y TUERCA CON RESORTE PARA PERFIL UNISTRUT DE BANDEJA METALICA", base: 6, extra: 0 },
+      { id: 8, nombre: "TORNILLO CABEZA HEXAGONAL 6MM\"X1 3/4\"", base: 4, extra: 1 },
+      { id: 9, nombre: "KIT DE RESPALDO COMUNIDAD TRADICIONAL", base: 1, extra: 0 }
+    ];
+
+    function ComunidadesCalc() {
+      const [respaldos, setRespaldos] = useState(() => localStorage.getItem('energia_act_comunidades_resp') || '1');
+      const [comunidades, setComunidades] = useState(() => localStorage.getItem('energia_act_comunidades_n') || '1');
+      const [f, setF] = useState(() => {
+        try { const s = localStorage.getItem('energia_act_comunidades_f'); return s ? JSON.parse(s) : {}; } catch (e) { return {}; }
+      });
+      const [resultados, setResultados] = useState(null);
+
+      useEffect(() => {
+        localStorage.setItem('energia_act_comunidades_resp', respaldos);
+        localStorage.setItem('energia_act_comunidades_n', comunidades);
+        localStorage.setItem('energia_act_comunidades_f', JSON.stringify(f));
+      }, [respaldos, comunidades, f]);
+
+      const getQ = (m) => { const v = parseFloat(f[m.id]); return isNaN(v) ? m.base : v; };
+      const fmt = (n) => Number.isInteger(n) ? n : n.toFixed(2);
+
+      const calcular = () => {
+        const r = parseFloat(respaldos) || 1;
+        const n = parseFloat(comunidades) || 1;
+        const res = MATERIALES_ACTIVACION.map((m, i) => ({
+          id: i,
+          nombre: m.nombre,
+          requerida: getQ(m),
+          respaldos: r,
+          extra: m.extra,
+          total: ((getQ(m) * r) + m.extra) * n
+        }));
+        setResultados(res);
+      };
+
+      const copy = () => {
+        if (!resultados || !resultados.length) return;
+        let txt = 'AIRTEK - MATERIALES ACTIVACION COMUNIDADES (COMUNIDAD TRADICIONAL)\n';
+        txt += 'Fecha: ' + new Date().toLocaleString() + '\n';
+        txt += '----------------------------------------\n\n';
+        resultados.forEach(r => {
+          txt += r.nombre + ': ' + fmt(r.total) + '\n';
+        });
+        navigator.clipboard.writeText(txt).catch(() => {
+          const ta = document.createElement('textarea');
+          ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0';
+          document.body.appendChild(ta); ta.select();
+          document.execCommand('copy'); document.body.removeChild(ta);
+        });
+      };
+
+      const exportXlsx = () => {
+        if (!resultados || !resultados.length) return;
+        const rows = resultados.map(r => ({
+          'MATERIAL': r.nombre,
+          'UNIDAD REQUERIDA': Number.isInteger(r.requerida) ? r.requerida : parseFloat(r.requerida.toFixed(2)),
+          'NUMERO DE RESPALDOS': Number.isInteger(r.respaldos) ? r.respaldos : parseFloat(r.respaldos.toFixed(2)),
+          'MATERIAL TOTAL': Number.isInteger(r.total) ? r.total : parseFloat(r.total.toFixed(2)),
+        }));
+        const wb = window.XLSX.utils.book_new();
+        const ws = window.XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [{ wch: 60 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
+        window.XLSX.utils.book_append_sheet(wb, ws, 'Activacion C.Tradicional');
+        window.XLSX.writeFile(wb, 'materiales_activacion_comunidades_' + Date.now() + '.xlsx');
+      };
+
+      return (
+        <div className="fin">
+          <div style={{ marginBottom: 18 }}>
+            <h1 className="fd" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 4 }}>Calculadora Materiales - Activación Comunidades</h1>
+            <p style={{ color: 'var(--tx3)', fontSize: '.85rem' }}>Activación C. Tradicional - listado con respaldos</p>
+          </div>
+
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px 16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label className="lbl" style={{ marginBottom: 0, fontSize: '.76rem', fontWeight: 600, color: 'var(--tx2)' }}>Numero de respaldos</label>
+                <input className="fi" type="number" value={respaldos} onChange={e => setRespaldos(e.target.value)} placeholder="1" />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label className="lbl" style={{ marginBottom: 0, fontSize: '.76rem', fontWeight: 600, color: 'var(--tx2)' }}>Numero de comunidades / activaciones</label>
+                <input className="fi" type="number" value={comunidades} onChange={e => setComunidades(e.target.value)} placeholder="1" />
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>COMUNIDAD TRADICIONAL</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 140px', padding: '8px 12px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
+              <span>Material</span>
+              <span style={{ textAlign: 'center' }}>Unidad requerida</span>
+              <span style={{ textAlign: 'right' }}>Respaldo fijo</span>
+            </div>
+            {MATERIALES_ACTIVACION.map(m => (
+              <div key={m.id} style={{
+                display: 'grid', gridTemplateColumns: '1fr 110px 140px', padding: '8px 12px',
+                background: (m.id % 2 === 0) ? 'var(--bg-surface)' : 'var(--bg-card)',
+                borderTop: '1px solid var(--border)', alignItems: 'center', gap: 8
+              }}>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx1)' }}>{m.nombre}</span>
+                <input className="fi" type="number" value={f[m.id] !== undefined ? f[m.id] : m.base}
+                  onChange={e => setF(p => ({ ...p, [m.id]: e.target.value }))} placeholder={String(m.base)} style={{ textAlign: 'center', padding: '7px 8px' }} />
+                <div style={{ textAlign: 'right', fontSize: '.78rem', color: m.extra > 0 ? 'var(--amber)' : 'var(--tx4)' }}>
+                  {m.extra > 0 ? '+' + m.extra + ' uds' : '—'}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+            <button className="bp" style={{ fontSize: '.88rem', padding: '10px 28px', minWidth: 220 }} onClick={calcular}>
+              Calcular Materiales Totales
+            </button>
+          </div>
+
+          {resultados === null && (
+            <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--tx3)' }}>
+              Complete los valores y presione Calcular
+            </div>
+          )}
+
+          {resultados !== null && (
+            <div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 110px', background: 'var(--bg-elevated)', padding: '8px 12px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
+                  <span>Material</span>
+                  <span style={{ textAlign: 'center' }}>Unidad requerida</span>
+                  <span style={{ textAlign: 'center' }}>Respaldos</span>
+                  <span style={{ textAlign: 'center' }}>Material total</span>
+                </div>
+                {resultados.map((r, i) => (
+                  <div key={i} style={{
+                    display: 'grid', gridTemplateColumns: '1fr 110px 110px 110px', padding: '9px 12px',
+                    background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
+                    borderTop: '1px solid var(--border)', alignItems: 'center', gap: 8
+                  }}>
+                    <span style={{ fontSize: '.84rem', color: 'var(--tx1)' }}>{r.nombre}</span>
+                    <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center' }}>{fmt(r.requerida)}</span>
+                    <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center' }}>{fmt(r.respaldos)}</span>
+                    <span className="fm" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--green)', textAlign: 'center' }}>{fmt(r.total)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
+                <button className="bg" style={{ fontSize: '.84rem', padding: '8px 18px', minWidth: 130 }} onClick={copy}>Copiar lista</button>
+                <button className="bs" style={{ fontSize: '.84rem', padding: '8px 18px', minWidth: 130 }} onClick={exportXlsx}>Exportar Excel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════
+    // 🚀 APP ROOT
+    // ═══════════════════════════════════════════════════
+    
+    function ConfirmModal({ title, msg, type = 'confirm', confirmText, cancelText, onConfirm, onCancel }) {
+      const isDanger = type === 'danger' || type === 'delete';
+      const isSuccess = type === 'success';
+
+      const badgeBg = isDanger ? 'rgba(245, 91, 93, 0.15)' : isSuccess ? 'rgba(34, 197, 94, 0.15)' : 'rgba(1, 102, 255, 0.15)';
+      const badgeColor = isDanger ? '#f55b5d' : isSuccess ? '#22c55e' : '#0166ff';
+      const btnBg = isDanger ? '#f55b5d' : isSuccess ? '#22c55e' : '#0166ff';
+
+      return (
+        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onCancel}>
+          <div className="card fin" onClick={e => e.stopPropagation()} style={{
+            width: '90%', maxWidth: 380, padding: '28px 24px 22px', borderRadius: 20,
+            position: 'relative', background: 'var(--bg-card)', border: '1px solid var(--border)',
+            boxShadow: '0 20px 40px rgba(0,0,0,0.35)', textAlign: 'center'
+          }}>
+            <button onClick={onCancel} style={{
+              position: 'absolute', top: 14, right: 14, width: 28, height: 28, borderRadius: '50%',
+              border: 'none', background: 'transparent', color: 'var(--tx3)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700
+            }}>✕</button>
+
+            <div style={{
+              width: 54, height: 54, borderRadius: '50%', background: badgeBg,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px'
+            }}>
+              {isDanger && (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={badgeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              )}
+              {isSuccess && (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={badgeColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              )}
+              {!isDanger && !isSuccess && (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={badgeColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+              )}
+            </div>
+
+            <h3 className="fd" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--tx1)', marginBottom: msg ? 8 : 20, lineHeight: 1.35 }}>
+              {title}
+            </h3>
+
+            {msg && (
+              <p style={{ color: 'var(--tx3)', fontSize: '.86rem', marginBottom: 22, lineHeight: 1.5, padding: '0 4px' }}>
+                {msg}
+              </p>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button onClick={onConfirm} style={{
+                width: '100%', padding: '11px 20px', borderRadius: 24, border: 'none',
+                background: btnBg, color: '#ffffff', fontFamily: "'Montserrat', sans-serif",
+                fontWeight: 700, fontSize: '.9rem', cursor: 'pointer', boxShadow: `0 4px 14px ${badgeColor}33`
+              }}>
+                {confirmText || (isDanger ? 'Sí, estoy seguro' : 'Confirmar')}
+              </button>
+              
+              {onCancel && cancelText !== false && (
+                <button onClick={onCancel} style={{
+                  width: '100%', padding: '8px 20px', borderRadius: 24, border: 'none',
+                  background: 'transparent', color: 'var(--tx3)', fontFamily: "'Montserrat', sans-serif",
+                  fontWeight: 600, fontSize: '.82rem', cursor: 'pointer'
+                }}>
+                  {cancelText || 'Cancelar'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function ConfirmModal({ title, msg, type = 'confirm', confirmText, cancelText, onConfirm, onCancel }) {
       const isDanger = type === 'danger' || type === 'delete';
       const isSuccess = type === 'success';
@@ -8432,7 +8696,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           
           <main className="main-wrapper">
             {appView === 'nodes' && <NodeList userProfile={userProfile} toast={toast} />}
-            {appView === 'calc' && <MaterialesCalc />}
+            {appView === 'calc' && <MaterialesWrapper />}
             {appView === 'autonomia' && <AutonomiaWrapper />}
             {appView === 'etp' && <ETPCalc />}
             {appView === 'admin' && ['admin', 'supervisor', 'directivo'].includes(userProfile?.role) && <AdminPanel userProfile={userProfile} toast={toast} />}
