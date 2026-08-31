@@ -3398,9 +3398,17 @@ function PendingPage({ onLogout }) {
 
       const lastRec = inspRecords[inspRecords.length - 1];
 
-      // Bancos presentes en historial
+      // Bancos presentes en la última inspección o en el inventario de baterías activo
       const allBanks = new Set();
-      inspRecords.forEach(r => Object.keys(r.measurements).forEach(tag => { const b = getBankId(tag); if (b) allBanks.add(b); }));
+      if (lastRec?.measurements) {
+        Object.keys(lastRec.measurements).forEach(tag => { const b = getBankId(tag); if (b) allBanks.add(b); });
+      }
+      (equipment || []).forEach(e => {
+        if (e.type === 'BAT' && e.active !== false) {
+          const b = getBankId(e.tag);
+          if (b) allBanks.add(b);
+        }
+      });
       const bankList = ['_total', ...Array.from(allBanks).sort()];
 
       // Series para gráfico
@@ -7805,12 +7813,19 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     // ═══════════════════════════════════════════════════
     // 📊 REPORTE GLOBAL DE AUTONOMÍA DE LA RED POR BANCOS
     // ═══════════════════════════════════════════════════
-    function AutonomiaRedView({ onSelectNode }) {
+        // ═══════════════════════════════════════════════════
+    // REPORTE GLOBAL DE AUTONOMÍA DE LA RED POR BANCOS
+    // ═══════════════════════════════════════════════════
+        function AutonomiaRedView() {
       const [loading, setLoading] = useState(true);
       const [nodesData, setNodesData] = useState([]);
       const [search, setSearch] = useState('');
-      const [statusFilter, setStatusFilter] = useState('all'); // all | critico | alerta | optimo | sin_carga
-      const [zoneFilter, setZoneFilter] = useState('all');
+      const [statusFilter, setStatusFilter] = useState('all'); // all | critico | alerta | optimo
+      const [nodeFilter, setNodeFilter] = useState('all');
+      const [typeFilter, setTypeFilter] = useState('all'); // all | datacenter | nodo | otro
+      const [loadFilter, setLoadFilter] = useState('all'); // all | con_carga | sin_carga
+      const [showTextReport, setShowTextReport] = useState(true);
+      const [copySuccess, setCopySuccess] = useState(false);
 
       useEffect(() => {
         let isMounted = true;
@@ -7829,52 +7844,47 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               try {
                 const [eqSnap, recSnap] = await Promise.all([
                   db.collection('energy_nodes').doc(node.id).collection('energy_equipment').get(),
-                  db.collection('energy_nodes').doc(node.id).collection('energy_records').orderBy('date', 'desc').limit(1).get()
+                  db.collection('energy_nodes').doc(node.id).collection('energy_records').orderBy('date', 'desc').limit(20).get()
                 ]);
 
                 const eqs = eqSnap.docs
                   .map(d => ({ id: d.id, ...d.data() }))
                   .filter(e => e.active !== false);
 
-                const latestRec = recSnap.docs.length > 0 ? recSnap.docs[0].data() : null;
+                const allRecs = recSnap.docs.map(d => d.data());
+                // Buscar el registro más reciente que contenga mediciones (Inspección o Actualización de Carga)
+                const latestRec = allRecs.find(r => 
+                  (r.type === 'inspeccion' || r.type === 'actualizacion_carga' || r.type === 'actualizacion') && 
+                  r.measurements && 
+                  typeof r.measurements === 'object' && 
+                  Object.keys(r.measurements).length > 0
+                ) || allRecs.find(r => r.measurements && typeof r.measurements === 'object' && Object.keys(r.measurements).length > 0) || allRecs[0] || null;
+                
                 const meas = latestRec?.measurements || {};
                 
-                let recDateStr = 'Sin inspección';
+                let recDateStr = 'Sin mediciones';
                 if (latestRec?.date) {
                   try {
                     const d = latestRec.date.toDate ? latestRec.date.toDate() : new Date(latestRec.date);
-                    recDateStr = d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    const typeLabel = latestRec.type === 'actualizacion_carga' ? ' (Act. Carga)' : '';
+                    recDateStr = d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + typeLabel;
                   } catch (e) { recDateStr = 'Fecha no disponible'; }
                 }
 
-                const bats = eqs.filter(e => e.type === 'BAT');
-                const nonBats = eqs.filter(e => e.type === 'INV' || e.type === 'ETP');
-
-                const banksMap = {};
-                bats.forEach(b => {
-                  const bTag = b.tag || 'BAT';
-                  const bId = getBankId(bTag) || bTag;
-                  banksMap[bId] = { bat: b, eqs: [], ac_kw: 0, dc_kw: 0 };
-                });
-
-                nonBats.forEach(e => {
-                  const eTag = e.tag || '';
-                  const bId = getBankId(eTag);
-                  if (bId && banksMap[bId]) {
-                    banksMap[bId].eqs.push(e);
-                    const l = calcLoad(e.type, meas[eTag]);
-                    banksMap[bId].ac_kw += l.ac;
-                    banksMap[bId].dc_kw += l.dc;
-                  } else if (Object.keys(banksMap).length > 0) {
-                    const firstB = Object.keys(banksMap)[0];
-                    banksMap[firstB].eqs.push(e);
-                    const l = calcLoad(e.type, meas[eTag]);
-                    banksMap[firstB].ac_kw += l.ac;
-                    banksMap[firstB].dc_kw += l.dc;
+                // Detectar todos los bancos presentes en inventario o en la última inspección
+                const detectedBanks = new Set();
+                eqs.forEach(e => {
+                  if (e.type === 'BAT') {
+                    const b = getBankId(e.tag);
+                    if (b) detectedBanks.add(b);
                   }
                 });
+                Object.keys(meas).forEach(tag => {
+                  const b = getBankId(tag);
+                  if (b) detectedBanks.add(b);
+                });
 
-                if (Object.keys(banksMap).length === 0) {
+                if (detectedBanks.size === 0) {
                   allBankRows.push({
                     nodeId: node.id,
                     nodeName: node.name || 'Sin nombre',
@@ -7891,21 +7901,49 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     total_kw: 0,
                     hours: null,
                     hoursStr: 'Sin Batería',
+                    timeFormatted: 'Sin Batería',
                     status: 'sin_bateria',
                     statusLabel: 'Sin Batería Registrada',
                     dateStr: recDateStr
                   });
                 } else {
-                  Object.entries(banksMap).forEach(([bId, bInfo]) => {
-                    const bat = bInfo.bat;
-                    const ac = bInfo.ac_kw;
-                    const dc = bInfo.dc_kw;
+                  Array.from(detectedBanks).sort().forEach(bId => {
+                    // Calcular cargas AC y DC asociadas a este banco en la última medición
+                    let ac = 0, dc = 0;
+                    Object.entries(meas).forEach(([tag, vals]) => {
+                      if (getBankId(tag) === bId) {
+                        const type = getEqTypeFromTag(tag, eqs);
+                        const l = calcLoad(type, vals);
+                        ac += l.ac;
+                        dc += l.dc;
+                      }
+                    });
+
                     const tot = ac + dc;
+
+                    // Buscar batería correspondiente en inventario
+                    let bat = eqs.find(e => e.type === 'BAT' && getBankId(e.tag) === bId);
+                    if (!bat) {
+                      bat = eqs.find(e => e.type === 'BAT' && (e.tag.includes(bId) || bId.includes(e.tag)));
+                    }
+
+                    // Si no hay batería ni carga, ignorar banco fantasma
+                    if (!bat && tot <= 0) return;
+
                     const cap = parseFloat(bat?.batCapacity) || 0;
-                    const chem = (bat?.batteryType || 'LFP').toUpperCase();
+                    const chem = (bat?.batteryType || (bId.includes('NMC') ? 'NMC' : bId.includes('GEL') ? 'GEL' : 'LFP')).toUpperCase();
                     const vn = BAT_VN[chem] || 48;
                     const hours = calcAutonomy(bat, ac, dc);
                     const hoursStr = fmtHours(hours);
+
+                    // Formato digital HH:MM
+                    let timeFormatted = '—';
+                    if (hours !== null && hours > 0) {
+                      let hh = Math.floor(hours);
+                      let mm = Math.round((hours - hh) * 60);
+                      if (mm === 60) { hh += 1; mm = 0; }
+                      timeFormatted = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+                    }
 
                     let status = 'sin_carga';
                     let statusLabel = 'Sin Carga Medida';
@@ -7913,6 +7951,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                       if (hours >= 4.0) { status = 'optimo'; statusLabel = 'Óptimo (>4h)'; }
                       else if (hours >= 2.0) { status = 'alerta'; statusLabel = 'Alerta (2h-4h)'; }
                       else { status = 'critico'; statusLabel = 'Crítico (<2h)'; }
+                    } else if (!bat) {
+                      statusLabel = 'Sin Batería Asignada';
                     }
 
                     allBankRows.push({
@@ -7931,6 +7971,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                       total_kw: tot,
                       hours,
                       hoursStr,
+                      timeFormatted,
                       status,
                       statusLabel,
                       dateStr: recDateStr
@@ -7956,10 +7997,23 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         return () => { isMounted = false; };
       }, []);
 
-      // Filtrado
+      // Lista única de nodos para el dropdown
+      const uniqueNodes = Array.from(new Set(nodesData.map(r => r.nodeName))).sort();
+
+      // Filtrado interactivo multidimensional
       const filtered = nodesData.filter(r => {
         if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-        if (zoneFilter !== 'all' && r.zone !== zoneFilter) return false;
+        if (nodeFilter !== 'all' && r.nodeName !== nodeFilter) return false;
+        if (typeFilter !== 'all') {
+          const t = (r.nodeType || '').toLowerCase();
+          if (typeFilter === 'datacenter' && t !== 'datacenter') return false;
+          if (typeFilter === 'nodo' && (t !== 'fibra' && t !== 'headend' && t !== 'nodo')) return false;
+          if (typeFilter === 'otro' && t !== 'otro') return false;
+        }
+        if (loadFilter !== 'all') {
+          if (loadFilter === 'con_carga' && (r.total_kw <= 0 || r.hours === null)) return false;
+          if (loadFilter === 'sin_carga' && (r.total_kw > 0 && r.hours !== null)) return false;
+        }
         if (search) {
           const q = search.toLowerCase();
           const matchNode = (r.nodeName || '').toLowerCase().includes(q);
@@ -7971,6 +8025,55 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         return true;
       });
 
+      // Generación del texto estructurado para copiar y pegar
+      const generateTextReport = () => {
+        const todayStr = new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        let text = `Autonomía por banco de baterías - ${todayStr}\n\n`;
+
+        // Agrupar filas filtradas por nodo
+        const groups = {};
+        filtered.forEach(r => {
+          if (!groups[r.nodeName]) groups[r.nodeName] = [];
+          groups[r.nodeName].push(r);
+        });
+
+        Object.entries(groups).forEach(([nodeName, banks]) => {
+          text += `${nodeName}:\n`;
+          banks.forEach(b => {
+            if (b.status === 'sin_bateria') {
+              text += `Sin batería registrada\n`;
+            } else if (b.status === 'sin_carga') {
+              text += `${b.bankId}: Sin Carga Medida\n`;
+            } else {
+              text += `${b.bankId}: ${b.timeFormatted} (${b.hoursStr})\n`;
+            }
+          });
+          text += `\n`;
+        });
+
+        return text.trim();
+      };
+
+      const copyReportToClipboard = () => {
+        const text = generateTextReport();
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2500);
+        }).catch(() => {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2500);
+        });
+      };
+
       // KPIs
       const totalNodes = new Set(nodesData.map(r => r.nodeId)).size;
       const totalBancos = nodesData.filter(r => r.status !== 'sin_bateria').length;
@@ -7981,7 +8084,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
       const exportExcel = () => {
         if (!nodesData.length) return;
-        const rows = nodesData.map(r => ({
+        const rows = filtered.map(r => ({
           'NODO': r.nodeName,
           'ZONA / MUNICIPIO': r.zone,
           'ESTADO GEOGRÁFICO': r.estado,
@@ -7994,8 +8097,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           'CARGA AC (kW)': Number(r.ac_kw.toFixed(3)),
           'CARGA DC (kW)': Number(r.dc_kw.toFixed(3)),
           'CARGA TOTAL (kW)': Number(r.total_kw.toFixed(3)),
-          'AUTONOMÍA (HORAS)': r.hours ? Number(r.hours.toFixed(2)) : 0,
-          'AUTONOMÍA ESTIMADA': r.hoursStr,
+          'AUTONOMÍA (HH:MM)': r.timeFormatted,
+          'AUTONOMÍA FORMATEADA': r.hoursStr,
           'ESTADO SEMÁFORO': r.statusLabel,
           'ÚLTIMA MEDICIÓN': r.dateStr
         }));
@@ -8006,30 +8109,87 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 14 },
           { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 14 },
           { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
-          { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 16 }
+          { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 16 }
         ];
         window.XLSX.utils.book_append_sheet(wb, ws, 'Autonomía por Banco');
         window.XLSX.writeFile(wb, 'reporte_autonomia_red_airtek_' + Date.now() + '.xlsx');
       };
 
-      const zonesList = Array.from(new Set(nodesData.map(r => r.zone).filter(Boolean))).sort();
+      const reportText = generateTextReport();
 
       return (
         <div>
-          {/* Header con botón de exportar */}
+          {/* Header con acciones */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
             <div>
               <h2 className="fd" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
-                Informe en Vivo de Autonomía de la Red
+                Informe de Autonomía de la Red
               </h2>
               <p style={{ color: 'var(--tx3)', fontSize: '.84rem', margin: '4px 0 0' }}>
-                Monitoreo consolidado de {totalNodes} nodos y {totalBancos} bancos de baterías basado en la última inspección.
+                Monitoreo consolidado de {totalNodes} lugares y {totalBancos} bancos de baterías.
               </p>
             </div>
-            <button className="bg" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px', fontSize: '.84rem' }} onClick={exportExcel} disabled={loading || !nodesData.length}>
-              <IconExcel size={18} color="#ffffff" />
-              Descargar Informe Excel
-            </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="bp" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={copyReportToClipboard} disabled={loading || !filtered.length}>
+                <IconCopy size={16} />
+                {copySuccess ? 'Copiado al Portapapeles' : 'Copiar Reporte de Texto'}
+              </button>
+              <button className="bs" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={exportExcel} disabled={loading || !filtered.length}>
+                <IconExcel size={16} color="#10b981" />
+                Descargar Excel
+              </button>
+            </div>
+          </div>
+
+          {/* Formato de Texto Rápido para Copiar */}
+          <div className="card" style={{ marginBottom: 18, border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                  Formato de Texto para Copiar y Pegar
+                </span>
+                <span style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>
+                  ({filtered.length} bancos incluidos)
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  className="bs"
+                  style={{ padding: '4px 10px', fontSize: '.72rem' }}
+                  onClick={() => setShowTextReport(!showTextReport)}
+                >
+                  {showTextReport ? 'Ocultar Texto' : 'Mostrar Texto'}
+                </button>
+                <button
+                  className="bp"
+                  style={{ padding: '4px 12px', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 6 }}
+                  onClick={copyReportToClipboard}
+                  disabled={loading || !filtered.length}
+                >
+                  <IconCopy size={14} />
+                  {copySuccess ? '¡Copiado!' : 'Copiar'}
+                </button>
+              </div>
+            </div>
+
+            {showTextReport && (
+              <textarea
+                className="fi fm"
+                readOnly
+                value={loading ? 'Cargando datos de la red...' : reportText}
+                style={{
+                  width: '100%',
+                  height: 170,
+                  fontSize: '.82rem',
+                  lineHeight: 1.5,
+                  resize: 'vertical',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--tx1)',
+                  padding: '12px 14px',
+                  borderRadius: 8
+                }}
+              />
+            )}
           </div>
 
           {/* Tarjetas KPI */}
@@ -8085,34 +8245,64 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* Barra de Filtros y Búsqueda */}
-          <div className="card" style={{ padding: '14px 18px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 260, alignItems: 'center' }}>
-                <input className="fi" type="text" placeholder="Buscar por nodo, banco o zona..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '8px 14px', fontSize: '.84rem' }} />
-                <select className="fi" value={zoneFilter} onChange={e => setZoneFilter(e.target.value)} style={{ width: 'auto', minWidth: 140, padding: '8px 12px', fontSize: '.84rem' }}>
-                  <option value="all">Todas las zonas</option>
-                  {zonesList.map(z => <option key={z} value={z}>{z}</option>)}
+          {/* Barra de Filtros Multidimensional */}
+          <div className="card" style={{ padding: '16px 18px', marginBottom: 14, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 14 }}>
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Lugar Específico</label>
+                <select className="fi" value={nodeFilter} onChange={e => setNodeFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todos los Lugares ({uniqueNodes.length})</option>
+                  {uniqueNodes.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Tipo de Infraestructura</label>
+                <select className="fi" value={typeFilter} onChange={e => setTypeFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todos los Tipos</option>
+                  <option value="datacenter">Datacenter</option>
+                  <option value="nodo">Nodo (Fibra / Headend)</option>
+                  <option value="otro">Otro (ATC / Sede)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Estado de Carga</label>
+                <select className="fi" value={loadFilter} onChange={e => setLoadFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todas las Mediciones</option>
+                  <option value="con_carga">Con Carga Medida (&gt; 0 kW)</option>
+                  <option value="sin_carga">Sin Carga Medida (0 kW / Sin datos)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Búsqueda de Texto</label>
+                <input className="fi" type="text" placeholder="Buscar banco, tag o zona..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '8px 14px', fontSize: '.84rem' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '.75rem', color: 'var(--tx3)' }}>
+                Mostrando <b>{filtered.length}</b> bancos filtrados
+              </div>
+
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[
                   { key: 'all', label: 'Todos', count: nodesData.length },
-                  { key: 'critico', label: 'Críticos', count: criticos, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' },
-                  { key: 'alerta', label: 'Alerta', count: alertas, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
-                  { key: 'optimo', label: 'Óptimos', count: optimos, color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' },
-                  { key: 'sin_carga', label: 'Sin Medición', count: sinCarga, color: 'var(--tx3)', bg: 'var(--bg-surface)' },
+                  { key: 'critico', label: 'Críticos (<2h)', count: criticos, color: '#ef4444', bg: 'rgba(239, 68, 68, 0.12)' },
+                  { key: 'alerta', label: 'Alerta (2-4h)', count: alertas, color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.12)' },
+                  { key: 'optimo', label: 'Óptimos (>4h)', count: optimos, color: '#10b981', bg: 'rgba(16, 185, 129, 0.12)' }
                 ].map(tab => (
                   <button
                     key={tab.key}
                     onClick={() => setStatusFilter(tab.key)}
                     style={{
-                      padding: '6px 12px',
+                      padding: '5px 12px',
                       borderRadius: 8,
                       border: statusFilter === tab.key ? '1px solid var(--blue)' : '1px solid var(--border)',
                       background: statusFilter === tab.key ? 'rgba(1, 102, 255, 0.15)' : 'var(--bg-surface)',
                       color: statusFilter === tab.key ? 'var(--blue)' : 'var(--tx2)',
-                      fontSize: '.78rem',
+                      fontSize: '.76rem',
                       fontWeight: statusFilter === tab.key ? 700 : 500,
                       cursor: 'pointer',
                       display: 'flex',
@@ -8146,11 +8336,11 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.84rem' }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', color: 'var(--tx3)', textTransform: 'uppercase', fontSize: '.7rem', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
-                      <th style={{ padding: '12px 16px' }}>Nodo</th>
+                      <th style={{ padding: '12px 16px' }}>Nodo / Lugar</th>
                       <th style={{ padding: '12px 14px' }}>Banco / Batería</th>
                       <th style={{ padding: '12px 14px' }}>Química & Capacidad</th>
                       <th style={{ padding: '12px 14px', textAlign: 'right' }}>Carga Medida</th>
-                      <th style={{ padding: '12px 14px' }}>Autonomía Estimada</th>
+                      <th style={{ padding: '12px 14px' }}>Autonomía (HH:MM)</th>
                       <th style={{ padding: '12px 14px' }}>Estado</th>
                       <th style={{ padding: '12px 14px' }}>Última Insp.</th>
                     </tr>
@@ -8209,8 +8399,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                             )}
                           </td>
                           <td style={{ padding: '12px 14px', minWidth: 160 }}>
-                            <div className="fm" style={{ fontWeight: 800, fontSize: '.95rem', color: barColor, marginBottom: 4 }}>
-                              {r.hoursStr}
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+                              <span className="fm" style={{ fontWeight: 800, fontSize: '1.05rem', color: barColor }}>
+                                {r.timeFormatted}
+                              </span>
+                              {r.hours !== null && (
+                                <span style={{ fontSize: '.74rem', color: 'var(--tx3)' }}>
+                                  ({r.hoursStr})
+                                </span>
+                              )}
                             </div>
                             {r.hours !== null && (
                               <div style={{ width: '100%', height: 6, borderRadius: 3, background: 'var(--bg-deep)', overflow: 'hidden' }}>
@@ -8256,10 +8453,10 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'center' }}>
             <div className="segmented-control">
               <button className={`segmented-btn ${tab === 'red' ? 'active' : ''}`} onClick={() => setTab('red')}>
-                📊 Autonomía de la Red
+                Autonomía de la Red
               </button>
               <button className={`segmented-btn ${tab === 'simulacion' ? 'active' : ''}`} onClick={() => setTab('simulacion')}>
-                🧮 Calculadora de Simulación
+                Calculadora de Simulación
               </button>
             </div>
           </div>
@@ -8280,12 +8477,6 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       );
     }
 
-    // ═══════════════════════════════════════════════════
-    // CALCULADORA DE MATERIALES
-    // ═══════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════
-    // 🧮 CALCULADORA DE MATERIALES
-    // ═══════════════════════════════════════════════════
     function MaterialesWrapper() {
       const [tab, setTab] = useState('proyecto');
       return (
