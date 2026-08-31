@@ -1172,13 +1172,14 @@
       INV: { label: 'Inversor', color: '#0166ff', bg: 'rgba(1, 102, 255,.12)' },
       ETP: { label: 'ETP / PSU Huawei', color: '#008000', bg: 'rgba(0, 128, 0,.12)' },
       ATS: { label: 'Transferencia Automática', color: '#0166ff', bg: 'rgba(1, 102, 255,.12)' },
+      BKR: { label: 'Breaker Principal', color: '#6366f1', bg: 'rgba(99, 102, 241,.12)' },
       BAT: { label: 'Banco de Baterías', color: '#21c0fa', bg: 'rgba(33, 192, 250,.12)' },
       GEN: { label: 'Planta Eléctrica', color: '#eab308', bg: 'rgba(234,179,8,.12)' },
       OTR: { label: 'Otro', color: '#64748b', bg: 'rgba(100,116,139,.12)' },
     };
 
     // Orden canónico de tipos para mostrar equipos
-    const EQ_ORDER = { INV: 0, ETP: 1, ATS: 2, BAT: 3, GEN: 4, OTR: 5 };
+    const EQ_ORDER = { INV: 0, ETP: 1, ATS: 2, BKR: 3, BAT: 4, GEN: 5, OTR: 6 };
 
     // Extrae identificador de banco del tag
     // INV06-LFP00→LFP00 | BAT00-LFP→LFP00 | ETP02-AC-PV-NMC02→NMC02 | MBO-OJEDA-INV00-AC-AA-PV-NMC01→NMC01 | BAT01-NMC→NMC01
@@ -1201,15 +1202,16 @@
       if (t.includes('ETP')) return 'ETP';
       if (t.includes('BAT')) return 'BAT';
       if (t.includes('ATS')) return 'ATS';
+      if (t.includes('BKR') || t.includes('BRK') || t.includes('BREAKER') || t.includes('BKP')) return 'BKR';
       if (t.includes('GEN') || t.includes('PLT')) return 'GEN';
       return 'OTR';
     };
 
-    // Agrupa equipos: no-BAT por banco → BAT al final del grupo → ATS/OTR al final
+    // Agrupa equipos: no-BAT por banco → BAT al final del grupo → ATS/BKR/OTR al final
     const groupByBank = (eqs) => {
-      const nonBat = eqs.filter(e => e.type !== 'BAT' && e.type !== 'ATS' && e.type !== 'OTR');
+      const nonBat = eqs.filter(e => e.type !== 'BAT' && e.type !== 'ATS' && e.type !== 'BKR' && e.type !== 'OTR');
       const bats = eqs.filter(e => e.type === 'BAT');
-      const atsotr = eqs.filter(e => e.type === 'ATS' || e.type === 'OTR');
+      const atsotr = eqs.filter(e => e.type === 'ATS' || e.type === 'BKR' || e.type === 'OTR');
       const groups = [];
       const seen = new Set();
       nonBat.forEach(eq => {
@@ -2088,34 +2090,40 @@ function PendingPage({ onLogout }) {
           {eq.hasSolar && <><MF label="V Paneles" unit="V" vals={vals} k="V_panel" onChange={onChange} /><MF label="I Paneles" unit="A" vals={vals} k="I_panel" onChange={onChange} /></>}
         </div>
       );
-      if (eq.type === 'ATS') {
-        const maxA = eq.conductorGauge ? AWG_AMPACITY[eq.conductorGauge] : null;
+      if (eq.type === 'ATS' || eq.type === 'BKR') {
+        const maxA = eq.conductorGauge ? AWG_AMPACITY[eq.conductorGauge] : (eq.capacity ? parseFloat(eq.capacity) : null);
         const alarm = (line) => {
           if (!maxA) return false;
           const v = parseFloat(vals[line]);
           return !isNaN(v) && v > maxA;
         };
+
+        // Determinar líneas activas según fases (2 líneas: L1, L2, N; 3 líneas: L1, L2, L3, N)
+        const isTrifasica = eq.phases === '3' || eq.phases === 'Trifásica' || eq.phases === '3 Líneas' || eq.lineCount === '3' || eq.lineCount === 3;
+        const isMonofasica = eq.phases === '1' || eq.phases === 'Monofásica' || eq.phases === '1 Línea' || eq.lineCount === '1' || eq.lineCount === 1;
+        const linesToShow = isTrifasica ? ['L1', 'L2', 'L3', 'N'] : (isMonofasica ? ['L1', 'N'] : ['L1', 'L2', 'N']);
+
         return (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
-              {['L1', 'L2', 'L3', 'N'].map(line => (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${linesToShow.length}, 1fr)`, gap: 8, marginBottom: 8 }}>
+              {linesToShow.map(line => (
                 <div key={line}>
                   <label style={{
                     display: 'block', fontSize: '.68rem', marginBottom: 3, fontFamily: "'Outfit', 'Montserrat', sans-serif", textTransform: 'uppercase', letterSpacing: '.05em',
-                    color: alarm(line) ? '#f55b5d' : '#475569'
+                    color: alarm(line) ? '#f55b5d' : 'var(--tx3)'
                   }}>
-                    {line} <span style={{ color: alarm(line) ? '#f55b5d' : '#0166ff' }}>A</span>
+                    {line} <span style={{ color: alarm(line) ? '#f55b5d' : (eq.type === 'BKR' ? '#6366f1' : '#0166ff') }}>A</span>
                   </label>
                   <input className="mi" type="number" step="any" value={vals[line] ?? ''} onChange={e => onChange(line, e.target.value)}
                     placeholder="—" style={{ borderColor: alarm(line) ? '#f55b5d' : undefined, background: alarm(line) ? 'rgba(245, 91, 93,.08)' : undefined }} />
                 </div>
               ))}
             </div>
-            {eq.conductorGauge && ['L1', 'L2', 'L3'].some(l => alarm(l)) && (
+            {maxA && linesToShow.filter(l => l !== 'N').some(l => alarm(l)) && (
               <div style={{ fontSize: '.72rem', background: 'rgba(245, 91, 93,.1)', border: '1px solid rgba(245, 91, 93,.3)', borderRadius: 5, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <IconAlertTriangle size={15} color="#f55b5d" />
                 <span style={{ color: '#f55b5d', fontWeight: 700 }}>¡Amperaje fuera de rango!</span>
-                <span style={{ color: '#64748b' }}>Cable {eq.conductorGauge} (máx {maxA}A)</span>
+                <span style={{ color: 'var(--tx3)' }}>Límite máximo {maxA}A</span>
               </div>
             )}
           </div>
@@ -4313,15 +4321,41 @@ function PendingPage({ onLogout }) {
                 ))}
               </>}
 
-              {/* Otros */}
-              {f.type === 'ATS' && (
-                <div style={{ gridColumn: '1/-1' }}>
-                  <label className="lbl">Calibre del Conductor (opcional)</label>
-                  <select className="fi" value={f.conductorGauge} onChange={e => setF({ ...f, conductorGauge: e.target.value })}>
-                    <option value="">-- Sin calibre definido --</option>
-                    {AWG_OPTIONS.map(o => <option key={o} value={o}>{o} — máx {AWG_AMPACITY[o]}A</option>)}
-                  </select>
-                </div>
+              {/* Configuración de Breaker Principal y ATS */}
+              {(f.type === 'ATS' || f.type === 'BKR') && (
+                <>
+                  <div>
+                    <label className="lbl">Número de Líneas / Fases</label>
+                    <select className="fi" value={f.phases || '2'} onChange={e => setF({ ...f, phases: e.target.value })}>
+                      <option value="2">2 Líneas (L1, L2 + Neutro - Bifásica)</option>
+                      <option value="3">3 Líneas (L1, L2, L3 + Neutro - Trifásica)</option>
+                      <option value="1">1 Línea (L1 + Neutro - Monofásica)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="lbl">Capacidad Nominal (Amperios)</label>
+                    <input className="fi fm" type="number" value={f.capacity || ''} onChange={e => setF({ ...f, capacity: e.target.value })} placeholder="Ej: 100, 150, 200..." />
+                  </div>
+
+                  <div>
+                    <label className="lbl">Tensión de Operación AC</label>
+                    <select className="fi" value={f.voltage || '220V'} onChange={e => setF({ ...f, voltage: e.target.value })}>
+                      <option value="220V">220V</option>
+                      <option value="208V">208V</option>
+                      <option value="120V">120V</option>
+                      <option value="480V">480V</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="lbl">Calibre del Conductor (opcional)</label>
+                    <select className="fi" value={f.conductorGauge} onChange={e => setF({ ...f, conductorGauge: e.target.value })}>
+                      <option value="">-- Sin calibre definido --</option>
+                      {AWG_OPTIONS.map(o => <option key={o} value={o}>{o} — máx {AWG_AMPACITY[o]}A</option>)}
+                    </select>
+                  </div>
+                </>
               )}
 
               {f.type === 'GEN' && <>
@@ -5622,7 +5656,7 @@ ${f.obsGenerales}`;
               const aggLoad = load.ac + load.dc;
               const row = { 'Fecha': fecha, 'Hora': hora, 'Banco': bank || '—', 'Equipo': eq.tag, 'Tipo': eq.type, 'Carga (kW)': aggLoad > 0 ? aggLoad.toFixed(3) : '' };
               // ATS: L1, L2, N
-              if (eq.type === 'ATS') { row['L1 (A)'] = vals.L1 || ''; row['L2 (A)'] = vals.L2 || ''; row['N (A)'] = vals.N || ''; }
+              if (eq.type === 'ATS' || eq.type === 'BKR') { row['L1 (A)'] = vals.L1 || ''; row['L2 (A)'] = vals.L2 || ''; row['L3 (A)'] = vals.L3 || ''; row['N (A)'] = vals.N || ''; }
               measRows.push(row);
             });
             // Banco BAT con V banco
@@ -5809,7 +5843,9 @@ ${f.obsGenerales}`;
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                               <span className="badge" style={{ background: ti.bg, color: ti.color }}>{eq.type}</span>
                               <span className="fm" style={{ fontSize: '.92rem', fontWeight: 600, color: 'var(--tx1)' }}>{eq.tag}</span>
-                              {(eq.type === 'INV' || eq.type === 'ATS') && eq.voltage && <span style={{ color: 'var(--tx3)', fontSize: '.74rem' }}>{eq.voltage}</span>}
+                              {(eq.type === 'INV' || eq.type === 'ATS' || eq.type === 'BKR') && eq.voltage && <span style={{ color: 'var(--tx3)', fontSize: '.74rem' }}>{eq.voltage}</span>}
+                              {eq.type === 'BKR' && eq.phases && <span style={{ color: '#6366f1', fontSize: '.73rem', fontWeight: 600 }}>{eq.phases === '3' || eq.phases === 'Trifásica' ? '3Φ (3 Líneas)' : eq.phases === '1' || eq.phases === 'Monofásica' ? '1Φ (1 Línea)' : '2Φ (2 Líneas)'}</span>}
+                              {eq.type === 'BKR' && eq.capacity && <span style={{ color: '#6366f1', fontSize: '.73rem', fontWeight: 700 }}>{eq.capacity}A</span>}
                               {(eq.type === 'BAT' || eq.type === 'ETP') && eq.voltageDC && <span style={{ color: 'var(--tx3)', fontSize: '.74rem' }}>{eq.voltageDC} VDC</span>}
                               {eq.hasAcIn && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>AC/IN</span>}
                               {eq.hasAcOut && <span style={{ color: '#008000', fontSize: '.73rem' }}>AC/OUT</span>}
