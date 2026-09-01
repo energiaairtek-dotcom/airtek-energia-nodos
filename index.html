@@ -1301,6 +1301,7 @@
     const REC_TYPES = {
       inspeccion: { label: 'Inspección', color: '#008000', icon: '' },
       actualizacion_carga: { label: 'Actualización de Carga', color: '#21c0fa', icon: '' },
+      surtido: { label: 'Surtido de Combustible', color: '#38bdf8', icon: '' },
       inspeccion_gen: { label: 'Chequeo de Grupo Electrógeno', color: '#eab308', icon: '' },
       instalacion: { label: 'Instalación', color: '#0166ff', icon: '' },
       reemplazo: { label: 'Reemplazo / Retiro', color: '#0166ff', icon: '' },
@@ -2353,13 +2354,30 @@ function PendingPage({ onLogout }) {
 
       const initialDraft = getDraft();
 
-      const [type, setType] = useState(() => initialDraft?.type || initialType);
+      // Detectar si el técnico viene del botón "Surtir Combustible" de una planta
+      const preSurtido = (() => {
+        try {
+          const s = localStorage.getItem('airtek_presurtido');
+          if (s) {
+            localStorage.removeItem('airtek_presurtido');
+            return JSON.parse(s);
+          }
+        } catch(e) {}
+        return null;
+      })();
+
+      const [type, setType] = useState(() => preSurtido ? 'surtido' : (initialDraft?.type || initialType));
       const [date, setDate] = useState(() => initialDraft?.date || new Date().toISOString().slice(0, 16));
       const [shift, setShift] = useState(() => initialDraft?.shift || 'dia');
       const [obs, setObs] = useState(() => initialDraft?.obs || '');
       const [participants, setParticipants] = useState(() => initialDraft?.participants || '');
       const [meas, setMeas] = useState(() => initialDraft?.meas || {});
       const [saving, setSaving] = useState(false);
+      const [selPlantTag, setSelPlantTag] = useState(() => preSurtido?.plantTag || initialDraft?.selPlantTag || '');
+      const [fuelLts, setFuelLts] = useState(() => initialDraft?.fuelLts || '');
+      const [fuelDest, setFuelDest] = useState(() => initialDraft?.fuelDest || 'Reserva');
+      const [fuelHoro, setFuelHoro] = useState(() => initialDraft?.fuelHoro || '');
+      const [fuelTotLvl, setFuelTotLvl] = useState(() => initialDraft?.fuelTotLvl || '');
       const [lastSavedTime, setLastSavedTime] = useState(() => initialDraft?.savedAt ? new Date(initialDraft.savedAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : null);
       const [eqAction, setEqA] = useState(() => initialDraft?.eqAction || {
         tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false,
@@ -2454,11 +2472,18 @@ function PendingPage({ onLogout }) {
             if (Object.keys(filled).length > 0) cleanMeas[tag] = filled;
           });
           const record = {
-            type, date: new Date(date), shift, observations: sanitize(obs),
+            type, date: new Date(date), shift: type === 'surtido' ? 'dia' : shift, observations: sanitize(obs),
             technicianId: userProfile.uid, technicianName: sanitize(userProfile.name),
             participants: sanitize(participants.trim()),
+            ...(type === 'surtido' ? {
+              generatorTag: selPlantTag || (equipment.find(e => e.type === 'GEN')?.tag || ''),
+              fuelLiters: parseFloat(fuelLts) || 0,
+              fuelDestination: fuelDest,
+              fuelHorometer: fuelHoro,
+              fuelTotalLevel: parseFloat(fuelTotLvl) || 0,
+            } : {}),
             measurements: (type === 'inspeccion' || type === 'actualizacion_carga') ? cleanMeas : {},
-            equipmentAction: (type !== 'inspeccion' && type !== 'actualizacion_carga') && eqAction ? {
+            equipmentAction: (type !== 'inspeccion' && type !== 'actualizacion_carga' && type !== 'surtido') && eqAction ? {
               tag: sanitize(eqAction.tag || ''),
               type: sanitize(eqAction.type || ''),
               voltage: sanitize(eqAction.voltage || ''),
@@ -2511,6 +2536,68 @@ function PendingPage({ onLogout }) {
             const eq = active.find(e => e.tag === eqAction.tag);
             if (eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({ active: false, retiredAt: new Date(date) });
           }
+
+          if (type === 'surtido') {
+            const plantTag = selPlantTag || (equipment.find(e => e.type === 'GEN')?.tag || '');
+            let parsedHoro = 0;
+            if (fuelHoro) {
+              const hMatch = String(fuelHoro).match(/(\d+)h\s*(\d+)?m?/);
+              if (hMatch) {
+                parsedHoro = parseInt(hMatch[1]) + (parseInt(hMatch[2] || 0) / 60);
+              } else {
+                parsedHoro = parseFloat(fuelHoro) || 0;
+              }
+            }
+
+            // Actualizar horómetro del equipo en Firestore
+            if (plantTag && parsedHoro > 0) {
+              const genEq = equipment.find(e => e.type === 'GEN' && e.tag === plantTag);
+              if (genEq) {
+                await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(genEq.id).update({
+                  horometer: parsedHoro
+                });
+              }
+            }
+
+            // Sincronizar con el catálogo global de surtidos
+            const newRefillObj = {
+              id: 'r_rec_' + Date.now(),
+              fecha: new Date(date).toLocaleDateString('es-VE'),
+              semana: 'Semana Actual',
+              lugar: nodeName,
+              tag: plantTag,
+              litros: parseFloat(fuelLts) || 0,
+              destino: fuelDest,
+              subtanque_lts: fuelDest === 'Sub-tanque' ? (parseFloat(fuelTotLvl) || 0) : 0,
+              reserva_lts: fuelDest === 'Reserva' ? (parseFloat(fuelTotLvl) || 0) : 0,
+              total_nodo: parseFloat(fuelTotLvl) || (parseFloat(fuelLts) || 0),
+              horometro: fuelHoro ? (String(fuelHoro).includes('h') ? fuelHoro : `${fuelHoro} h`) : (parsedHoro > 0 ? `${parsedHoro} h` : ''),
+              horas_trabajo: '',
+              tecnico: sanitize(userProfile.name),
+              obs: sanitize(obs)
+            };
+
+            try {
+              const curRefills = JSON.parse(localStorage.getItem('airtek_fuel_refills_v9') || '[]');
+              localStorage.setItem('airtek_fuel_refills_v9', JSON.stringify([newRefillObj, ...curRefills]));
+
+              // Actualizar tanques en localStorage
+              const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v9') || '[]');
+              const updatedTanks = curTanks.map(t => {
+                if (t.lugar.toLowerCase() === nodeName.toLowerCase()) {
+                  const added = parseFloat(fuelLts) || 0;
+                  const newRes = (t.reserva_lts || 0) + (fuelDest === 'Sub-tanque' ? 0 : added);
+                  const newSub = (t.subtanque_actual || t.tanque_lts) + (fuelDest === 'Sub-tanque' ? added : 0);
+                  const total = newSub + newRes;
+                  const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+                  return { ...t, subtanque_actual: newSub, reserva_lts: newRes, aut_total_h: autTotal, dias_aut: Number((autTotal / 24).toFixed(2)) };
+                }
+                return t;
+              });
+              localStorage.setItem('airtek_fuel_tanks_v9', JSON.stringify(updatedTanks));
+            } catch(e) {}
+          }
+
           toast('Registro guardado exitosamente.', 'success');
           localStorage.removeItem(DRAFT_KEY);
           localStorage.removeItem(`energy_draft_${nodeId}_general`);
@@ -2638,6 +2725,56 @@ function PendingPage({ onLogout }) {
               </div>
             </div>
           </div>
+
+                    {/* Plantilla: Surtido de Combustible */}
+          {type === 'surtido' && (
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 700, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 800 }}>SURTIDO</span>
+                Registro de Despacho de Combustible
+              </div>
+              <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginBottom: 14 }}>
+                Asienta los litros de gasoil suministrados y el horómetro actual de la planta eléctrica en este nodo.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div>
+                  <label className="lbl">Planta Eléctrica</label>
+                  <select className="fi" value={selPlantTag || (equipment.find(e => e.type === 'GEN')?.tag || '')} onChange={e => setSelPlantTag(e.target.value)}>
+                    {equipment.filter(e => e.type === 'GEN').map(eq => (
+                      <option key={eq.id} value={eq.tag}>{eq.tag} ({eq.capacity ? eq.capacity + ' kVA' : 'Generador'})</option>
+                    ))}
+                    {equipment.filter(e => e.type === 'GEN').length === 0 && (
+                      <option value="GEN-PLT-00">Planta Eléctrica del Nodo</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="lbl">Litros Suministrados (Lts)</label>
+                  <input className="fi fm" type="number" step="any" placeholder="Ej: 150" value={fuelLts} onChange={e => setFuelLts(e.target.value)} />
+                </div>
+
+                <div>
+                  <label className="lbl">Destino del Combustible</label>
+                  <select className="fi" value={fuelDest} onChange={e => setFuelDest(e.target.value)}>
+                    <option value="Reserva">Tanque de Reserva Externa</option>
+                    <option value="Sub-tanque">Sub-tanque Propio de Planta</option>
+                    <option value="Ambos">Distribuido</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="lbl">Horómetro Actual de la Planta (Horas)</label>
+                  <input className="fi fm" type="text" placeholder="Ej: 600:42:00 o 600" value={fuelHoro} onChange={e => setFuelHoro(e.target.value)} />
+                </div>
+
+                <div>
+                  <label className="lbl">Nivel Resultante Total en Nodo (Lts)</label>
+                  <input className="fi fm" type="number" step="any" placeholder="Ej: 800" value={fuelTotLvl} onChange={e => setFuelTotLvl(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Plantilla: Actualización Rápida de Cargas */}
           {type === 'actualizacion_carga' && (
@@ -3190,9 +3327,79 @@ function PendingPage({ onLogout }) {
                     confirmText: 'Sí, estoy seguro',
                     onConfirm: async () => {
                       try {
+                        // 1. Eliminar de energy_records en Firestore
                         await db.collection('energy_nodes').doc(nodeId).collection('energy_records').doc(record.id).delete();
+
+                        // 2. Si era un surtido o inspección con horómetro, revertir el horómetro del equipo
+                        const plantTag = record.generatorTag || record.equipmentTag || record.equipmentAction?.tag || (equipment.find(e => e.type === 'GEN')?.tag || '');
+                        
+                        if (plantTag) {
+                          const recSnap = await db.collection('energy_nodes').doc(nodeId).collection('energy_records')
+                            .orderBy('date', 'desc').get();
+                          
+                          const otherRecords = recSnap.docs
+                            .map(d => d.data())
+                            .filter(r => (r.generatorTag === plantTag || r.equipmentTag === plantTag || r.equipmentAction?.tag === plantTag));
+
+                          let prevHoro = 0;
+                          for (const r of otherRecords) {
+                            const hVal = parseFloat(r.fuelHorometer || r.measurements?.horometer || r.equipmentAction?.horometer) || 0;
+                            if (hVal > 0) {
+                              prevHoro = hVal;
+                              break;
+                            }
+                          }
+
+                          if (prevHoro === 0) {
+                            const seed = INITIAL_MAINTENANCE_LOG.find(m => m.tag === plantTag);
+                            if (seed) prevHoro = seed.horometro_actual;
+                          }
+
+                          if (prevHoro > 0) {
+                            const genEq = equipment.find(e => e.type === 'GEN' && e.tag === plantTag);
+                            if (genEq) {
+                              await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(genEq.id).update({
+                                horometer: prevHoro
+                              });
+                            }
+                          }
+                        }
+
+                        // 3. Si era un surtido, sincronizar también con Combustible (refills y tanques)
+                        if (record.type === 'surtido') {
+                          try {
+                            const curRefills = JSON.parse(localStorage.getItem('airtek_fuel_refills_v9') || '[]');
+                            const updatedRefills = curRefills.filter(r => {
+                              if (r.id === 'r_rec_' + record.id || r.id === 'db_' + record.id) return false;
+                              const matchFecha = r.fecha === new Date(record.date?.toDate ? record.date.toDate() : record.date).toLocaleDateString('es-VE');
+                              const matchLugar = r.lugar === nodeName;
+                              const matchLitros = parseFloat(r.litros) === parseFloat(record.fuelLiters);
+                              if (matchFecha && matchLugar && matchLitros) return false;
+                              return true;
+                            });
+                            localStorage.setItem('airtek_fuel_refills_v9', JSON.stringify(updatedRefills));
+
+                            // Revertir litros en tanques
+                            const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v9') || '[]');
+                            const updatedTanks = curTanks.map(t => {
+                              if (t.lugar.toLowerCase() === nodeName.toLowerCase()) {
+                                const removed = parseFloat(record.fuelLiters) || 0;
+                                const isSub = record.fuelDestination === 'Sub-tanque';
+                                const newRes = Math.max(0, (t.reserva_lts || 0) - (isSub ? 0 : removed));
+                                const newSub = Math.max(0, (t.subtanque_actual || t.tanque_lts) - (isSub ? removed : 0));
+                                const total = newSub + newRes;
+                                const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+                                return { ...t, subtanque_actual: newSub, reserva_lts: newRes, aut_total_h: autTotal, dias_aut: Number((autTotal / 24).toFixed(2)) };
+                              }
+                              return t;
+                            });
+                            localStorage.setItem('airtek_fuel_tanks_v9', JSON.stringify(updatedTanks));
+                          } catch(e) {}
+                        }
+
                         setConfirmModal({
                           title: 'Registro eliminado con éxito',
+                          msg: 'El registro fue eliminado y los valores de horómetro y combustible fueron restaurados correctamente.',
                           type: 'success',
                           confirmText: 'Aceptar',
                           cancelText: false,
@@ -3335,7 +3542,63 @@ function PendingPage({ onLogout }) {
               </div>
             );
           })()}
-          {record.equipmentAction && (record.equipmentAction.tag || record.equipmentAction.type) && (
+          {record.type === 'surtido' && (
+            <div className="card" style={{ border: '1px solid rgba(1, 102, 255, 0.25)', background: 'var(--bg-card)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(1, 102, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue)' }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/><path d="M15 10h2a2 2 0 0 1 2 2v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-9l-3-3"/><line x1="3" y1="22" x2="15" y2="22"/></svg>
+                </div>
+                <div>
+                  <h3 className="fd" style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>Detalle de Surtido de Combustible</h3>
+                  <p style={{ fontSize: '.75rem', color: 'var(--tx3)', margin: 0 }}>Despacho y control de niveles en el grupo electrógeno</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
+                <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Planta / Generador</div>
+                  <div className="fm" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--blue)', marginTop: 2 }}>{record.generatorTag || 'Planta Principal'}</div>
+                </div>
+
+                <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Litros Suministrados</div>
+                  <div className="fm" style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--primary)', marginTop: 2 }}>+{record.fuelLiters || 0} Lts</div>
+                </div>
+
+                <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Destino del Combustible</div>
+                  <div style={{ marginTop: 4 }}>
+                    <span className="badge" style={{ background: record.fuelDestination === 'Sub-tanque' ? 'rgba(33, 192, 250, 0.12)' : 'rgba(1, 102, 255, 0.12)', color: record.fuelDestination === 'Sub-tanque' ? '#21c0fa' : 'var(--blue)', fontWeight: 700 }}>
+                      {record.fuelDestination || 'Reserva'}
+                    </span>
+                  </div>
+                </div>
+
+                {record.fuelHorometer && (
+                  <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Horómetro al Surtir</div>
+                    <div className="fm" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--tx1)', marginTop: 2 }}>{record.fuelHorometer}</div>
+                  </div>
+                )}
+
+                {record.fuelTotalLevel > 0 && (
+                  <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Nivel Total en Nodo</div>
+                    <div className="fm" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--green)', marginTop: 2 }}>{record.fuelTotalLevel} Lts</div>
+                  </div>
+                )}
+              </div>
+
+              {record.observations && (
+                <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700, marginBottom: 4 }}>Observaciones del Despacho</div>
+                  <div style={{ fontSize: '.84rem', color: 'var(--tx2)', lineHeight: 1.5 }}>{record.observations}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {record.type !== 'surtido' && record.equipmentAction && (record.equipmentAction.tag || record.equipmentAction.type) && (
             <div className="card">
               <h3 className="fd" style={{ fontSize: '.75rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.1em', marginBottom: 12 }}>Acción de Equipo</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -5157,6 +5420,7 @@ ${f.obsGenerales}`;
       const [viewForm, setViewForm] = useState(() => !!activePlantDraft);
       const [selPlant, setSelPlant] = useState(() => activePlantDraft || null);
       const [expandedHist, setExpandedHist] = useState({});
+      
 
       const handleInspect = (eq) => {
         setSelPlant(eq);
@@ -5181,11 +5445,48 @@ ${f.obsGenerales}`;
                  Plantas Eléctricas Registradas
               </div>
               {genEqs.map(eq => {
-                const interval = parseFloat(eq.maintenanceInterval) || 250;
-                const lastMaint = parseFloat(eq.lastMaintenanceHorometer) || 0;
-                const currentH = parseFloat(eq.horometer) || 0;
-                const elapsed = Math.max(0, currentH - lastMaint);
-                const remaining = interval - elapsed;
+                const catalogSeed = INITIAL_MAINTENANCE_LOG.find(m => m.tag === eq.tag);
+                const interval = parseFloat(eq.maintenanceInterval) || (catalogSeed ? catalogSeed.intervalo : 250);
+                const seedLastMaint = catalogSeed ? (parseFloat(catalogSeed.horometro_mtto) || 0) : 0;
+                const eqLastMaint = parseFloat(eq.lastMaintenanceHorometer) || 0;
+                const lastMaint = Math.max(seedLastMaint, eqLastMaint);
+
+                const seedCurrentH = catalogSeed ? (parseFloat(catalogSeed.horometro_actual) || 0) : 0;
+                const eqCurrentH = parseFloat(eq.horometer) || 0;
+
+                // Buscar el horómetro más reciente registrado en los records del nodo para esta planta
+                const allPlantRecords = (records || [])
+                  .filter(r => r.generatorTag === eq.tag || r.equipmentTag === eq.tag || r.equipmentAction?.tag === eq.tag)
+                  .sort((a, b) => {
+                    const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+                    const dbDate = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+                    return dbDate - da;
+                  });
+
+                let latestHoroFromRecords = 0;
+                for (const r of allPlantRecords) {
+                  let hVal = 0;
+                  if (r.fuelHorometer) {
+                    const m = String(r.fuelHorometer).match(/(\d+)h\s*(\d+)?m?/);
+                    hVal = m ? (parseInt(m[1]) + (parseInt(m[2] || 0) / 60)) : (parseFloat(r.fuelHorometer) || 0);
+                  } else if (r.measurements?.horometer) {
+                    hVal = parseFloat(r.measurements.horometer) || 0;
+                  } else if (r.equipmentAction?.horometer) {
+                    hVal = parseFloat(r.equipmentAction.horometer) || 0;
+                  }
+                  if (hVal > 0) {
+                    latestHoroFromRecords = hVal;
+                    break;
+                  }
+                }
+
+                // Si se eliminó el registro de prueba, el horómetro se reconcilia automáticamente al valor base
+                const currentH = latestHoroFromRecords > 0 
+                  ? Math.max(seedCurrentH, latestHoroFromRecords)
+                  : seedCurrentH;
+
+                const elapsed = Math.max(0, parseFloat((currentH - lastMaint).toFixed(1)));
+                const remaining = parseFloat((interval - elapsed).toFixed(1));
                 const percentage = Math.min(100, Math.max(0, (elapsed / interval) * 100));
 
                 let barColor = '#10b981'; // Emerald Green
@@ -5273,10 +5574,10 @@ ${f.obsGenerales}`;
                               <div style={{ fontSize: '.82rem', fontWeight: 600, color: 'var(--tx1)', fontFamily: "'Outfit', sans-serif" }}>{eq.phases}</div>
                             </div>
                           )}
-                          {eq.horometer && (
+                          {currentH > 0 && (
                             <div style={{ background: 'var(--bg-elevated)', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
                               <div style={{ fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Horómetro</div>
-                              <div style={{ fontSize: '.82rem', fontWeight: 600, color: 'var(--tx1)', fontFamily: "'Outfit', sans-serif" }}>{formatHHMMSS(parseFloat(eq.horometer))}</div>
+                              <div style={{ fontSize: '.82rem', fontWeight: 600, color: 'var(--tx1)', fontFamily: "'Outfit', sans-serif" }}>{formatHHMMSS(currentH)}</div>
                             </div>
                           )}
                         </div>
@@ -5298,12 +5599,20 @@ ${f.obsGenerales}`;
                           <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
                             {remaining <= 0 ? 'Horas de sobregiro' : 'Horas restantes'}
                           </div>
-                          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                             {plantRecords.length > 0 && (
                               <button className="bs" style={{ padding: '7px 14px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600 }} onClick={toggleExpand}>
                                 {isExpanded ? 'Ocultar Hist.' : `Historial (${plantRecords.length})`}
                               </button>
                             )}
+                            <button className="bp" style={{ padding: '7px 14px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600, background: '#0284c7', display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => {
+                              // Navegar a Nuevo Registro con tipo surtido y planta preseleccionada
+                              localStorage.setItem('airtek_presurtido', JSON.stringify({ plantTag: eq.tag, plantCapacity: eq.capacity }));
+                              onSubViewChange('newRecord');
+                            }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/><path d="M15 10h2a2 2 0 0 1 2 2v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-9l-3-3"/><line x1="3" y1="22" x2="15" y2="22"/></svg>
+                              Surtir Combustible
+                            </button>
                             <button className="bp" style={{ padding: '7px 16px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600, boxShadow: '0 2px 8px rgba(1, 102, 255, 0.25)' }} onClick={() => handleInspect(eq)}>
                               Inspeccionar
                             </button>
@@ -7218,6 +7527,14 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             <line x1="18" y1="13" x2="18" y2="17"/>
           </svg>
         )},
+        { key: 'combustible', label: 'Combustible', icon: () => (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/>
+            <path d="M15 10h2a2 2 0 0 1 2 2v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-9l-3-3"/>
+            <line x1="3" y1="22" x2="15" y2="22"/>
+            <rect x="6" y="7" width="6" height="5" rx="1"/>
+          </svg>
+        )},
         { key: 'etp', label: 'Regulación ETP23006', icon: () => (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
@@ -8513,7 +8830,3511 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       );
     }
 
-    function MaterialesWrapper() {
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MÓDULO DE GESTIÓN DE COMBUSTIBLE, SURTIDOS Y MANTENIMIENTO DE PLANTAS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const INITIAL_FUEL_TANKS = [
+      {
+            "id": "t_21",
+            "zona": "Maracaibo",
+            "lugar": "Atlantis",
+            "tag": "ATL-PLT-00",
+            "equipo": "ATL-PLT-00 (28 kVA)",
+            "kva": 28,
+            "tanque_lts": 400,
+            "subtanque_actual": 400,
+            "reserva_lts": 750,
+            "cap_reserva": 1500,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 66.7,
+            "aut_total_h": 191.7,
+            "dias_aut": 7.99,
+            "cant_faltante": 750,
+            "horometro_actual": "—",
+            "tipo": "sede"
+      },
+      {
+            "id": "t_22",
+            "zona": "Maracaibo",
+            "lugar": "Atlantis",
+            "tag": "ATL-PLT-01",
+            "equipo": "ATL-PLT-01 (500 kVA)",
+            "kva": 500,
+            "tanque_lts": 1000,
+            "subtanque_actual": 2000,
+            "reserva_lts": 0,
+            "cap_reserva": 2000,
+            "consumo_lh": 45.0,
+            "aut_tanque_h": 22.2,
+            "aut_total_h": 44.4,
+            "dias_aut": 1.85,
+            "cant_faltante": 2000,
+            "horometro_actual": "14h 24m",
+            "tipo": "sede"
+      },
+      {
+            "id": "t_7",
+            "zona": "Maracaibo",
+            "lugar": "Nodo Bella Vista",
+            "tag": "BVIS-PLT-00",
+            "equipo": "BV-PLT-00 (150 kVA)",
+            "kva": 150,
+            "tanque_lts": 330,
+            "subtanque_actual": 330,
+            "reserva_lts": 739,
+            "cap_reserva": 800,
+            "consumo_lh": 22.0,
+            "aut_tanque_h": 15.0,
+            "aut_total_h": 48.6,
+            "dias_aut": 2.02,
+            "cant_faltante": 61,
+            "horometro_actual": "626h 49m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_5",
+            "zona": "Maracaibo",
+            "lugar": "CPS",
+            "tag": "CPS-PLT-00",
+            "equipo": "CPS-PLT-00 (125 kVA)",
+            "kva": 125,
+            "tanque_lts": 305,
+            "subtanque_actual": 305,
+            "reserva_lts": 357,
+            "cap_reserva": 660,
+            "consumo_lh": 18.0,
+            "aut_tanque_h": 16.9,
+            "aut_total_h": 36.8,
+            "dias_aut": 1.53,
+            "cant_faltante": 303,
+            "horometro_actual": "2413h 04m",
+            "tipo": "sede"
+      },
+      {
+            "id": "t_8",
+            "zona": "Maracaibo",
+            "lugar": "Comedor",
+            "tag": "CMD-PLT-00",
+            "equipo": "CMD-PLT-00 (150 kVA)",
+            "kva": 150,
+            "tanque_lts": 330,
+            "subtanque_actual": 330,
+            "reserva_lts": 452,
+            "cap_reserva": 600,
+            "consumo_lh": 22.0,
+            "aut_tanque_h": 15.0,
+            "aut_total_h": 35.5,
+            "dias_aut": 1.48,
+            "cant_faltante": 148,
+            "horometro_actual": "584h 25m",
+            "tipo": "sede"
+      },
+      {
+            "id": "t_1",
+            "zona": "Maracaibo",
+            "lugar": "Datacenter 18 de Octubre",
+            "tag": "18OT-PLT-01",
+            "equipo": "18OT-PLT-01 (100 kVA)",
+            "kva": 100,
+            "tanque_lts": 330,
+            "subtanque_actual": 330,
+            "reserva_lts": 0,
+            "cap_reserva": 0,
+            "consumo_lh": 18.0,
+            "aut_tanque_h": 18.3,
+            "aut_total_h": 18.3,
+            "dias_aut": 0.76,
+            "cant_faltante": 0,
+            "horometro_actual": "—",
+            "tipo": "datacenter"
+      },
+      {
+            "id": "t_2",
+            "zona": "Maracaibo",
+            "lugar": "Datacenter 18 de Octubre",
+            "tag": "18OT-PLT-00",
+            "equipo": "18OT-PLT-00 (110 kVA)",
+            "kva": 110,
+            "tanque_lts": 305,
+            "subtanque_actual": 305,
+            "reserva_lts": 230,
+            "cap_reserva": 240,
+            "consumo_lh": 20.0,
+            "aut_tanque_h": 15.2,
+            "aut_total_h": 26.8,
+            "dias_aut": 1.12,
+            "cant_faltante": 10,
+            "horometro_actual": "1116h 20m",
+            "tipo": "datacenter"
+      },
+      {
+            "id": "t_3",
+            "zona": "San Francisco",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-00",
+            "equipo": "CALL-PLT-00 (130 kVA)",
+            "kva": 130,
+            "tanque_lts": 305,
+            "subtanque_actual": 305,
+            "reserva_lts": 1609,
+            "cap_reserva": 2500,
+            "consumo_lh": 20.0,
+            "aut_tanque_h": 15.2,
+            "aut_total_h": 95.7,
+            "dias_aut": 3.99,
+            "cant_faltante": 891,
+            "horometro_actual": "1648h 28m",
+            "tipo": "datacenter"
+      },
+      {
+            "id": "t_4",
+            "zona": "San Francisco",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-01",
+            "equipo": "CALL-PLT-01 (100 kVA)",
+            "kva": 100,
+            "tanque_lts": 330,
+            "subtanque_actual": 330,
+            "reserva_lts": 0,
+            "cap_reserva": 0,
+            "consumo_lh": 18.0,
+            "aut_tanque_h": 18.3,
+            "aut_total_h": 18.3,
+            "dias_aut": 0.76,
+            "cant_faltante": 0,
+            "horometro_actual": "278h 48m",
+            "tipo": "datacenter"
+      },
+      {
+            "id": "t_26",
+            "zona": "Móvil",
+            "lugar": "Generador Portátil",
+            "tag": "PORT-PLT-00",
+            "equipo": "PORT-PLT-00 (10 kVA)",
+            "kva": 10,
+            "tanque_lts": 25,
+            "subtanque_actual": 25,
+            "reserva_lts": 0,
+            "cap_reserva": 0,
+            "consumo_lh": 3.0,
+            "aut_tanque_h": 8.3,
+            "aut_total_h": 8.3,
+            "dias_aut": 0.35,
+            "cant_faltante": 0,
+            "horometro_actual": "—",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_24",
+            "zona": "Valmore Rodríguez",
+            "lugar": "Nodo Bachaquero",
+            "tag": "BACH-PLT-00",
+            "equipo": "BACH-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 80,
+            "reserva_lts": 250,
+            "cap_reserva": 500,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 55.0,
+            "dias_aut": 2.29,
+            "cant_faltante": 250,
+            "horometro_actual": "—",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_18",
+            "zona": "Cabimas",
+            "lugar": "Nodo Cabimas",
+            "tag": "CABI-PLT-00",
+            "equipo": "CABI-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 80,
+            "reserva_lts": 382,
+            "cap_reserva": 600,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 77.0,
+            "dias_aut": 3.21,
+            "cant_faltante": 218,
+            "horometro_actual": "1697h 56m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_20",
+            "zona": "Lagunillas",
+            "lugar": "Nodo Ciudad Ojeda",
+            "tag": "OJEDA-PLT-00",
+            "equipo": "OJEDA-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 80,
+            "reserva_lts": 1291,
+            "cap_reserva": 500,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 228.5,
+            "dias_aut": 9.52,
+            "cant_faltante": 0,
+            "horometro_actual": "1396h 52m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_19",
+            "zona": "Cañada de Urdaneta",
+            "lugar": "Nodo La Cañada de Urdaneta",
+            "tag": "CANA-PLT-00",
+            "equipo": "CANA-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 1000,
+            "reserva_lts": 0,
+            "cap_reserva": 600,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 166.7,
+            "dias_aut": 6.95,
+            "cant_faltante": 600,
+            "horometro_actual": "1010h 57m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_10",
+            "zona": "Jesús Enrique Lossada",
+            "lugar": "Nodo La Concepción",
+            "tag": "LCON-PLT-00",
+            "equipo": "LCON-PLT-00 (25 kVA)",
+            "kva": 25,
+            "tanque_lts": 100,
+            "subtanque_actual": 100,
+            "reserva_lts": 437,
+            "cap_reserva": 600,
+            "consumo_lh": 5.0,
+            "aut_tanque_h": 20.0,
+            "aut_total_h": 107.4,
+            "dias_aut": 4.48,
+            "cant_faltante": 163,
+            "horometro_actual": "536h 36m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_16",
+            "zona": "Maracaibo",
+            "lugar": "Nodo Lago Caribe",
+            "tag": "LCAR-PLT-00",
+            "equipo": "LCAR-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 80,
+            "reserva_lts": 644,
+            "cap_reserva": 660,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 120.7,
+            "dias_aut": 5.03,
+            "cant_faltante": 16,
+            "horometro_actual": "428h 31m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_11",
+            "zona": "Maracaibo",
+            "lugar": "Nodo Las Tunas",
+            "tag": "LTUN-PLT-00",
+            "equipo": "LTUN-PLT-00 (25 kVA)",
+            "kva": 25,
+            "tanque_lts": 1100,
+            "subtanque_actual": 1100,
+            "reserva_lts": 0,
+            "cap_reserva": 0,
+            "consumo_lh": 5.0,
+            "aut_tanque_h": 220.0,
+            "aut_total_h": 220.0,
+            "dias_aut": 9.17,
+            "cant_faltante": 0,
+            "horometro_actual": "370h 18m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_17",
+            "zona": "Machiques",
+            "lugar": "Nodo Machiques",
+            "tag": "MACH-PLT-00",
+            "equipo": "MACH-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 80,
+            "reserva_lts": 868,
+            "cap_reserva": 1000,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 158.0,
+            "dias_aut": 6.58,
+            "cant_faltante": 132,
+            "horometro_actual": "358h 40m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_12",
+            "zona": "Maracaibo",
+            "lugar": "Nodo Marite",
+            "tag": "MARI-PLT-00",
+            "equipo": "MARI-PLT-00 (25 kVA)",
+            "kva": 25,
+            "tanque_lts": 1000,
+            "subtanque_actual": 1000,
+            "reserva_lts": 0,
+            "cap_reserva": 0,
+            "consumo_lh": 5.0,
+            "aut_tanque_h": 200.0,
+            "aut_total_h": 200.0,
+            "dias_aut": 8.33,
+            "cant_faltante": 0,
+            "horometro_actual": "1384h 06m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_23",
+            "zona": "Baralt",
+            "lugar": "Nodo Mene Grande",
+            "tag": "MENE-PLT-00",
+            "equipo": "MENE-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 80,
+            "reserva_lts": 250,
+            "cap_reserva": 500,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 55.0,
+            "dias_aut": 2.29,
+            "cant_faltante": 250,
+            "horometro_actual": "—",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_13",
+            "zona": "Maracaibo",
+            "lugar": "Nodo Pomona",
+            "tag": "POMO-PLT-00",
+            "equipo": "POMO-PLT-00 (25 kVA)",
+            "kva": 25,
+            "tanque_lts": 60,
+            "subtanque_actual": 60,
+            "reserva_lts": 778,
+            "cap_reserva": 850,
+            "consumo_lh": 5.0,
+            "aut_tanque_h": 12.0,
+            "aut_total_h": 167.6,
+            "dias_aut": 6.98,
+            "cant_faltante": 72,
+            "horometro_actual": "1806h 35m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_25",
+            "zona": "Miranda",
+            "lugar": "Los Puertos De Altagracia",
+            "tag": "LPUE-PLT-00",
+            "equipo": "LPUE-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 80,
+            "subtanque_actual": 1100,
+            "reserva_lts": 710,
+            "cap_reserva": 500,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 13.3,
+            "aut_total_h": 301.7,
+            "dias_aut": 12.57,
+            "cant_faltante": 0,
+            "horometro_actual": "—",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_14",
+            "zona": "Mara",
+            "lugar": "Nodo San Rafael",
+            "tag": "SRAF-PLT-00",
+            "equipo": "SRAF-PLT-00 (30 kVA)",
+            "kva": 30,
+            "tanque_lts": 100,
+            "subtanque_actual": 100,
+            "reserva_lts": 423,
+            "cap_reserva": 600,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 16.7,
+            "aut_total_h": 87.2,
+            "dias_aut": 3.63,
+            "cant_faltante": 177,
+            "horometro_actual": "500h 01m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_15",
+            "zona": "Santa Cruz de Mara",
+            "lugar": "Nodo Santa Cruz de Mara",
+            "tag": "SCRU-PLT-00",
+            "equipo": "SCRU-PLT-00 (35 kVA)",
+            "kva": 35,
+            "tanque_lts": 60,
+            "subtanque_actual": 60,
+            "reserva_lts": 525,
+            "cap_reserva": 700,
+            "consumo_lh": 7.0,
+            "aut_tanque_h": 8.6,
+            "aut_total_h": 83.6,
+            "dias_aut": 3.48,
+            "cant_faltante": 175,
+            "horometro_actual": "823h 54m",
+            "tipo": "nodo"
+      },
+      {
+            "id": "t_9",
+            "zona": "Maracaibo",
+            "lugar": "SERVICIOS GENERALES",
+            "tag": "SVG-PLT-00",
+            "equipo": "SVG-PLT-00 (32 kVA)",
+            "kva": 32,
+            "tanque_lts": 50,
+            "subtanque_actual": 50,
+            "reserva_lts": 0,
+            "cap_reserva": 0,
+            "consumo_lh": 6.0,
+            "aut_tanque_h": 8.3,
+            "aut_total_h": 8.3,
+            "dias_aut": 0.35,
+            "cant_faltante": 0,
+            "horometro_actual": "809h 48m",
+            "tipo": "sede"
+      },
+      {
+            "id": "t_6",
+            "zona": "Maracaibo",
+            "lugar": "Sede Administrativa Marfi",
+            "tag": "MARFI-PLT-00",
+            "equipo": "MARFI-PLT-00 (150 kVA)",
+            "kva": 150,
+            "tanque_lts": 305,
+            "subtanque_actual": 305,
+            "reserva_lts": 754,
+            "cap_reserva": 1000,
+            "consumo_lh": 22.0,
+            "aut_tanque_h": 13.9,
+            "aut_total_h": 48.1,
+            "dias_aut": 2.0,
+            "cant_faltante": 246,
+            "horometro_actual": "1644h 07m",
+            "tipo": "sede"
+      }
+];
+
+    const INITIAL_MAINTENANCE_LOG = [
+      {
+            "id": "m1",
+            "planta": "Datacenter 18 de Octubre (Principal)",
+            "tag": "18OT-PLT-00",
+            "kva": 110,
+            "fecha": "20/05/2026",
+            "horometro_mtto": 1058.3,
+            "horometro_actual": 1107.3,
+            "horas_trabajadas": 49.0,
+            "intervalo": 250,
+            "horas_restantes": 201.0,
+            "litros_aceite": "18 litros",
+            "filtro_aceite": "si\\ qualid ql-51649",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "si\\ fliplus- 33405",
+            "filtro_aire": "no",
+            "prox_cambio": "1308.3 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m2",
+            "planta": "Datacenter 18 de Octubre (Secundaria)",
+            "tag": "18OT-PLT-01",
+            "kva": 100,
+            "fecha": "25/11/2025",
+            "horometro_mtto": 8.4,
+            "horometro_actual": 8.4,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "15 litros",
+            "filtro_aceite": "FLEETGUARD LF-3349",
+            "filtro_trampa": "FLEETGUARD FS1280",
+            "filtro_comb": "FF-5052 FLETGUARD",
+            "filtro_aire": "original",
+            "prox_cambio": "258.4 h",
+            "obs": "—",
+            "status": "optimo"
+      },
+      {
+            "id": "m3",
+            "planta": "Datacenter El Callao (Principal)",
+            "tag": "CALL-PLT-00",
+            "kva": 130,
+            "fecha": "23/03/2026 / 30/06/2026 / 25/08/2026",
+            "horometro_mtto": 1635.9,
+            "horometro_actual": 1635.9,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "18 litros",
+            "filtro_aceite": "si\\ qualid ql-51649",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "si\\ fliplus- 33405",
+            "filtro_aire": "no",
+            "prox_cambio": "1885.9 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m4",
+            "planta": "Datacenter El Callao (Secundaria)",
+            "tag": "CALL-PLT-01",
+            "kva": 100,
+            "fecha": "2026-07-30 00:00:00",
+            "horometro_mtto": 216.6,
+            "horometro_actual": 276.5,
+            "horas_trabajadas": 59.9,
+            "intervalo": 250,
+            "horas_restantes": 190.1,
+            "litros_aceite": "15 litros",
+            "filtro_aceite": "FLEETGUARD LF-3349",
+            "filtro_trampa": "FLEETGUARD FS1280",
+            "filtro_comb": "FF-5052 FLETGUARD",
+            "filtro_aire": "original",
+            "prox_cambio": "466.6 h",
+            "obs": "—",
+            "status": "optimo"
+      },
+      {
+            "id": "m5",
+            "planta": "Oficina Gerencias CPS",
+            "tag": "CPS-PLT-00",
+            "kva": 125,
+            "fecha": "26/5/2026 / 13/8/2026",
+            "horometro_mtto": 2350.1,
+            "horometro_actual": 2366.1,
+            "horas_trabajadas": 16.0,
+            "intervalo": 250,
+            "horas_restantes": 234.0,
+            "litros_aceite": "8 LITROS",
+            "filtro_aceite": "MILLAR ML8",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "FLETTGUARD 2009",
+            "filtro_aire": "no",
+            "prox_cambio": "2600.1 h",
+            "obs": "no se cambio filtro de combustible y de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m6",
+            "planta": "Sede Administrativa Marfi",
+            "tag": "MARFI-PLT-00",
+            "kva": 150,
+            "fecha": "2026-05-25 00:00:00",
+            "horometro_mtto": 1412.3,
+            "horometro_actual": 1592.2,
+            "horas_trabajadas": 179.9,
+            "intervalo": 250,
+            "horas_restantes": 70.1,
+            "litros_aceite": "15 litros",
+            "filtro_aceite": "si/winner LFP-780",
+            "filtro_trampa": "si",
+            "filtro_comb": "si\\WINNER FP-586F",
+            "filtro_aire": "no",
+            "prox_cambio": "1662.3 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m7",
+            "planta": "Bella Vista",
+            "tag": "BVIS-PLT-00",
+            "kva": 150,
+            "fecha": "20/06/2025 / 30/06/2026",
+            "horometro_mtto": 475.0,
+            "horometro_actual": 555.0,
+            "horas_trabajadas": 80.0,
+            "intervalo": 250,
+            "horas_restantes": 170.0,
+            "litros_aceite": "15 litros",
+            "filtro_aceite": "si\\ LFP-780",
+            "filtro_trampa": "si\\LFF-3417",
+            "filtro_comb": "si\\ FP586F",
+            "filtro_aire": "original",
+            "prox_cambio": "725.0 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m8",
+            "planta": "Nodo Las Tunas",
+            "tag": "LTUN-PLT-00",
+            "kva": 30,
+            "fecha": "2026-07-01 00:00:00",
+            "horometro_mtto": 244.1,
+            "horometro_actual": 370.3,
+            "horas_trabajadas": 126.2,
+            "intervalo": 250,
+            "horas_restantes": 123.8,
+            "litros_aceite": "11 litros",
+            "filtro_aceite": "fleetguard 3345",
+            "filtro_trampa": "fs-1280",
+            "filtro_comb": "winner 33358",
+            "filtro_aire": "—",
+            "prox_cambio": "494.1 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m9",
+            "planta": "Nodo Marite",
+            "tag": "MARI-PLT-00",
+            "kva": 25,
+            "fecha": "02/06/2026",
+            "horometro_mtto": 1140.5,
+            "horometro_actual": 1339.0,
+            "horas_trabajadas": 198.5,
+            "intervalo": 250,
+            "horas_restantes": 51.5,
+            "litros_aceite": "8 litros",
+            "filtro_aceite": "winner wph-2808",
+            "filtro_trampa": "ferca 33472",
+            "filtro_comb": "winner FP686F",
+            "filtro_aire": "no",
+            "prox_cambio": "1390.5 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m10",
+            "planta": "Nodo San Rafael de El Moján",
+            "tag": "SRAF-PLT-00",
+            "kva": 30,
+            "fecha": "2026-08-04 00:00:00",
+            "horometro_mtto": 388.8,
+            "horometro_actual": 414.8,
+            "horas_trabajadas": 26.0,
+            "intervalo": 250,
+            "horas_restantes": 224.0,
+            "litros_aceite": "11 litros",
+            "filtro_aceite": "si\\winner RL-51602",
+            "filtro_trampa": "si\\winner LFF-3417",
+            "filtro_comb": "si\\WINNER FP-586F",
+            "filtro_aire": "no",
+            "prox_cambio": "638.8 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m11",
+            "planta": "Nodo Pomona",
+            "tag": "POMO-PLT-00",
+            "kva": 25,
+            "fecha": "02/06/2026 / 26/08/2026",
+            "horometro_mtto": 1786.9,
+            "horometro_actual": 1786.9,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "8 litros",
+            "filtro_aceite": "winner wph-2808",
+            "filtro_trampa": "ferca 33472",
+            "filtro_comb": "winner FP686F",
+            "filtro_aire": "no\\DHP-0024-10",
+            "prox_cambio": "2036.9 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m12",
+            "planta": "Nodo Lago Caribe",
+            "tag": "LCAR-PLT-00",
+            "kva": 30,
+            "fecha": "20/11/2025",
+            "horometro_mtto": 322.5,
+            "horometro_actual": 428.5,
+            "horas_trabajadas": 106.0,
+            "intervalo": 250,
+            "horas_restantes": 144.0,
+            "litros_aceite": "6 litros",
+            "filtro_aceite": "si",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "si",
+            "filtro_aire": "no",
+            "prox_cambio": "572.5 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m13",
+            "planta": "Nodo Santa Cruz de Mara",
+            "tag": "SCRU-PLT-00",
+            "kva": 35,
+            "fecha": "21/11/2025",
+            "horometro_mtto": 612.9,
+            "horometro_actual": 845.0,
+            "horas_trabajadas": 232.1,
+            "intervalo": 250,
+            "horas_restantes": 17.9,
+            "litros_aceite": "8 litros",
+            "filtro_aceite": "no",
+            "filtro_trampa": "QL-4967",
+            "filtro_comb": "mitzuki-4102",
+            "filtro_aire": "no",
+            "prox_cambio": "862.9 h",
+            "obs": "no se cambio filtro de aire ni de aceite",
+            "status": "critico"
+      },
+      {
+            "id": "m14",
+            "planta": "Nodo La Concepción",
+            "tag": "LCON-PLT-00",
+            "kva": 30,
+            "fecha": "08/05/2025",
+            "horometro_mtto": 746.0,
+            "horometro_actual": 872.5,
+            "horas_trabajadas": 126.5,
+            "intervalo": 250,
+            "horas_restantes": 123.5,
+            "litros_aceite": "8 litros",
+            "filtro_aceite": "si / 951841",
+            "filtro_trampa": "no",
+            "filtro_comb": "si/33361",
+            "filtro_aire": "no",
+            "prox_cambio": "996.0 h",
+            "obs": "—",
+            "status": "optimo"
+      },
+      {
+            "id": "m15",
+            "planta": "Nodo La Cañada",
+            "tag": "CANA-PLT-00",
+            "kva": 30,
+            "fecha": "24/03/2026 / 06/08/2026",
+            "horometro_mtto": 990.1,
+            "horometro_actual": 1011.0,
+            "horas_trabajadas": 20.9,
+            "intervalo": 250,
+            "horas_restantes": 229.1,
+            "litros_aceite": "6 litros",
+            "filtro_aceite": "no  / partmo-2863SP",
+            "filtro_trampa": "si / MITSUKI-33472W",
+            "filtro_comb": "no/ BB-210309",
+            "filtro_aire": "no",
+            "prox_cambio": "1240.1 h",
+            "obs": "no se cambio filtro de aire y uno de combustible cod-210309",
+            "status": "optimo"
+      },
+      {
+            "id": "m16",
+            "planta": "Nodo Cabimas",
+            "tag": "CABI-PLT-00",
+            "kva": 45,
+            "fecha": "27/03/2026 / 30/06/2026",
+            "horometro_mtto": 1489.0,
+            "horometro_actual": 1633.3,
+            "horas_trabajadas": 144.3,
+            "intervalo": 250,
+            "horas_restantes": 105.7,
+            "litros_aceite": "6 litros",
+            "filtro_aceite": "si",
+            "filtro_trampa": "si",
+            "filtro_comb": "no",
+            "filtro_aire": "no",
+            "prox_cambio": "1739.0 h",
+            "obs": "no se cambio filtro de aire y uno de combustible cod-210309",
+            "status": "optimo"
+      },
+      {
+            "id": "m17",
+            "planta": "Nodo Ciudad Ojeda",
+            "tag": "OJEDA-PLT-00",
+            "kva": 45,
+            "fecha": "27/03/2026",
+            "horometro_mtto": 1207.1,
+            "horometro_actual": 1387.6,
+            "horas_trabajadas": 180.5,
+            "intervalo": 250,
+            "horas_restantes": 69.5,
+            "litros_aceite": "6 litros",
+            "filtro_aceite": "si",
+            "filtro_trampa": "si",
+            "filtro_comb": "no",
+            "filtro_aire": "no",
+            "prox_cambio": "1457.1 h",
+            "obs": "no se cambio filtro de aire y uno de combustible cod-210309",
+            "status": "optimo"
+      },
+      {
+            "id": "m18",
+            "planta": "Nodo Machiques",
+            "tag": "MACH-PLT-00",
+            "kva": 30,
+            "fecha": "2026-06-05 00:00:00",
+            "horometro_mtto": 102.0,
+            "horometro_actual": 358.7,
+            "horas_trabajadas": 256.7,
+            "intervalo": 250,
+            "horas_restantes": -6.7,
+            "litros_aceite": "6 Litros",
+            "filtro_aceite": "si",
+            "filtro_trampa": "no",
+            "filtro_comb": "si",
+            "filtro_aire": "no",
+            "prox_cambio": "352.0 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "critico"
+      },
+      {
+            "id": "m19",
+            "planta": "Nodo Mene Grande",
+            "tag": "MENE-PLT-00",
+            "kva": 30,
+            "fecha": "17/07/2025",
+            "horometro_mtto": 5.1,
+            "horometro_actual": 85.7,
+            "horas_trabajadas": 80.6,
+            "intervalo": 250,
+            "horas_restantes": 169.4,
+            "litros_aceite": "11 litros",
+            "filtro_aceite": "si\\winner RL-51602",
+            "filtro_trampa": "si\\winner LFF-3417",
+            "filtro_comb": "si\\WINNER FP-586F",
+            "filtro_aire": "no",
+            "prox_cambio": "255.1 h",
+            "obs": "—",
+            "status": "optimo"
+      },
+      {
+            "id": "m20",
+            "planta": "Nodo Bachaquero",
+            "tag": "BACH-PLT-00",
+            "kva": 30,
+            "fecha": "15/08/2025",
+            "horometro_mtto": 71.0,
+            "horometro_actual": 71.2,
+            "horas_trabajadas": 0.2,
+            "intervalo": 250,
+            "horas_restantes": 249.8,
+            "litros_aceite": "12 LITROS",
+            "filtro_aceite": "—",
+            "filtro_trampa": "—",
+            "filtro_comb": "—",
+            "filtro_aire": "—",
+            "prox_cambio": "321.0 h",
+            "obs": "—",
+            "status": "optimo"
+      },
+      {
+            "id": "m21",
+            "planta": "Comedor Principal",
+            "tag": "COM-PLT-00",
+            "kva": 150,
+            "fecha": "20/5/2026 / 25/08/2026",
+            "horometro_mtto": 568.9,
+            "horometro_actual": 568.9,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "15 LITROS",
+            "filtro_aceite": "SI\\WIX 57607",
+            "filtro_trampa": "si\\winner LFF-3417",
+            "filtro_comb": "si\\WINNER FP-586F",
+            "filtro_aire": "original",
+            "prox_cambio": "818.9 h",
+            "obs": "—",
+            "status": "optimo"
+      },
+      {
+            "id": "m22",
+            "planta": "Atlantis 25 kVA (Roja)",
+            "tag": "ATL-PLT-01",
+            "kva": 25,
+            "fecha": "25/03/2026",
+            "horometro_mtto": 723.2,
+            "horometro_actual": 723.2,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "8 litros",
+            "filtro_aceite": "si",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "si",
+            "filtro_aire": "no",
+            "prox_cambio": "973.2 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m23",
+            "planta": "Comedor Secundaria",
+            "tag": "COM-PLT-01",
+            "kva": 50,
+            "fecha": "29/05/2024",
+            "horometro_mtto": 0.0,
+            "horometro_actual": 0.0,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "12 litros",
+            "filtro_aceite": "si",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "si",
+            "filtro_aire": "no",
+            "prox_cambio": "250.0 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m24",
+            "planta": "Servicios Generales",
+            "tag": "SVG-PLT-00",
+            "kva": 32,
+            "fecha": "26/03/2026",
+            "horometro_mtto": 723.2,
+            "horometro_actual": 764.7,
+            "horas_trabajadas": 41.5,
+            "intervalo": 250,
+            "horas_restantes": 208.5,
+            "litros_aceite": "6 litros",
+            "filtro_aceite": "no",
+            "filtro_trampa": "si",
+            "filtro_comb": "si",
+            "filtro_aire": "no",
+            "prox_cambio": "973.2 h",
+            "obs": "no se cambio filtro de aceite y aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m25",
+            "planta": "Planta Móvil Amarilla",
+            "tag": "PAM-PLT-00",
+            "kva": 20,
+            "fecha": "25/06/2025",
+            "horometro_mtto": 1134.2,
+            "horometro_actual": 1134.2,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "12 litros",
+            "filtro_aceite": "si\\millar ml-4558",
+            "filtro_trampa": "n\\a",
+            "filtro_comb": "si\\wx-33361",
+            "filtro_aire": "no",
+            "prox_cambio": "1384.2 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m26",
+            "planta": "Nodo Los Puertos de Altagracia",
+            "tag": "LPUE-PLT-00",
+            "kva": 30,
+            "fecha": "30/07/2025",
+            "horometro_mtto": 3.6,
+            "horometro_actual": 3.6,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "10",
+            "filtro_aceite": "fletguar lf3345",
+            "filtro_trampa": "FS1280",
+            "filtro_comb": "FF-5052",
+            "filtro_aire": "no",
+            "prox_cambio": "253.6 h",
+            "obs": "no se cambio filtro de aceite y aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m27",
+            "planta": "Planta Portátil",
+            "tag": "PORT-PLT-00",
+            "kva": 15,
+            "fecha": "31/03/2026 / 28/07/2026",
+            "horometro_mtto": 435.7,
+            "horometro_actual": 488.0,
+            "horas_trabajadas": 52.3,
+            "intervalo": 250,
+            "horas_restantes": 197.7,
+            "litros_aceite": "10 litros",
+            "filtro_aceite": "fletguar lf3345",
+            "filtro_trampa": "FS1280",
+            "filtro_comb": "FF-5052",
+            "filtro_aire": "no",
+            "prox_cambio": "685.7 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m28",
+            "planta": "Atlantis 28 kVA",
+            "tag": "ATL-PLT-02",
+            "kva": 28,
+            "fecha": "2026-05-25 00:00:00",
+            "horometro_mtto": 100.9,
+            "horometro_actual": 100.9,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "10 litros",
+            "filtro_aceite": "fletguar lf3345",
+            "filtro_trampa": "FS1280",
+            "filtro_comb": "FF-5052",
+            "filtro_aire": "no",
+            "prox_cambio": "350.9 h",
+            "obs": "no se cambio filtro de aire",
+            "status": "optimo"
+      },
+      {
+            "id": "m29",
+            "planta": "Atlantis Principal 500 kVA",
+            "tag": "ATL-PLT-00",
+            "kva": 500,
+            "fecha": "17/6/2026 / 26/08/2026",
+            "horometro_mtto": 65.8,
+            "horometro_actual": 17.8,
+            "horas_trabajadas": 0.0,
+            "intervalo": 250,
+            "horas_restantes": 250.0,
+            "litros_aceite": "76 litros",
+            "filtro_aceite": "—",
+            "filtro_trampa": "—",
+            "filtro_comb": "—",
+            "filtro_aire": "—",
+            "prox_cambio": "315.8 h",
+            "obs": "—",
+            "status": "optimo"
+      }
+];
+
+    const INITIAL_FUEL_REFILLS = [
+      {
+            "id": "r_1",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Datacenter 18 de Octubre",
+            "tag": "18OT-PLT-00",
+            "litros": 205,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 205,
+            "total_nodo": 510,
+            "horometro": "1100h 39m",
+            "horas_trabajo": "0 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 205 litros a la reserva quedando esta en 205 litros ya que los 30 litros que contenia la pipa se encontraban contaminados"
+      },
+      {
+            "id": "r_2",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "CPS",
+            "tag": "CPS-PLT-00",
+            "litros": 220,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 345,
+            "total_nodo": 650,
+            "horometro": "2334h 01m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 220 litros a la reserva quedando esta en 345 litros"
+      },
+      {
+            "id": "r_3",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Sede Administrativa Marfi",
+            "tag": "MARFI-PLT-00",
+            "litros": 500,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 780,
+            "total_nodo": 1085,
+            "horometro": "1570h 22m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 500 litros a la reserva quedando esta en 780 litros"
+      },
+      {
+            "id": "r_4",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Bella Vista",
+            "tag": "BVIS-PLT-00",
+            "litros": 125,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 770,
+            "total_nodo": 1100,
+            "horometro": "560h 08m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_5",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo La Concepción",
+            "tag": "LCON-PLT-00",
+            "litros": 75,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 683,
+            "total_nodo": 783,
+            "horometro": "469h 46m",
+            "horas_trabajo": "3 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_6",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Las Tunas",
+            "tag": "LTUN-PLT-00",
+            "litros": 185,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 1100,
+            "reserva_lts": 0,
+            "total_nodo": 1100,
+            "horometro": "370h 18m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_7",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Marite",
+            "tag": "MARI-PLT-00",
+            "litros": 12,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 777,
+            "total_nodo": 837,
+            "horometro": "1339h 02m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_8",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Pomona",
+            "tag": "POMO-PLT-00",
+            "litros": 95,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 743,
+            "total_nodo": 803,
+            "horometro": "1720h 05m",
+            "horas_trabajo": "3 min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_9",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo San Rafael",
+            "tag": "SRAF-PLT-00",
+            "litros": 130,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 358,
+            "total_nodo": 458,
+            "horometro": "402h 01m",
+            "horas_trabajo": "30 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_10",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-01",
+            "litros": 176,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 330,
+            "reserva_lts": 0,
+            "total_nodo": 330,
+            "horometro": "258h 02m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_11",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-00",
+            "litros": 400,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 1322,
+            "total_nodo": 1627,
+            "horometro": "1564h 02m",
+            "horas_trabajo": "10min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 400 litros a la reserva quedando esta en 1405 litros"
+      },
+      {
+            "id": "r_12",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Santa Cruz de Mara",
+            "tag": "SCRU-PLT-00",
+            "litros": 45,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 715,
+            "total_nodo": 775,
+            "horometro": "804h 15m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_13",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Lago Caribe",
+            "tag": "LCAR-PLT-00",
+            "litros": 230,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 649,
+            "total_nodo": 729,
+            "horometro": "425h 21m",
+            "horas_trabajo": " ",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 230 litros a la reserva quedando esta en 649 litros"
+      },
+      {
+            "id": "r_14",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Machiques",
+            "tag": "MACH-PLT-00",
+            "litros": 135,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 1261,
+            "total_nodo": 1341,
+            "horometro": "270h 00m",
+            "horas_trabajo": "1 day, 0:00:00",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_15",
+            "fecha": "05/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "SERVICIOS GENERALES",
+            "tag": "SVG-PLT-00",
+            "litros": 60,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 50,
+            "reserva_lts": 0,
+            "total_nodo": 50,
+            "horometro": "809h 48m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "05/08/2026 Se surten 25 litros directo a la planta electrica"
+      },
+      {
+            "id": "r_16",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "SERVICIOS GENERALES",
+            "tag": "SVG-PLT-00",
+            "litros": 60,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 50,
+            "reserva_lts": 0,
+            "total_nodo": 50,
+            "horometro": "809h 48m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 35 litros directo a la planta electrica"
+      },
+      {
+            "id": "r_17",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Comedor",
+            "tag": "CMD-PLT-00",
+            "litros": 350,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 474,
+            "total_nodo": 804,
+            "horometro": "517h 08m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 350 litros a la reserva quedando esta en 474 litros"
+      },
+      {
+            "id": "r_18",
+            "fecha": "03/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo Cabimas",
+            "tag": "CABI-PLT-00",
+            "litros": 115,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 507,
+            "total_nodo": 587,
+            "horometro": "1623h 54m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_19",
+            "fecha": "07/08/2026",
+            "semana": "03-08-2026 al 09-08-2026",
+            "lugar": "Nodo La Cañada de Urdaneta",
+            "tag": "CANA-PLT-00",
+            "litros": 200,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 707,
+            "total_nodo": 787,
+            "horometro": "999h 04m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "07/08/2026 Se surten 200 litros a la reserva quedando esta en 725 litros"
+      },
+      {
+            "id": "r_20",
+            "fecha": "14/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Datacenter 18 de Octubre",
+            "tag": "18OT-PLT-00",
+            "litros": 130,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 255,
+            "total_nodo": 560,
+            "horometro": "1107h 18m",
+            "horas_trabajo": "0 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "14/08/2026 Se surten 130 litros a la reserva quedando esta en 255 litros"
+      },
+      {
+            "id": "r_21",
+            "fecha": "14/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "CPS",
+            "tag": "CPS-PLT-00",
+            "litros": 430,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 580,
+            "total_nodo": 885,
+            "horometro": "2355h 03m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "14/08/2026 Se surten 430 litros a la reserva quedando esta en 580 litros"
+      },
+      {
+            "id": "r_22",
+            "fecha": "14/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Sede Administrativa Marfi",
+            "tag": "MARFI-PLT-00",
+            "litros": 250,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 580,
+            "total_nodo": 885,
+            "horometro": "1597h 05m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "14/08/2026 Se surten 250 litros a la reserva quedando esta en 580 litros"
+      },
+      {
+            "id": "r_23",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo Bella Vista",
+            "tag": "BVIS-PLT-00",
+            "litros": 275,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 495,
+            "total_nodo": 825,
+            "horometro": "554h 57m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_24",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo La Concepción",
+            "tag": "LCON-PLT-00",
+            "litros": 100,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 583,
+            "total_nodo": 683,
+            "horometro": "483h 35m",
+            "horas_trabajo": "3 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_25",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo Pomona",
+            "tag": "POMO-PLT-00",
+            "litros": 107,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 636,
+            "total_nodo": 696,
+            "horometro": "1754h 06m",
+            "horas_trabajo": "3 min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_26",
+            "fecha": "14/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo San Rafael",
+            "tag": "SRAF-PLT-00",
+            "litros": 200,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 419,
+            "total_nodo": 519,
+            "horometro": "430h 22m",
+            "horas_trabajo": "30 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "14/08/2026 Se surten 200 litros a la reserva quedando esta en 419 litros"
+      },
+      {
+            "id": "r_27",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-01",
+            "litros": 88,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 330,
+            "reserva_lts": 0,
+            "total_nodo": 330,
+            "horometro": "265h 45m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_28",
+            "fecha": "14/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-00",
+            "litros": 460,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 1298,
+            "total_nodo": 1603,
+            "horometro": "1589h 15m",
+            "horas_trabajo": "10min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "14/08/2026 Se surten 460 litros a la reserva quedando esta en 1385 litros"
+      },
+      {
+            "id": "r_29",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo Santa Cruz de Mara",
+            "tag": "SCRU-PLT-00",
+            "litros": 85,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 630,
+            "total_nodo": 690,
+            "horometro": "823h 54m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_30",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo Lago Caribe",
+            "tag": "LCAR-PLT-00",
+            "litros": 5,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 644,
+            "total_nodo": 724,
+            "horometro": "428h 31m",
+            "horas_trabajo": " ",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_31",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo Machiques",
+            "tag": "MACH-PLT-00",
+            "litros": 117,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 1144,
+            "total_nodo": 1224,
+            "horometro": "297h 39m",
+            "horas_trabajo": "1 day, 0:00:00",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_32",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "SERVICIOS GENERALES",
+            "tag": "SVG-PLT-00",
+            "litros": 25,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 50,
+            "reserva_lts": 0,
+            "total_nodo": 50,
+            "horometro": "809h 48m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "10/08/2026 Se surten 25 litros directo a la planta electrica"
+      },
+      {
+            "id": "r_33",
+            "fecha": "14/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Comedor",
+            "tag": "CMD-PLT-00",
+            "litros": 250,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 430,
+            "total_nodo": 760,
+            "horometro": "547h 07m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "14/08/2026 Se surten 250 litros a la reserva quedando esta en 430 litros"
+      },
+      {
+            "id": "r_34",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo Cabimas",
+            "tag": "CABI-PLT-00",
+            "litros": 49,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 458,
+            "total_nodo": 538,
+            "horometro": "1633h 17m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_35",
+            "fecha": "10/08/2026",
+            "semana": "10-08-2026 al 16-08-2026",
+            "lugar": "Nodo La Cañada de Urdaneta",
+            "tag": "CANA-PLT-00",
+            "litros": 45,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 1000,
+            "reserva_lts": 0,
+            "total_nodo": 1000,
+            "horometro": "1010h 57m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_36",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Datacenter 18 de Octubre",
+            "tag": "18OT-PLT-00",
+            "litros": 115,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 230,
+            "total_nodo": 535,
+            "horometro": "1112h 48m",
+            "horas_trabajo": "0 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 115 litros a la reserva quedando esta en 230 litros"
+      },
+      {
+            "id": "r_37",
+            "fecha": "17/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "CPS",
+            "tag": "CPS-PLT-00",
+            "litros": 225,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 355,
+            "total_nodo": 660,
+            "horometro": "2377h 05m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_38",
+            "fecha": "20/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Sede Administrativa Marfi",
+            "tag": "MARFI-PLT-00",
+            "litros": 400,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 626,
+            "total_nodo": 931,
+            "horometro": "1620h 34m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "20/08/2026 Se surten 400 litros a la reserva quedando esta en 626 litros"
+      },
+      {
+            "id": "r_39",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Nodo Bella Vista",
+            "tag": "BVIS-PLT-00",
+            "litros": 350,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 542,
+            "total_nodo": 872,
+            "horometro": "61|5:09",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 350 litros a la reserva quedando esta en 542 litros"
+      },
+      {
+            "id": "r_40",
+            "fecha": "17/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Nodo La Concepción",
+            "tag": "LCON-PLT-00",
+            "litros": 58,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 525,
+            "total_nodo": 625,
+            "horometro": "510h 11m",
+            "horas_trabajo": "3 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_41",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Nodo Pomona",
+            "tag": "POMO-PLT-00",
+            "litros": 300,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 861,
+            "total_nodo": 921,
+            "horometro": "1779h 50m",
+            "horas_trabajo": "3 min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 300 litros a la reserva quedando esta en 861 litros"
+      },
+      {
+            "id": "r_42",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Nodo San Rafael",
+            "tag": "SRAF-PLT-00",
+            "litros": 200,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 452,
+            "total_nodo": 552,
+            "horometro": "460h 26m",
+            "horas_trabajo": "30 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 200 litros a la reserva quedando esta en 452 litros"
+      },
+      {
+            "id": "r_43",
+            "fecha": "17/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-01",
+            "litros": 180,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 330,
+            "reserva_lts": 0,
+            "total_nodo": 330,
+            "horometro": "276h 28m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_44",
+            "fecha": "19/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-00",
+            "litros": 1000,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 1485,
+            "total_nodo": 1790,
+            "horometro": "1625h 16m",
+            "horas_trabajo": "10min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "19/08/2026 Se surten 500 litros a la reserva quedando esta en 1346 litros"
+      },
+      {
+            "id": "r_45",
+            "fecha": "20/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-00",
+            "litros": 1000,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 1485,
+            "total_nodo": 1790,
+            "horometro": "1625h 16m",
+            "horas_trabajo": "10min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "20/08/2026 Se surten 500 litros a la reserva quedando esta en 1761 litros"
+      },
+      {
+            "id": "r_46",
+            "fecha": "17/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Nodo Machiques",
+            "tag": "MACH-PLT-00",
+            "litros": 112,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 1032,
+            "total_nodo": 1112,
+            "horometro": "322h 12m",
+            "horas_trabajo": "1 day, 0:00:00",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_47",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "SERVICIOS GENERALES",
+            "tag": "SVG-PLT-00",
+            "litros": 50,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 50,
+            "reserva_lts": 0,
+            "total_nodo": 50,
+            "horometro": "809h 48m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 50 litros directo al tanque de la planta."
+      },
+      {
+            "id": "r_48",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Comedor",
+            "tag": "CMD-PLT-00",
+            "litros": 200,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 470,
+            "total_nodo": 800,
+            "horometro": "562h 41m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 200 litros a la reserva quedando esta en 470 litros"
+      },
+      {
+            "id": "r_49",
+            "fecha": "21/08/2026",
+            "semana": "17-08-2026 al 23-08-2026",
+            "lugar": "Atlantis",
+            "tag": "ATL-PLT-01",
+            "litros": 390,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 2000,
+            "reserva_lts": 0,
+            "total_nodo": 2000,
+            "horometro": "14h 24m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "21/08/2026 Se surten 390 litros directo al tanque de la planta."
+      },
+      {
+            "id": "r_50",
+            "fecha": "28/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Datacenter 18 de Octubre",
+            "tag": "18OT-PLT-00",
+            "litros": 60,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 230,
+            "total_nodo": 535,
+            "horometro": "1116h 20m",
+            "horas_trabajo": "0 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "28/08/2026 Se surten 60 litros a la reserva quedano esta en 230 litros"
+      },
+      {
+            "id": "r_51",
+            "fecha": "27/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "CPS",
+            "tag": "CPS-PLT-00",
+            "litros": 400,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 357,
+            "total_nodo": 662,
+            "horometro": "2413h 04m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "27/08/2026 Se surten 400 litros a la reserva quedando esta en 522 litros"
+      },
+      {
+            "id": "r_52",
+            "fecha": "28/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Sede Administrativa Marfi",
+            "tag": "MARFI-PLT-00",
+            "litros": 500,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 754,
+            "total_nodo": 1059,
+            "horometro": "1644h 07m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "28/08/2026 Se surten 500 litros a la reserva quedano esta en 754 litros"
+      },
+      {
+            "id": "r_53",
+            "fecha": "28/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Bella Vista",
+            "tag": "BVIS-PLT-00",
+            "litros": 300,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 739,
+            "total_nodo": 1069,
+            "horometro": "626h 49m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "28/08/2026 Se surten 300 litros a la reserva quedano esta en 739 litros"
+      },
+      {
+            "id": "r_54",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo La Concepción",
+            "tag": "LCON-PLT-00",
+            "litros": 90,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 437,
+            "total_nodo": 537,
+            "horometro": "536h 36m",
+            "horas_trabajo": "3 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_55",
+            "fecha": "27/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Las Tunas",
+            "tag": "LTUN-PLT-00",
+            "litros": 402,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 1100,
+            "reserva_lts": 0,
+            "total_nodo": 1100,
+            "horometro": "370h 18m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "27/08/2026 Se surten 402 litros directo al tanque de la planta electrica"
+      },
+      {
+            "id": "r_56",
+            "fecha": "27/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Marite",
+            "tag": "MARI-PLT-00",
+            "litros": 400,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 1000,
+            "reserva_lts": 0,
+            "total_nodo": 1000,
+            "horometro": "1384h 06m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "27/08/2026 Se surten 400 litros directo al tanque de la planta electrica"
+      },
+      {
+            "id": "r_57",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Pomona",
+            "tag": "POMO-PLT-00",
+            "litros": 83,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 778,
+            "total_nodo": 838,
+            "horometro": "1806h 35m",
+            "horas_trabajo": "3 min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_58",
+            "fecha": "28/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo San Rafael",
+            "tag": "SRAF-PLT-00",
+            "litros": 200,
+            "destino": "Reserva",
+            "subtanque_lts": 100,
+            "reserva_lts": 423,
+            "total_nodo": 523,
+            "horometro": "500h 01m",
+            "horas_trabajo": "30 seg",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "28/08/2026 Se surten 200 litros a la reserva quedano esta en 479 litros"
+      },
+      {
+            "id": "r_59",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-01",
+            "litros": 68,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 330,
+            "reserva_lts": 0,
+            "total_nodo": 330,
+            "horometro": "278h 48m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_60",
+            "fecha": "28/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Datacenter El Callao",
+            "tag": "CALL-PLT-00",
+            "litros": 500,
+            "destino": "Reserva",
+            "subtanque_lts": 305,
+            "reserva_lts": 1609,
+            "total_nodo": 1914,
+            "horometro": "1648h 28m",
+            "horas_trabajo": "10min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "28/08/2026 Se surten 500 litros a la reserva quedano esta en 1609 litros"
+      },
+      {
+            "id": "r_61",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Santa Cruz de Mara",
+            "tag": "SCRU-PLT-00",
+            "litros": 105,
+            "destino": "Reserva",
+            "subtanque_lts": 60,
+            "reserva_lts": 525,
+            "total_nodo": 585,
+            "horometro": "823h 54m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_62",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Machiques",
+            "tag": "MACH-PLT-00",
+            "litros": 164,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 868,
+            "total_nodo": 948,
+            "horometro": "358h 40m",
+            "horas_trabajo": "1 day, 0:00:00",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_63",
+            "fecha": "28/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "SERVICIOS GENERALES",
+            "tag": "SVG-PLT-00",
+            "litros": 20,
+            "destino": "Sub-tanque",
+            "subtanque_lts": 50,
+            "reserva_lts": 0,
+            "total_nodo": 50,
+            "horometro": "809h 48m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "28/08/2026 Se surten 20 litros directo al tanque de la planta electrica"
+      },
+      {
+            "id": "r_64",
+            "fecha": "27/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Comedor",
+            "tag": "CMD-PLT-00",
+            "litros": 200,
+            "destino": "Reserva",
+            "subtanque_lts": 330,
+            "reserva_lts": 452,
+            "total_nodo": 782,
+            "horometro": "584h 25m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "27/08/2026 Se surten 200 litros a la reserva quedando esta en 452 litros"
+      },
+      {
+            "id": "r_65",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Cabimas",
+            "tag": "CABI-PLT-00",
+            "litros": 76,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 382,
+            "total_nodo": 462,
+            "horometro": "1697h 56m",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_66",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Nodo Ciudad Ojeda",
+            "tag": "OJEDA-PLT-00",
+            "litros": 37,
+            "destino": "Reserva",
+            "subtanque_lts": 80,
+            "reserva_lts": 1291,
+            "total_nodo": 1371,
+            "horometro": "1396h 52m",
+            "horas_trabajo": "15min",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      },
+      {
+            "id": "r_67",
+            "fecha": "24/08/2026",
+            "semana": "24-08-2026 al 30-08-2026",
+            "lugar": "Los Puertos De Altagracia",
+            "tag": "LPUE-PLT-00",
+            "litros": 25,
+            "destino": "Reserva",
+            "subtanque_lts": 1100,
+            "reserva_lts": 710,
+            "total_nodo": 1810,
+            "horometro": "",
+            "horas_trabajo": "",
+            "tecnico": "Cuadrilla Grupos Electrógenos",
+            "obs": "Despacho programado semanal"
+      }
+];
+
+    function CombustibleWrapper({ userProfile, toast }) {
+      const [tab, setTab] = useState('surtidos'); // surtidos | tanques | mtto
+      const [refills, setRefills] = useState(() => {
+        try {
+          const saved = localStorage.getItem('airtek_fuel_refills_v9');
+          return saved ? JSON.parse(saved) : INITIAL_FUEL_REFILLS;
+        } catch (e) { return INITIAL_FUEL_REFILLS; }
+      });
+      const [tanks, setTanks] = useState(() => {
+        try {
+          const saved = localStorage.getItem('airtek_fuel_tanks_v9');
+          return saved ? JSON.parse(saved) : INITIAL_FUEL_TANKS;
+        } catch (e) { return INITIAL_FUEL_TANKS; }
+      });
+      // Leer filtros/aceite de INITIAL_MAINTENANCE_LOG como catálogo de referencia
+      const [maintenances, setMaintenances] = useState(INITIAL_MAINTENANCE_LOG);
+      const [mttoLoaded, setMttoLoaded] = useState(false);
+
+      // Cargar horómetros REALES desde Firestore/BD para cada planta GEN
+      useEffect(() => {
+        if (!db || mttoLoaded) return;
+        const loadFromDB = async () => {
+          try {
+            const nodesSnap = await db.collection('energy_nodes').get();
+            const updates = [];
+            const dbRefills = [];
+
+            for (const nDoc of nodesSnap.docs) {
+              // Cargar surtidos registrados en este nodo
+              try {
+                const recSnap = await nDoc.ref.collection('energy_records').where('type', '==', 'surtido').get();
+                recSnap.forEach(rDoc => {
+                  const rd = rDoc.data();
+                  const rDate = rd.date?.toDate ? rd.date.toDate() : new Date(rd.date);
+                  dbRefills.push({
+                    id: 'db_' + rDoc.id,
+                    fecha: rDate.toLocaleDateString('es-VE'),
+                    semana: 'Semana Actual',
+                    lugar: nDoc.data().name || nDoc.id,
+                    tag: rd.generatorTag || '',
+                    litros: rd.fuelLiters || 0,
+                    destino: rd.fuelDestination || 'Reserva',
+                    subtanque_lts: rd.fuelDestination === 'Sub-tanque' ? (rd.fuelTotalLevel || 0) : 0,
+                    reserva_lts: rd.fuelDestination === 'Reserva' ? (rd.fuelTotalLevel || 0) : 0,
+                    total_nodo: rd.fuelTotalLevel || rd.fuelLiters || 0,
+                    horometro: rd.fuelHorometer ? (String(rd.fuelHorometer).includes('h') ? rd.fuelHorometer : `${rd.fuelHorometer} h`) : '',
+                    horas_trabajo: '',
+                    tecnico: rd.technicianName || 'Técnico',
+                    obs: rd.observations || '',
+                    rawDate: rDate.getTime()
+                  });
+                });
+              } catch(e) {}
+              const eqSnap = await nDoc.ref.collection('energy_equipment').where('type', '==', 'GEN').get();
+              eqSnap.forEach(eDoc => {
+                const d = eDoc.data();
+                const seedMatch = INITIAL_MAINTENANCE_LOG.find(m => m.tag === d.tag);
+                const seedLastM = seedMatch ? (parseFloat(seedMatch.horometro_mtto) || 0) : 0;
+                const seedCurrH = seedMatch ? (parseFloat(seedMatch.horometro_actual) || 0) : 0;
+                const dbLastM = parseFloat(d.lastMaintenanceHorometer) || 0;
+                const dbCurrH = parseFloat(d.horometer) || 0;
+
+                const finalLastM = Math.max(seedLastM, dbLastM);
+                const finalCurrH = Math.max(seedCurrH, dbCurrH);
+                const finalInterval = parseFloat(d.maintenanceInterval) || (seedMatch ? seedMatch.intervalo : 250);
+
+                // Auto-sync Firestore con los valores reales si estaban desactualizados
+                if (dbCurrH < finalCurrH || dbLastM < finalLastM) {
+                  eDoc.ref.update({
+                    horometer: finalCurrH,
+                    lastMaintenanceHorometer: finalLastM,
+                    maintenanceInterval: finalInterval
+                  }).catch(console.error);
+                }
+
+                updates.push({
+                  tag: d.tag,
+                  horometer: finalCurrH,
+                  lastMaintenanceHorometer: finalLastM,
+                  maintenanceInterval: finalInterval,
+                  capacity: d.capacity || (seedMatch ? seedMatch.kva : ''),
+                  nodeId: nDoc.id,
+                  nodeName: nDoc.data().name || nDoc.id
+                });
+              });
+            }
+            if (dbRefills.length > 0) {
+              setRefills(prev => {
+                const existingIds = prev.map(r => r.id);
+                const newOnes = dbRefills.filter(r => !existingIds.includes(r.id));
+                if (newOnes.length > 0) {
+                  return [...newOnes, ...prev];
+                }
+                return prev;
+              });
+            }
+
+            if (updates.length > 0) {
+              setMaintenances(prev => {
+                const merged = prev.map(m => {
+                  const match = updates.find(u => u.tag === m.tag);
+                  if (match) {
+                    const horasTrabajadas = parseFloat((match.horometer - match.lastMaintenanceHorometer).toFixed(1));
+                    const horasRestantes = parseFloat((match.maintenanceInterval - horasTrabajadas).toFixed(1));
+                    const proxCambio = (match.lastMaintenanceHorometer + match.maintenanceInterval).toFixed(1) + ' h';
+                    let status = 'optimo';
+                    if (horasRestantes <= 0) status = 'critico';
+                    else if (horasRestantes <= 20) status = 'critico';
+                    else if (horasRestantes <= 50) status = 'alerta';
+                    return {
+                      ...m,
+                      horometro_actual: match.horometer,
+                      horometro_mtto: match.lastMaintenanceHorometer,
+                      horas_trabajadas: horasTrabajadas,
+                      horas_restantes: horasRestantes,
+                      intervalo: match.maintenanceInterval,
+                      prox_cambio: proxCambio,
+                      status,
+                      kva: match.capacity || m.kva,
+                      nodeId: match.nodeId
+                    };
+                  }
+                  return m;
+                });
+                // Agregar plantas de BD que no están en INITIAL_MAINTENANCE_LOG
+                const existingTags = merged.map(m => m.tag);
+                updates.forEach(u => {
+                  if (!existingTags.includes(u.tag)) {
+                    const horasTrabajadas = parseFloat((u.horometer - u.lastMaintenanceHorometer).toFixed(1));
+                    const horasRestantes = parseFloat((u.maintenanceInterval - horasTrabajadas).toFixed(1));
+                    let status = 'optimo';
+                    if (horasRestantes <= 0) status = 'critico';
+                    else if (horasRestantes <= 20) status = 'critico';
+                    else if (horasRestantes <= 50) status = 'alerta';
+                    merged.push({
+                      id: 'db_' + u.tag,
+                      planta: u.nodeName,
+                      tag: u.tag,
+                      kva: u.capacity || '—',
+                      fecha: '—',
+                      horometro_mtto: u.lastMaintenanceHorometer,
+                      horometro_actual: u.horometer,
+                      horas_trabajadas: horasTrabajadas,
+                      intervalo: u.maintenanceInterval,
+                      horas_restantes: horasRestantes,
+                      litros_aceite: '—',
+                      filtro_aceite: '—',
+                      filtro_trampa: '—',
+                      filtro_comb: '—',
+                      filtro_aire: '—',
+                      prox_cambio: (u.lastMaintenanceHorometer + u.maintenanceInterval).toFixed(1) + ' h',
+                      obs: 'Datos cargados de BD',
+                      status,
+                      nodeId: u.nodeId
+                    });
+                  }
+                });
+                return merged;
+              });
+            }
+            setMttoLoaded(true);
+          } catch (e) {
+            console.error('Error loading maintenance from DB:', e);
+            setMttoLoaded(true);
+          }
+        };
+        loadFromDB();
+      }, [mttoLoaded]);
+
+      const [showNewRefillModal, setShowNewRefillModal] = useState(false);
+      const [showNewMttoModal, setShowNewMttoModal] = useState(false);
+
+      // Guardar cambios en persistencia local
+      useEffect(() => {
+        try {
+          localStorage.setItem('airtek_fuel_refills_v9', JSON.stringify(refills));
+        } catch (e) {}
+      }, [refills]);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('airtek_fuel_tanks_v9', JSON.stringify(tanks));
+        } catch (e) {}
+      }, [tanks]);
+
+
+
+      const handleAddRefill = async (newRefill) => {
+        setRefills(prev => [newRefill, ...prev]);
+        // Actualizar nivel del tanque correspondiente
+        setTanks(prev => prev.map(t => {
+          if (t.lugar.toLowerCase() === newRefill.lugar.toLowerCase()) {
+            const added = parseFloat(newRefill.litros) || 0;
+            const newReserva = (t.reserva_lts || 0) + (newRefill.destino === 'Sub-tanque' ? 0 : added);
+            const newSub = (t.subtanque_actual || t.tanque_lts) + (newRefill.destino === 'Sub-tanque' ? added : 0);
+            const total = newSub + newReserva;
+            const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+            const diasAut = Number((autTotal / 24).toFixed(2));
+            return { ...t, subtanque_actual: newSub, reserva_lts: newReserva, aut_total_h: autTotal, dias_aut: diasAut };
+          }
+          return t;
+        }));
+
+        // Si el surtido incluye horómetro, actualizar maintenances y BD
+        if (newRefill.horometro && newRefill.tag) {
+          const horoStr = String(newRefill.horometro);
+          // Parsear horómetro (puede venir como "1100h 39m" o como número)
+          let parsedHoro = 0;
+          const hMatch = horoStr.match(/(\d+)h\s*(\d+)?m?/);
+          if (hMatch) {
+            parsedHoro = parseInt(hMatch[1]) + (parseInt(hMatch[2] || 0) / 60);
+          } else {
+            parsedHoro = parseFloat(horoStr) || 0;
+          }
+
+          if (parsedHoro > 0) {
+            // Actualizar maintenances en tiempo real
+            setMaintenances(prev => prev.map(m => {
+              if (m.tag === newRefill.tag) {
+                const horasTrab = parseFloat((parsedHoro - m.horometro_mtto).toFixed(1));
+                const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
+                let status = 'optimo';
+                if (horasRest <= 0 || horasRest <= 20) status = 'critico';
+                else if (horasRest <= 50) status = 'alerta';
+                return { ...m, horometro_actual: parsedHoro, horas_trabajadas: horasTrab, horas_restantes: horasRest, status };
+              }
+              return m;
+            }));
+
+            // Sincronizar con Firestore
+            if (db) {
+              try {
+                const nodesSnap = await db.collection('energy_nodes').get();
+                for (const nDoc of nodesSnap.docs) {
+                  const eqSnap = await nDoc.ref.collection('energy_equipment')
+                    .where('type', '==', 'GEN')
+                    .where('tag', '==', newRefill.tag)
+                    .get();
+                  if (!eqSnap.empty) {
+                    await eqSnap.docs[0].ref.update({ horometer: parsedHoro });
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.error('Error syncing refill horometer to DB:', e);
+              }
+            }
+          }
+        }
+
+        if (toast) toast('Surtido registrado exitosamente.', 'success');
+        setShowNewRefillModal(false);
+      };
+
+      const handleDeleteRefill = async (refillToDelete) => {
+        // 1. Remover de refills
+        const updatedRefills = refills.filter(r => r.id !== refillToDelete.id);
+        setRefills(updatedRefills);
+
+        // 2. Revertir litros en el tanque correspondiente
+        setTanks(prev => prev.map(t => {
+          if (t.lugar.toLowerCase() === (refillToDelete.lugar || '').toLowerCase()) {
+            const removedLts = parseFloat(refillToDelete.litros) || 0;
+            const isSub = refillToDelete.destino === 'Sub-tanque';
+            const newReserva = Math.max(0, (t.reserva_lts || 0) - (isSub ? 0 : removedLts));
+            const newSub = Math.max(0, (t.subtanque_actual || t.tanque_lts) - (isSub ? removedLts : 0));
+            const total = newSub + newReserva;
+            const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+            const diasAut = Number((autTotal / 24).toFixed(2));
+            return { ...t, subtanque_actual: newSub, reserva_lts: newReserva, aut_total_h: autTotal, dias_aut: diasAut };
+          }
+          return t;
+        }));
+
+        // 3. Revertir horómetro de la planta al anterior
+        if (refillToDelete.tag) {
+          const remainingForPlant = updatedRefills.filter(r => r.tag === refillToDelete.tag && r.horometro);
+          let prevHorometer = 0;
+          if (remainingForPlant.length > 0) {
+            const prevHoroStr = String(remainingForPlant[0].horometro);
+            const hMatch = prevHoroStr.match(/(\d+)h\s*(\d+)?m?/);
+            if (hMatch) {
+              prevHorometer = parseInt(hMatch[1]) + (parseInt(hMatch[2] || 0) / 60);
+            } else {
+              prevHorometer = parseFloat(prevHoroStr) || 0;
+            }
+          } else {
+            const seed = INITIAL_MAINTENANCE_LOG.find(m => m.tag === refillToDelete.tag);
+            if (seed) prevHorometer = seed.horometro_actual;
+          }
+
+          if (prevHorometer > 0) {
+            setMaintenances(prev => prev.map(m => {
+              if (m.tag === refillToDelete.tag) {
+                const horasTrab = parseFloat((prevHorometer - m.horometro_mtto).toFixed(1));
+                const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
+                let status = 'optimo';
+                if (horasRest <= 0 || horasRest <= 20) status = 'critico';
+                else if (horasRest <= 50) status = 'alerta';
+                return { ...m, horometro_actual: prevHorometer, horas_trabajadas: horasTrab, horas_restantes: horasRest, status };
+              }
+              return m;
+            }));
+
+            if (db) {
+              try {
+                const nodesSnap = await db.collection('energy_nodes').get();
+                for (const nDoc of nodesSnap.docs) {
+                  const eqSnap = await nDoc.ref.collection('energy_equipment')
+                    .where('type', '==', 'GEN')
+                    .where('tag', '==', refillToDelete.tag)
+                    .get();
+                  if (!eqSnap.empty) {
+                    await eqSnap.docs[0].ref.update({ horometer: prevHorometer });
+                    break;
+                  }
+                }
+              } catch (e) {
+                console.error('Error reverting refill horometer in DB:', e);
+              }
+            }
+          }
+        }
+
+        // 4. Si el surtido fue creado como un registro en un nodo, eliminarlo también del historial del nodo en Firestore
+        if (db && refillToDelete.id) {
+          try {
+            const rawId = refillToDelete.id.startsWith('db_') ? refillToDelete.id.replace('db_', '') : (refillToDelete.id.startsWith('r_rec_') ? refillToDelete.id.replace('r_rec_', '') : '');
+            if (rawId) {
+              const nodesSnap = await db.collection('energy_nodes').get();
+              for (const nDoc of nodesSnap.docs) {
+                const recRef = nDoc.ref.collection('energy_records').doc(rawId);
+                const recDoc = await recRef.get();
+                if (recDoc.exists) {
+                  await recRef.delete();
+                  break;
+                }
+              }
+            }
+          } catch(e) {
+            console.error('Error deleting record from node:', e);
+          }
+        }
+
+        if (toast) toast('Surtido eliminado y valores restaurados correctamente en todo el sistema.', 'info');
+      };
+
+      const handleAddMaintenance = async (newMtto) => {
+        // Actualizar el estado local
+        setMaintenances(prev => {
+          // Si existe la planta por tag, actualizar sus datos
+          const idx = prev.findIndex(m => m.tag === newMtto.tag);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = { ...updated[idx], ...newMtto };
+            return updated;
+          }
+          return [newMtto, ...prev];
+        });
+
+        // Sincronizar con Firestore: actualizar lastMaintenanceHorometer en el equipo
+        if (db && newMtto.tag && newMtto.horometro_mtto != null) {
+          try {
+            const nodesSnap = await db.collection('energy_nodes').get();
+            for (const nDoc of nodesSnap.docs) {
+              const eqSnap = await nDoc.ref.collection('energy_equipment')
+                .where('type', '==', 'GEN')
+                .where('tag', '==', newMtto.tag)
+                .get();
+              if (!eqSnap.empty) {
+                const eDoc = eqSnap.docs[0];
+                await eDoc.ref.update({
+                  lastMaintenanceHorometer: parseFloat(newMtto.horometro_mtto) || 0,
+                  horometer: parseFloat(newMtto.horometro_actual) || eDoc.data().horometer || 0
+                });
+                break;
+              }
+            }
+          } catch (e) {
+            console.error('Error syncing maintenance to DB:', e);
+          }
+        }
+
+        if (toast) toast('Mantenimiento asentado exitosamente.', 'success');
+        setShowNewMttoModal(false);
+      };
+
+      return (
+        <div className="fin">
+          {/* Segmented Control de Pestañas */}
+          <div style={{ marginBottom: 18, display: 'flex', justifyContent: 'center' }}>
+            <div className="segmented-control">
+              <button className={`segmented-btn ${tab === 'surtidos' ? 'active' : ''}`} onClick={() => setTab('surtidos')}>
+                Control de Surtidos
+              </button>
+              <button className={`segmented-btn ${tab === 'tanques' ? 'active' : ''}`} onClick={() => setTab('tanques')}>
+                Tanques y Autonomía
+              </button>
+              <button className={`segmented-btn ${tab === 'mtto' ? 'active' : ''}`} onClick={() => setTab('mtto')}>
+                Mantenimiento de Plantas
+              </button>
+            </div>
+          </div>
+
+          {tab === 'surtidos' && (
+            <SurtidosView
+              refills={refills}
+              tanks={tanks}
+              onOpenNewModal={() => setShowNewRefillModal(true)}
+              onDeleteRefill={handleDeleteRefill}
+              toast={toast}
+            />
+          )}
+
+          {tab === 'tanques' && (
+            <TanquesAutonomiaView
+              tanks={tanks}
+              toast={toast}
+            />
+          )}
+
+          {tab === 'mtto' && (
+            <MantenimientoPlantasView
+              maintenances={maintenances}
+              onOpenNewModal={() => setShowNewMttoModal(true)}
+              toast={toast}
+            />
+          )}
+
+          {showNewRefillModal && (
+            <NewFuelRefillModal
+              tanks={tanks}
+              userProfile={userProfile}
+              onSave={handleAddRefill}
+              onClose={() => setShowNewRefillModal(false)}
+            />
+          )}
+
+          {showNewMttoModal && (
+            <NewMaintenanceModal
+              tanks={tanks}
+              userProfile={userProfile}
+              onSave={handleAddMaintenance}
+              onClose={() => setShowNewMttoModal(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ── VISTA 1: CONTROL DE SURTIDOS ─────────────────────────────────────────
+    function SurtidosView({ refills, tanks, onOpenNewModal, onDeleteRefill, toast }) {
+      const [semanaFilter, setSemanaFilter] = useState('all');
+      const [lugarFilter, setLugarFilter] = useState('all');
+      const [search, setSearch] = useState('');
+      const [showTextReport, setShowTextReport] = useState(true);
+      const [copySuccess, setCopySuccess] = useState(false);
+
+      const uniqueSemanas = Array.from(new Set(refills.map(r => r.semana))).filter(Boolean);
+      const uniqueLugares = Array.from(new Set([...refills.map(r => r.lugar), ...tanks.map(t => t.lugar)])).filter(Boolean).sort();
+
+      const filtered = refills.filter(r => {
+        if (semanaFilter !== 'all' && r.semana !== semanaFilter) return false;
+        if (lugarFilter !== 'all' && r.lugar !== lugarFilter) return false;
+        if (search) {
+          const q = search.toLowerCase();
+          const matchLugar = (r.lugar || '').toLowerCase().includes(q);
+          const matchTag = (r.tag || '').toLowerCase().includes(q);
+          const matchTec = (r.tecnico || '').toLowerCase().includes(q);
+          if (!matchLugar && !matchTag && !matchTec) return false;
+        }
+        return true;
+      });
+
+      const totalLitros = filtered.reduce((acc, r) => acc + (parseFloat(r.litros) || 0), 0);
+      const totalDespachos = filtered.length;
+      const lugaresAtendidos = new Set(filtered.map(r => r.lugar)).size;
+
+      const generateTextReport = () => {
+        const titleSemana = semanaFilter !== 'all' ? ` - ${semanaFilter}` : '';
+        let text = `Reporte de Surtidos de Combustible (Coordinación de Grupos Electrógenos)${titleSemana}\n\n`;
+        filtered.forEach(r => {
+          text += `${r.lugar}: ${r.litros} Lts surtidos (${r.destino || 'Reserva'}) | Horómetro: ${r.horometro || 'N/A'} | Total en Nodo: ${r.total_nodo || '—'} Lts\n`;
+        });
+        text += `\nTotal Litros Despachados: ${totalLitros} Lts en ${totalDespachos} despachos.`;
+        return text;
+      };
+
+      const copyReport = () => {
+        const text = generateTextReport();
+        navigator.clipboard.writeText(text).then(() => {
+          setCopySuccess(true);
+          setTimeout(() => setCopySuccess(false), 2200);
+        });
+      };
+
+      const exportExcel = () => {
+        const rows = filtered.map(r => ({
+          'LUGAR / NODO': r.lugar,
+          'TAG PLANTA': r.tag,
+          'FECHA': r.fecha,
+          'SEMANA': r.semana,
+          'LITROS SURTIDOS': r.litros,
+          'DESTINO': r.destino,
+          'SUB-TANQUE (Lts)': r.subtanque_lts,
+          'RESERVA (Lts)': r.reserva_lts,
+          'TOTAL EN NODO (Lts)': r.total_nodo,
+          'HORÓMETRO ACTUAL': r.horometro,
+          'HORAS DE TRABAJO': r.horas_trabajo,
+          'TÉCNICO / CUADRILLA': r.tecnico,
+          'OBSERVACIONES': r.obs
+        }));
+        const wb = window.XLSX.utils.book_new();
+        const ws = window.XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 24 }, { wch: 28 }];
+        window.XLSX.utils.book_append_sheet(wb, ws, 'Surtidos de Combustible');
+        window.XLSX.writeFile(wb, 'reporte_surtidos_combustible_' + Date.now() + '.xlsx');
+      };
+
+      return (
+        <div>
+          {/* Header con Acciones */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 className="fd" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                Control de Surtidos de Combustible
+              </h2>
+              <p style={{ color: 'var(--tx3)', fontSize: '.84rem', margin: '4px 0 0' }}>
+                Registro y trazabilidad de combustible despachado a los grupos electrógenos.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="bp" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={onOpenNewModal}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Registrar Surtido
+              </button>
+              <button className="bs" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={exportExcel}>
+                <IconExcel size={16} color="#10b981" />
+                Descargar Excel
+              </button>
+            </div>
+          </div>
+
+          {/* Tarjetas KPI */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(1, 102, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/><path d="M15 10h2a2 2 0 0 1 2 2v6a2 2 0 0 0 2 2 2 2 0 0 0 2-2v-9l-3-3"/><rect x="6" y="7" width="6" height="5" rx="1"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total Suministrado</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--tx1)' }}>{totalLitros.toLocaleString()} Lts</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(33, 192, 250, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#21c0fa' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total Despachos</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#21c0fa' }}>{totalDespachos}</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Lugares Atendidos</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{lugaresAtendidos}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Formato de Texto Rápido para WhatsApp / Slack */}
+          <div className="card" style={{ marginBottom: 16, border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx2)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                  Formato de Texto para Copiar y Pegar (WhatsApp / Slack)
+                </span>
+                <span style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>
+                  ({filtered.length} registros listados)
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button className="bs" style={{ padding: '4px 10px', fontSize: '.72rem' }} onClick={() => setShowTextReport(!showTextReport)}>
+                  {showTextReport ? 'Ocultar Texto' : 'Mostrar Texto'}
+                </button>
+                <button className="bp" style={{ padding: '4px 12px', fontSize: '.72rem', display: 'flex', alignItems: 'center', gap: 6 }} onClick={copyReport}>
+                  <IconCopy size={14} />
+                  {copySuccess ? '¡Copiado!' : 'Copiar Reporte'}
+                </button>
+              </div>
+            </div>
+
+            {showTextReport && (
+              <textarea
+                className="fi fm"
+                readOnly
+                value={generateTextReport()}
+                style={{
+                  width: '100%',
+                  height: 140,
+                  fontSize: '.82rem',
+                  lineHeight: 1.5,
+                  resize: 'vertical',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--tx1)',
+                  padding: '10px 14px',
+                  borderRadius: 8
+                }}
+              />
+            )}
+          </div>
+
+          {/* Filtros */}
+          <div className="card" style={{ padding: '14px 18px', marginBottom: 14, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Filtrar por Semana / Período</label>
+                <select className="fi" value={semanaFilter} onChange={e => setSemanaFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todas las Semanas ({uniqueSemanas.length})</option>
+                  {uniqueSemanas.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Filtrar por Lugar / Nodo</label>
+                <select className="fi" value={lugarFilter} onChange={e => setLugarFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todos los Lugares ({uniqueLugares.length})</option>
+                  {uniqueLugares.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Búsqueda Rápida</label>
+                <input className="fi" type="text" placeholder="Buscar lugar, tag o técnico..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '8px 14px', fontSize: '.84rem' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla de Surtidos */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.84rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', color: 'var(--tx3)', textTransform: 'uppercase', fontSize: '.7rem', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
+                    <th style={{ padding: '12px 16px' }}>Lugar / Planta</th>
+                    <th style={{ padding: '12px 14px' }}>Fecha & Semana</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Litros Suministrados</th>
+                    <th style={{ padding: '12px 14px' }}>Destino</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Total en Nodo</th>
+                    <th style={{ padding: '12px 14px' }}>Horómetro</th>
+                    <th style={{ padding: '12px 14px' }}>Técnico / Obs</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'center' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: (i % 2 === 0) ? 'var(--bg-card)' : 'var(--bg-surface)' }}>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div className="fd" style={{ fontWeight: 700, color: 'var(--tx1)', fontSize: '.88rem' }}>{r.lugar}</div>
+                        <div style={{ fontSize: '.74rem', color: 'var(--blue)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>{r.tag}</div>
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <div className="fm" style={{ fontWeight: 600, color: 'var(--tx1)' }}>{r.fecha}</div>
+                        <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>{r.semana}</div>
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                        <span className="fm" style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--primary)' }}>
+                          +{r.litros} Lts
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span className="badge" style={{ background: r.destino === 'Sub-tanque' ? 'rgba(33, 192, 250, 0.12)' : 'rgba(1, 102, 255, 0.12)', color: r.destino === 'Sub-tanque' ? '#21c0fa' : 'var(--blue)' }}>
+                          {r.destino}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                        <div className="fm" style={{ fontWeight: 700, color: 'var(--green)' }}>{r.total_nodo} Lts</div>
+                        <div style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>Sub: {r.subtanque_lts}L | Res: {r.reserva_lts}L</div>
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <div className="fm" style={{ fontWeight: 700, color: 'var(--tx1)' }}>{r.horometro}</div>
+                        {r.horas_trabajo && <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>Trabajadas: {r.horas_trabajo}</div>}
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <div style={{ fontSize: '.8rem', color: 'var(--tx1)', fontWeight: 600 }}>{r.tecnico}</div>
+                        {r.obs && <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>{r.obs}</div>}
+                      </td>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>
+                        {onDeleteRefill && (
+                          <button
+                            className="bd"
+                            style={{ padding: '5px 10px', fontSize: '.74rem', borderRadius: 6, color: '#f55b5d', borderColor: 'rgba(245, 91, 93, 0.3)', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                            onClick={() => {
+                              if (window.confirm(`¿Deseas eliminar este registro de surtido (${r.litros}L en ${r.lugar})? Se revertirán los niveles de combustible y el horómetro a sus valores anteriores.`)) {
+                                onDeleteRefill(r);
+                              }
+                            }}
+                            title="Eliminar surtido y revertir valores"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Eliminar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── VISTA 2: ESTADO DE TANQUES & AUTONOMÍA ────────────────────────────────
+    function TanquesAutonomiaView({ tanks, toast }) {
+      const [zonaFilter, setZonaFilter] = useState('all');
+      const [statusFilter, setStatusFilter] = useState('all');
+      const [search, setSearch] = useState('');
+
+      const uniqueZonas = Array.from(new Set(tanks.map(t => t.zona))).filter(Boolean).sort();
+
+      const filtered = tanks.filter(t => {
+        if (zonaFilter !== 'all' && t.zona !== zonaFilter) return false;
+        if (statusFilter !== 'all') {
+          if (statusFilter === 'optimo' && (t.dias_aut < 3)) return false;
+          if (statusFilter === 'alerta' && (t.dias_aut < 1.5 || t.dias_aut >= 3)) return false;
+          if (statusFilter === 'critico' && (t.dias_aut >= 1.5)) return false;
+        }
+        if (search) {
+          const q = search.toLowerCase();
+          const matchLugar = (t.lugar || '').toLowerCase().includes(q);
+          const matchEq = (t.equipo || '').toLowerCase().includes(q);
+          const matchZona = (t.zona || '').toLowerCase().includes(q);
+          if (!matchLugar && !matchEq && !matchZona) return false;
+        }
+        return true;
+      });
+
+      const totalLtsRed = tanks.reduce((acc, t) => acc + (t.subtanque_actual || 0) + (t.reserva_lts || 0), 0);
+      const optimos = tanks.filter(t => t.dias_aut >= 3).length;
+      const alertas = tanks.filter(t => t.dias_aut >= 1.5 && t.dias_aut < 3).length;
+      const criticos = tanks.filter(t => t.dias_aut < 1.5).length;
+
+      const exportExcel = () => {
+        const rows = filtered.map(t => ({
+          'ZONA': t.zona,
+          'LUGAR / DATACENTER': t.lugar,
+          'EQUIPO': t.equipo,
+          'POTENCIA (kVA)': t.kva,
+          'SUB-TANQUE (Lts)': t.subtanque_actual,
+          'CAPACIDAD SUB-TANQUE (Lts)': t.tanque_lts,
+          'RESERVA ACTUAL (Lts)': t.reserva_lts,
+          'CAPACIDAD RESERVA (Lts)': t.cap_reserva,
+          'TOTAL EN NODO (Lts)': (t.subtanque_actual || 0) + (t.reserva_lts || 0),
+          'CONSUMO (L/h)': t.consumo_lh,
+          'AUTONOMÍA TANQUE (h)': t.aut_tanque_h,
+          'AUTONOMÍA TOTAL (h)': t.aut_total_h,
+          'DÍAS DE AUTONOMÍA': t.dias_aut,
+          'CANTIDAD FALTANTE (Lts)': t.cant_faltante
+        }));
+        const wb = window.XLSX.utils.book_new();
+        const ws = window.XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 20 }];
+        window.XLSX.utils.book_append_sheet(wb, ws, 'Autonomía de Combustible');
+        window.XLSX.writeFile(wb, 'reporte_autonomia_combustible_' + Date.now() + '.xlsx');
+      };
+
+      return (
+        <div>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 className="fd" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                Estado de Tanques y Autonomía de Combustible
+              </h2>
+              <p style={{ color: 'var(--tx3)', fontSize: '.84rem', margin: '4px 0 0' }}>
+                Monitoreo de almacenamiento de gasoil, consumos y proyección de días de respaldo continuo.
+              </p>
+            </div>
+            <button className="bs" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={exportExcel}>
+              <IconExcel size={16} color="#10b981" />
+              Descargar Excel
+            </button>
+          </div>
+
+          {/* Tarjetas KPI */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(1, 102, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/><line x1="3" y1="22" x2="15" y2="22"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total en Red</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--tx1)' }}>{totalLtsRed.toLocaleString()} Lts</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                <IconCheckCircle size={22} color="#10b981" />
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#10b981', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Óptimos (&gt;3 Días)</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{optimos}</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Alerta (1.5-3 Días)</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b' }}>{alertas}</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                <IconAlertTriangle size={22} color="#ef4444" />
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Críticos (&lt;1.5 Días)</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ef4444' }}>{criticos}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div className="card" style={{ padding: '14px 18px', marginBottom: 14, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Zona Geográfica</label>
+                <select className="fi" value={zonaFilter} onChange={e => setZonaFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todas las Zonas ({uniqueZonas.length})</option>
+                  {uniqueZonas.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Estado de Autonomía</label>
+                <select className="fi" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: '8px 12px', fontSize: '.84rem' }}>
+                  <option value="all">Todos los Estados</option>
+                  <option value="optimo">Óptimos (&gt;3 días)</option>
+                  <option value="alerta">Alerta (1.5 - 3 días)</option>
+                  <option value="critico">Críticos (&lt;1.5 días)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl" style={{ fontSize: '.7rem', marginBottom: 4 }}>Búsqueda</label>
+                <input className="fi" type="text" placeholder="Buscar lugar o planta..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '8px 14px', fontSize: '.84rem' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla de Autonomías */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.84rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', color: 'var(--tx3)', textTransform: 'uppercase', fontSize: '.7rem', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
+                    <th style={{ padding: '12px 16px' }}>Lugar / Datacenter</th>
+                    <th style={{ padding: '12px 14px' }}>Equipo & Potencia</th>
+                    <th style={{ padding: '12px 14px' }}>Sub-tanque</th>
+                    <th style={{ padding: '12px 14px' }}>Reserva Externa</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Total en Nodo</th>
+                    <th style={{ padding: '12px 14px' }}>Autonomía</th>
+                    <th style={{ padding: '12px 14px' }}>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((t, i) => {
+                    const isCrit = t.dias_aut < 1.5;
+                    const isAlert = t.dias_aut >= 1.5 && t.dias_aut < 3.0;
+                    const isOpt = t.dias_aut >= 3.0;
+                    const badgeColor = isCrit ? '#ef4444' : isAlert ? '#f59e0b' : '#10b981';
+                    const badgeBg = isCrit ? 'rgba(239,68,68,0.12)' : isAlert ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)';
+                    const statusText = isCrit ? 'Crítico (<1.5d)' : isAlert ? 'Alerta (1.5-3d)' : 'Óptimo (>3d)';
+                    const tot = (t.subtanque_actual || 0) + (t.reserva_lts || 0);
+
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: (i % 2 === 0) ? 'var(--bg-card)' : 'var(--bg-surface)' }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div className="fd" style={{ fontWeight: 700, color: 'var(--tx1)', fontSize: '.88rem' }}>{t.lugar}</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>{t.zona}</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--tx1)' }}>{t.equipo}</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--blue)' }}>Consumo: {t.consumo_lh} L/h</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div className="fm" style={{ fontWeight: 700, color: 'var(--tx1)' }}>{t.subtanque_actual} / {t.tanque_lts} Lts</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>Aut: {t.aut_tanque_h}h</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div className="fm" style={{ fontWeight: 700, color: t.reserva_lts > 0 ? 'var(--green)' : 'var(--tx3)' }}>
+                            {t.reserva_lts} {t.cap_reserva > 0 ? `/ ${t.cap_reserva}` : ''} Lts
+                          </div>
+                          {t.cant_faltante > 0 && <div style={{ fontSize: '.7rem', color: 'var(--amber)' }}>Faltan: {t.cant_faltante} Lts</div>}
+                        </td>
+                        <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                          <div className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)' }}>{tot.toLocaleString()} Lts</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: badgeColor }}>
+                            {t.dias_aut} Días
+                          </div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>({t.aut_total_h} horas continuas)</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 8, fontSize: '.74rem', fontWeight: 700, background: badgeBg, color: badgeColor }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: badgeColor }} />
+                            {statusText}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── VISTA 3: MANTENIMIENTO & HORÓMETROS ───────────────────────────────────
+    function MantenimientoPlantasView({ maintenances, onOpenNewModal, toast }) {
+      const [statusFilter, setStatusFilter] = useState('all');
+      const [search, setSearch] = useState('');
+
+      const filtered = maintenances.filter(m => {
+        if (statusFilter !== 'all' && m.status !== statusFilter) return false;
+        if (search) {
+          const q = search.toLowerCase();
+          const matchPlanta = (m.planta || '').toLowerCase().includes(q);
+          const matchTag = (m.tag || '').toLowerCase().includes(q);
+          if (!matchPlanta && !matchTag) return false;
+        }
+        return true;
+      });
+
+      const optimos = maintenances.filter(m => m.status === 'optimo').length;
+      const alertas = maintenances.filter(m => m.status === 'alerta').length;
+      const criticos = maintenances.filter(m => m.status === 'critico').length;
+
+      const exportExcel = () => {
+        const rows = filtered.map(m => ({
+          'PLANTA / LUGAR': m.planta,
+          'TAG': m.tag,
+          'POTENCIA (kVA)': m.kva,
+          'FECHA ÚLTIMO MTTO': m.fecha,
+          'HORÓMETRO MTTO': m.horometro_mtto,
+          'HORÓMETRO ACTUAL': m.horometro_actual,
+          'HORAS TRABAJADAS': m.horas_trabajadas,
+          'INTERVALO (H)': m.intervalo,
+          'HORAS RESTANTES (H/MTTO)': m.horas_restantes,
+          'LITROS ACEITE': m.litros_aceite,
+          'FILTRO ACEITE': m.filtro_aceite,
+          'FILTRO TRAMPA AGUA': m.filtro_trampa,
+          'FILTRO COMBUSTIBLE': m.filtro_comb,
+          'FILTRO AIRE': m.filtro_aire,
+          'PRÓXIMO CAMBIO': m.prox_cambio,
+          'OBSERVACIONES': m.obs
+        }));
+        const wb = window.XLSX.utils.book_new();
+        const ws = window.XLSX.utils.json_to_sheet(rows);
+        ws['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 18 }, { wch: 30 }];
+        window.XLSX.utils.book_append_sheet(wb, ws, 'Mantenimiento de Plantas');
+        window.XLSX.writeFile(wb, 'reporte_mantenimiento_plantas_' + Date.now() + '.xlsx');
+      };
+
+      return (
+        <div>
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 className="fd" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                Control de Horómetros y Mantenimiento Preventivo
+              </h2>
+              <p style={{ color: 'var(--tx3)', fontSize: '.84rem', margin: '4px 0 0' }}>
+                Seguimiento de horas de operación, ciclo de 250h y recambio de aceite y filtros.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button className="bp" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={onOpenNewModal}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Registrar Mantenimiento
+              </button>
+              <button className="bs" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={exportExcel}>
+                <IconExcel size={16} color="#10b981" />
+                Descargar Excel
+              </button>
+            </div>
+          </div>
+
+          {/* Tarjetas KPI */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                <IconCheckCircle size={22} color="#10b981" />
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#10b981', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Al Día (&gt;50h)</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{optimos}</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Próximo (20-50h)</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b' }}>{alertas}</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                <IconAlertTriangle size={22} color="#ef4444" />
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Urgente / Vencido</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ef4444' }}>{criticos}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla de Mantenimientos */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.84rem' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', color: 'var(--tx3)', textTransform: 'uppercase', fontSize: '.7rem', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
+                    <th style={{ padding: '12px 16px' }}>Planta / Ubicación</th>
+                    <th style={{ padding: '12px 14px' }}>Último Mantenimiento</th>
+                    <th style={{ padding: '12px 14px' }}>Horómetro Actual</th>
+                    <th style={{ padding: '12px 14px' }}>Horas Trabajadas</th>
+                    <th style={{ padding: '12px 14px' }}>Horas Restantes (H/MTTO)</th>
+                    <th style={{ padding: '12px 14px' }}>Filtros & Aceite</th>
+                    <th style={{ padding: '12px 14px' }}>Próximo Cambio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((m, i) => {
+                    const isCrit = m.status === 'critico';
+                    const isAlert = m.status === 'alerta';
+                    const badgeColor = isCrit ? '#ef4444' : isAlert ? '#f59e0b' : '#10b981';
+                    const pctLife = Math.max(0, Math.min(100, Math.round((m.horas_restantes / m.intervalo) * 100)));
+
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: (i % 2 === 0) ? 'var(--bg-card)' : 'var(--bg-surface)' }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <div className="fd" style={{ fontWeight: 700, color: 'var(--tx1)', fontSize: '.88rem' }}>{m.planta}</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--blue)' }}>{m.tag} &middot; {m.kva} kVA</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div className="fm" style={{ fontWeight: 600, color: 'var(--tx1)' }}>{m.fecha}</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>En horómetro: {m.horometro_mtto}h</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span className="fm" style={{ fontWeight: 700, color: 'var(--tx1)', fontSize: '.95rem' }}>{m.horometro_actual}h</span>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <span className="fm" style={{ fontWeight: 700, color: 'var(--blue)' }}>+{m.horas_trabajadas}h</span>
+                        </td>
+                        <td style={{ padding: '12px 14px', minWidth: 150 }}>
+                          <div className="fm" style={{ fontWeight: 800, fontSize: '1.05rem', color: badgeColor, marginBottom: 4 }}>
+                            {m.horas_restantes}h
+                          </div>
+                          <div style={{ width: '100%', height: 6, borderRadius: 3, background: 'var(--bg-deep)', overflow: 'hidden' }}>
+                            <div style={{ width: `${pctLife}%`, height: '100%', background: badgeColor, borderRadius: 3 }} />
+                          </div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ fontSize: '.76rem', color: 'var(--tx1)', fontWeight: 600 }}>Aceite: {m.litros_aceite} ({m.filtro_aceite})</div>
+                          <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 2 }}>Comb: {m.filtro_comb} | Aire: {m.filtro_aire}</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div className="fm" style={{ fontWeight: 700, color: 'var(--tx1)' }}>{m.prox_cambio}</div>
+                          {m.obs && <div style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>{m.obs}</div>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── MODAL: REGISTRAR NUEVO SURTIDO ───────────────────────────────────────
+    function NewFuelRefillModal({ tanks, userProfile, onSave, onClose }) {
+      const [lugar, setLugar] = useState(tanks[0]?.lugar || '');
+      const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+      const [semana, setSemana] = useState('24/08 al 30/08/2026');
+      const [litros, setLitros] = useState('');
+      const [destino, setDestino] = useState('Reserva');
+      const [horometro, setHorometro] = useState('');
+      const [horasTrabajo, setHorasTrabajo] = useState('');
+      const [tecnico, setTecnico] = useState(userProfile?.name || 'Cuadrilla Electrógenos');
+      const [obs, setObs] = useState('');
+
+      const selTank = tanks.find(t => t.lugar === lugar) || tanks[0];
+
+      const handleSave = () => {
+        if (!litros || parseFloat(litros) <= 0) {
+          alert('Ingresa una cantidad válida de litros suministrados.');
+          return;
+        }
+        const addedLts = parseFloat(litros) || 0;
+        const currentSub = selTank?.subtanque_actual || selTank?.tanque_lts || 0;
+        const currentRes = selTank?.reserva_lts || 0;
+        const newSub = destino === 'Sub-tanque' ? (currentSub + addedLts) : currentSub;
+        const newRes = destino === 'Reserva' ? (currentRes + addedLts) : currentRes;
+
+        onSave({
+          id: 'r_' + Date.now(),
+          fecha,
+          semana,
+          lugar,
+          tag: selTank?.equipo || 'PLT-GEN',
+          litros: addedLts,
+          destino,
+          subtanque_lts: newSub,
+          reserva_lts: newRes,
+          total_nodo: newSub + newRes,
+          horometro: horometro ? horometro + 'h' : '—',
+          horas_trabajo: horasTrabajo ? horasTrabajo + 'h' : '—',
+          tecnico,
+          obs
+        });
+      };
+
+      return (
+        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onClose}>
+          <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: 540, padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 className="fd" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                Registrar Surtido de Combustible
+              </h3>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>✕</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Lugar / Generador</label>
+                <select className="fi" value={lugar} onChange={e => setLugar(e.target.value)}>
+                  {tanks.map(t => <option key={t.id} value={t.lugar}>{t.lugar} ({t.equipo})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl">Fecha de Surtido</label>
+                <input className="fi" type="text" value={fecha} onChange={e => setFecha(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Semana de Reporte</label>
+                <input className="fi" type="text" value={semana} onChange={e => setSemana(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Litros Suministrados</label>
+                <input className="fi fm" type="number" step="any" placeholder="Ej: 150" value={litros} onChange={e => setLitros(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Destino del Combustible</label>
+                <select className="fi" value={destino} onChange={e => setDestino(e.target.value)}>
+                  <option value="Reserva">Tanque de Reserva Externa</option>
+                  <option value="Sub-tanque">Sub-tanque Propio de Planta</option>
+                  <option value="Ambos">Distribuido</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl">Horómetro Actual de Planta</label>
+                <input className="fi fm" type="text" placeholder="Ej: 1450:20 o 1450" value={horometro} onChange={e => setHorometro(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Horas Trabajadas (estimadas)</label>
+                <input className="fi fm" type="text" placeholder="Ej: 15.5" value={horasTrabajo} onChange={e => setHorasTrabajo(e.target.value)} />
+              </div>
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Técnico / Responsable del Despacho</label>
+                <input className="fi" type="text" value={tecnico} onChange={e => setTecnico(e.target.value)} />
+              </div>
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Observaciones / N° Cisterna o Ticket</label>
+                <textarea className="fi" rows={2} placeholder="Detalles del despacho..." value={obs} onChange={e => setObs(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="bp" style={{ flex: 1 }} onClick={handleSave}>
+                Guardar Surtido
+              </button>
+              <button className="bs" style={{ flex: 1 }} onClick={onClose}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── MODAL: REGISTRAR NUEVO MANTENIMIENTO ─────────────────────────────────
+    function NewMaintenanceModal({ tanks, userProfile, onSave, onClose }) {
+      const [planta, setPlanta] = useState(tanks[0]?.lugar || '');
+      const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+      const [horometroMtto, setHorometroMtto] = useState('');
+      const [litrosAceite, setLitrosAceite] = useState('15 L');
+      const [filtroAceite, setFiltroAceite] = useState('');
+      const [filtroTrampa, setFiltroTrampa] = useState('');
+      const [filtroComb, setFiltroComb] = useState('');
+      const [filtroAire, setFiltroAire] = useState('No cambiado');
+      const [intervalo, setIntervalo] = useState(250);
+      const [obs, setObs] = useState('');
+
+      const selTank = tanks.find(t => t.lugar === planta) || tanks[0];
+
+      const handleSave = () => {
+        if (!horometroMtto) {
+          alert('Ingresa el horómetro al momento del mantenimiento.');
+          return;
+        }
+        const hMtto = parseFloat(horometroMtto) || 0;
+        const prox = hMtto + (parseFloat(intervalo) || 250);
+
+        onSave({
+          id: 'm_' + Date.now(),
+          planta,
+          tag: selTank?.equipo || 'PLT-GEN',
+          kva: selTank?.kva || 100,
+          fecha,
+          horometro_mtto: hMtto,
+          horometro_actual: hMtto,
+          horas_trabajadas: 0,
+          intervalo: parseFloat(intervalo) || 250,
+          horas_restantes: parseFloat(intervalo) || 250,
+          litros_aceite: litrosAceite,
+          filtro_aceite: filtroAceite || 'Cambiado',
+          filtro_trampa: filtroTrampa || 'N/A',
+          filtro_comb: filtroComb || 'Cambiado',
+          filtro_aire: filtroAire || 'No cambiado',
+          prox_cambio: prox + ' h',
+          obs,
+          status: 'optimo'
+        });
+      };
+
+      return (
+        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onClose}>
+          <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: 540, padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 className="fd" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                Asentar Mantenimiento Preventivo
+              </h3>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>✕</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Planta / Generador</label>
+                <select className="fi" value={planta} onChange={e => setPlanta(e.target.value)}>
+                  {tanks.map(t => <option key={t.id} value={t.lugar}>{t.lugar} ({t.equipo})</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="lbl">Fecha de Mantenimiento</label>
+                <input className="fi" type="text" value={fecha} onChange={e => setFecha(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Horómetro al Momento del Cambio</label>
+                <input className="fi fm" type="number" step="any" placeholder="Ej: 1450" value={horometroMtto} onChange={e => setHorometroMtto(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Litros de Aceite Colocados</label>
+                <input className="fi" type="text" placeholder="Ej: 15 L" value={litrosAceite} onChange={e => setLitrosAceite(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Intervalo de Mantenimiento (Horas)</label>
+                <input className="fi fm" type="number" value={intervalo} onChange={e => setIntervalo(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Filtro de Aceite (Código/Marca)</label>
+                <input className="fi" type="text" placeholder="Ej: Qualid QL-51649" value={filtroAceite} onChange={e => setFiltroAceite(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Filtro Trampa de Agua</label>
+                <input className="fi" type="text" placeholder="Ej: Fleetguard FS1280" value={filtroTrampa} onChange={e => setFiltroTrampa(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Filtro de Combustible</label>
+                <input className="fi" type="text" placeholder="Ej: Fliplus 33405" value={filtroComb} onChange={e => setFiltroComb(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Filtro de Aire</label>
+                <input className="fi" type="text" placeholder="Ej: Original / No cambiado" value={filtroAire} onChange={e => setFiltroAire(e.target.value)} />
+              </div>
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Observaciones del Mantenimiento</label>
+                <textarea className="fi" rows={2} placeholder="Detalles de la intervención..." value={obs} onChange={e => setObs(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="bp" style={{ flex: 1 }} onClick={handleSave}>
+                Guardar Mantenimiento
+              </button>
+              <button className="bs" style={{ flex: 1 }} onClick={onClose}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+
+        function MaterialesWrapper() {
       const [tab, setTab] = useState('proyecto');
       return (
         <div className="fin">
@@ -9309,6 +13130,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             {appView === 'nodes' && <NodeList userProfile={userProfile} toast={toast} />}
             {appView === 'calc' && <MaterialesWrapper />}
             {appView === 'autonomia' && <AutonomiaWrapper />}
+            {appView === 'combustible' && <CombustibleWrapper userProfile={userProfile} toast={toast} />}
             {appView === 'etp' && <ETPCalc />}
             {appView === 'admin' && ['admin', 'supervisor', 'directivo'].includes(userProfile?.role) && <AdminPanel userProfile={userProfile} toast={toast} />}
             {appView === 'admin' && !['admin', 'supervisor', 'directivo'].includes(userProfile?.role) && <NodeList userProfile={userProfile} toast={toast} />}
