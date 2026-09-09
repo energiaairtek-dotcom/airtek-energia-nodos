@@ -2755,30 +2755,40 @@ function PendingPage({ onLogout }) {
             } : null,
             createdAt: TS()
           };
-          await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add(record);
-          if (type === 'instalacion' && eqAction.tag) {
-            const isDC = eqAction.type === 'BAT' || eqAction.type === 'ETP';
-            await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
-              tag: sanitize(eqAction.tag), type: sanitize(eqAction.type),
-              voltage: isDC ? '' : sanitize(eqAction.voltage),
-              voltageDC: sanitize(eqAction.voltageDC || ''),
-              hasAcIn: !!eqAction.hasAcIn, hasAcOut: !!eqAction.hasAcOut, hasDcOut: !!eqAction.hasDcOut,
-              hasSolar: !!eqAction.hasSolar, batteryType: sanitize(eqAction.batteryType),
-              batCapacity: sanitize(eqAction.batCapacity || ''), batCount: sanitize(eqAction.batCount || ''),
-              batCellType: sanitize(eqAction.batCellType || 'No aplica'),
-              batSoH: sanitize(eqAction.batSoH || ''), batDoD: sanitize(eqAction.batDoD || ''),
-              batSerials: Array.isArray(eqAction.batSerials) ? eqAction.batSerials.map(s => sanitize(s)) : [],
-              solarRegPercentage: sanitize(eqAction.solarRegPercentage || ''), invMode: sanitize(eqAction.invMode || ''),
-              capacity: sanitize(eqAction.capacity || ''), phases: sanitize(eqAction.phases || ''),
-              horometer: eqAction.type === 'GEN' ? (parseHours(eqAction.horometer) || 0) : '',
-              lastMaintenanceHorometer: eqAction.type === 'GEN' ? (parseHours(eqAction.lastMaintenanceHorometer) || parseHours(eqAction.horometer) || 0) : 0,
-              maintenanceInterval: eqAction.type === 'GEN' ? (parseFloat(eqAction.maintenanceInterval) || 250) : 250,
-              active: true, installedAt: new Date(date), installedBy: sanitize(userProfile.name), serial: sanitize(eqAction.serial || ''), notes: sanitize(eqAction.notes)
-            });
-          }
-          if (type === 'reemplazo' && eqAction.tag) {
-            const eq = active.find(e => e.tag === eqAction.tag);
-            if (eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({ active: false, retiredAt: new Date(date) });
+          let firestoreSaveSuccess = false;
+          let firestoreErrorMsg = '';
+
+          try {
+            await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add(record);
+            firestoreSaveSuccess = true;
+
+            if (type === 'instalacion' && eqAction.tag) {
+              const isDC = eqAction.type === 'BAT' || eqAction.type === 'ETP';
+              await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').add({
+                tag: sanitize(eqAction.tag), type: sanitize(eqAction.type),
+                voltage: isDC ? '' : sanitize(eqAction.voltage),
+                voltageDC: sanitize(eqAction.voltageDC || ''),
+                hasAcIn: !!eqAction.hasAcIn, hasAcOut: !!eqAction.hasAcOut, hasDcOut: !!eqAction.hasDcOut,
+                hasSolar: !!eqAction.hasSolar, batteryType: sanitize(eqAction.batteryType),
+                batCapacity: sanitize(eqAction.batCapacity || ''), batCount: sanitize(eqAction.batCount || ''),
+                batCellType: sanitize(eqAction.batCellType || 'No aplica'),
+                batSoH: sanitize(eqAction.batSoH || ''), batDoD: sanitize(eqAction.batDoD || ''),
+                batSerials: Array.isArray(eqAction.batSerials) ? eqAction.batSerials.map(s => sanitize(s)) : [],
+                solarRegPercentage: sanitize(eqAction.solarRegPercentage || ''), invMode: sanitize(eqAction.invMode || ''),
+                capacity: sanitize(eqAction.capacity || ''), phases: sanitize(eqAction.phases || ''),
+                horometer: eqAction.type === 'GEN' ? (parseHours(eqAction.horometer) || 0) : '',
+                lastMaintenanceHorometer: eqAction.type === 'GEN' ? (parseHours(eqAction.lastMaintenanceHorometer) || parseHours(eqAction.horometer) || 0) : 0,
+                maintenanceInterval: eqAction.type === 'GEN' ? (parseFloat(eqAction.maintenanceInterval) || 250) : 250,
+                active: true, installedAt: new Date(date), installedBy: sanitize(userProfile.name), serial: sanitize(eqAction.serial || ''), notes: sanitize(eqAction.notes)
+              });
+            }
+            if (type === 'reemplazo' && eqAction.tag) {
+              const eq = active.find(e => e.tag === eqAction.tag);
+              if (eq) await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(eq.id).update({ active: false, retiredAt: new Date(date) });
+            }
+          } catch (fsErr) {
+            console.warn('Firestore write warning:', fsErr);
+            firestoreErrorMsg = fsErr.message || String(fsErr);
           }
 
           if (type === 'surtido') {
@@ -2793,17 +2803,19 @@ function PendingPage({ onLogout }) {
               }
             }
 
-            // Actualizar horómetro del equipo en Firestore
-            if (plantTag && parsedHoro > 0) {
-              const genEq = equipment.find(e => e.type === 'GEN' && e.tag === plantTag);
-              if (genEq) {
-                await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(genEq.id).update({
-                  horometer: parsedHoro
-                });
-              }
+            // Actualizar horómetro del equipo en Firestore si hubo conexión
+            if (plantTag && parsedHoro > 0 && db) {
+              try {
+                const genEq = equipment.find(e => e.type === 'GEN' && e.tag === plantTag);
+                if (genEq) {
+                  await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(genEq.id).update({
+                    horometer: parsedHoro
+                  });
+                }
+              } catch(e) {}
             }
 
-            // Sincronizar con el catálogo global de surtidos
+            // Sincronizar con el catálogo global de surtidos en localStorage
             const newRefillObj = {
               id: 'r_rec_' + Date.now(),
               fecha: new Date(date).toLocaleDateString('es-VE'),
@@ -2838,6 +2850,10 @@ function PendingPage({ onLogout }) {
               });
               localStorage.setItem('airtek_fuel_tanks_v12', JSON.stringify(updatedTanks));
             } catch(e) {}
+          }
+
+          if (!firestoreSaveSuccess && firestoreErrorMsg.includes('permission')) {
+            toast('Registro guardado localmente. Nota: Tu usuario en Firestore está pendiente de aprobación en el Panel de Administración.', 'info');
           }
 
           toast('Registro guardado exitosamente.', 'success');
@@ -5358,7 +5374,7 @@ function PendingPage({ onLogout }) {
     // ═══════════════════════════════════════════════════
     //  COMPONENTES DE PLANTA ELÉCTRICA
     // ═══════════════════════════════════════════════════
-    function PlantRecordForm({ nodeId, nodeName, plantEq, userProfile, onSave, onCancel, toast }) {
+    function PlantRecordForm({ nodeId, nodeName, nodeType, plantEq, userProfile, onSave, onCancel, toast }) {
       const isTri = plantEq && plantEq.phases && plantEq.phases.toLowerCase().includes('tri');
       const DRAFT_KEY = `airtek_draft_plant_${nodeId}_${plantEq.tag}`;
 
@@ -5370,6 +5386,20 @@ function PendingPage({ onLogout }) {
       };
 
       const initialDraft = getDraft();
+      const effectiveNodeType = (nodeType || initialDraft?.nodeType || '').toLowerCase();
+      const isNodeOrDc = (() => {
+        const t = effectiveNodeType;
+        const n = String(nodeName || '').trim().toLowerCase();
+        if (t === 'datacenter' || t === 'fibra' || t === 'nodo' || t === 'node') return true;
+        if (t === 'headend' || t === 'otro' || t === 'sede' || t === 'oficina') {
+          if (n.startsWith('datacenter') || n.startsWith('data center') || n.startsWith('nodo')) return true;
+          return false;
+        }
+        if (n.startsWith('datacenter') || n.startsWith('data center') || n.startsWith('nodo') || /\b(nodo|datacenter|data center)\b/i.test(n)) {
+          return true;
+        }
+        return false;
+      })();
 
       const [f, setF] = useState(() => {
         const defaults = {
@@ -5414,18 +5444,18 @@ function PendingPage({ onLogout }) {
           const now = new Date();
           const draft = {
             ...f,
-            nodeId, nodeName, plantTag: plantEq.tag, formType: 'plant',
+            nodeId, nodeName, nodeType: effectiveNodeType, plantTag: plantEq.tag, formType: 'plant',
             savedAt: now.toISOString()
           };
           localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
           localStorage.setItem('airtek_active_inspection', JSON.stringify({
-            nodeId, nodeName, plantTag: plantEq.tag, formType: 'plant', key: DRAFT_KEY, savedAt: now.toISOString()
+            nodeId, nodeName, nodeType: effectiveNodeType, plantTag: plantEq.tag, formType: 'plant', key: DRAFT_KEY, savedAt: now.toISOString()
           }));
           setLastSavedTime(now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
         } catch (e) {
           // silenciado
         }
-      }, [f, DRAFT_KEY, nodeId, nodeName, plantEq.tag]);
+      }, [f, DRAFT_KEY, nodeId, nodeName, effectiveNodeType, plantEq.tag]);
 
       useEffect(() => {
         saveDraftToStorage();
@@ -5478,6 +5508,8 @@ function PendingPage({ onLogout }) {
           ? `Fase 1: ${f.ampF1} fase 2: ${f.ampF2}   Fase 3: ${f.ampF3} N: ${f.ampN}`
           : `Fase 1: ${f.ampF1} fase 2: ${f.ampF2}   N: ${f.ampN}`;
 
+        const amperajeLabel = isNodeOrDc ? 'Amperaje del nodo' : 'Amperaje';
+
         return `CHEQUEO PREVENTIVO
 Fecha: ${dateStr}
 Técnico responsable: ${f.firmaTecnico}
@@ -5491,7 +5523,7 @@ Autonomía del combustible:	${f.autonomia || '—'}
 
 Voltaje de la red (entrada ATS)	${f.voltajeRed} V
 Voltajes de generación	${voltajesText} 
-Amperaje del nodo	${amperajesText}
+${amperajeLabel}	${amperajesText}
 3. COMPONENTES MECÁNICOS Y FLUIDOS
 
 
@@ -5744,7 +5776,7 @@ ${f.obsGenerales}`;
                   <div><input className="fi" placeholder="L2-N" value={f.voltajeL2N} onChange={e => setF({...f, voltajeL2N: e.target.value})} /></div>
                 </div>
               )}
-              <label className="lbl">Amperaje del nodo [A]</label>
+              <label className="lbl">{isNodeOrDc ? 'Amperaje del nodo [A]' : 'Amperaje [A]'}</label>
               {isTri ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
                   <div><input className="fi" placeholder="Fase 1" value={f.ampF1} onChange={e => setF({...f, ampF1: e.target.value})} /></div>
@@ -5844,7 +5876,7 @@ ${f.obsGenerales}`;
       );
     }
 
-    function NodePlantas({ nodeId, nodeName, equipment, records, userProfile, toast, onSubViewChange, setSelRecord }) {
+    function NodePlantas({ nodeId, nodeName, nodeType, equipment, records, userProfile, toast, onSubViewChange, setSelRecord }) {
       const genEqs = sortEquipment(equipment.filter(e => e.type === 'GEN' && e.active !== false));
       
       // Auto-recuperar si el técnico estaba en este formulario de planta
@@ -5871,7 +5903,7 @@ ${f.obsGenerales}`;
       };
 
       if (viewForm && selPlant) {
-        return <PlantRecordForm nodeId={nodeId} nodeName={nodeName} plantEq={selPlant} userProfile={userProfile} onSave={() => setViewForm(false)} onCancel={() => setViewForm(false)} toast={toast} />;
+        return <PlantRecordForm nodeId={nodeId} nodeName={nodeName} nodeType={nodeType} plantEq={selPlant} userProfile={userProfile} onSave={() => setViewForm(false)} onCancel={() => setViewForm(false)} toast={toast} />;
       }
 
       return (
@@ -6634,7 +6666,7 @@ ${f.obsGenerales}`;
           )}
 
           {/* TAB PLANTAS */}
-          {tab === 'plantas' && <NodePlantas nodeId={node.id} nodeName={node.name} equipment={equipment} records={records} userProfile={userProfile} toast={toast} onSubViewChange={setSubView} setSelRecord={setSelRecord} />}
+          {tab === 'plantas' && <NodePlantas nodeId={node.id} nodeName={node.name} nodeType={node.type} equipment={equipment} records={records} userProfile={userProfile} toast={toast} onSubViewChange={setSubView} setSelRecord={setSelRecord} />}
 
           {/* TAB CARGAS */}
           {tab === 'cargas' && <LoadChart records={records} equipment={equipment} onExport={exportXLSX} />}
