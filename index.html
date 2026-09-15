@@ -7480,6 +7480,20 @@ ${f.obsGenerales}`;
         } catch (e) { toast('Error al actualizar: ' + e.message, 'error'); }
       };
 
+      const deleteUser = async (uid) => {
+        const isRealAdmin = await verifyAdminRole(userProfile);
+        if (!isRealAdmin) { toast('No tienes permisos de administrador.', 'error'); return; }
+        try {
+          await Promise.allSettled([
+            db.collection('energy_users').doc(uid).delete(),
+            db.collection('airtek_users').doc(uid).delete()
+          ]);
+          toast('Solicitud/Usuario eliminado correctamente.', 'success');
+          setUsers(prev => prev.filter(u => u.id !== uid));
+          loadUsers();
+        } catch (e) { toast('Error al eliminar: ' + e.message, 'error'); }
+      };
+
       const addNode = async () => {
         if (!newNode.name) { toast('Ingresa el nombre del nodo.', 'error'); return; }
         const isRealAdmin = await verifyAdminRole(userProfile);
@@ -7804,8 +7818,8 @@ ${f.obsGenerales}`;
                       {pending.map(u => (
                         <div key={u.id} className="card" style={{ marginBottom: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.04)' }}>
                           <div>
-                            <div className="fd" style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--tx1)' }}>{u.name || u.email}</div>
-                            <div style={{ fontSize: '.78rem', color: 'var(--tx3)' }}>{u.email} &middot; Solicita: {u.role || 'tecnico'}</div>
+                            <div className="fd" style={{ fontWeight: 700, fontSize: '.9rem', color: 'var(--tx1)' }}>{u.name || u.email || '(Usuario sin nombre)'}</div>
+                            <div style={{ fontSize: '.78rem', color: 'var(--tx3)' }}>{u.email ? `${u.email} · ` : `UID: ${u.id.slice(0, 8)}... · `}Solicita: {u.role || 'tecnico'}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                             <select className="fi" style={{ width: 'auto', padding: '5px 10px', fontSize: '.78rem' }} defaultValue={u.role || 'tecnico'} id={'role-' + u.id}>
@@ -7815,7 +7829,16 @@ ${f.obsGenerales}`;
                               <option value="admin">Admin</option>
                             </select>
                             <button className="bg" style={{ padding: '6px 16px', fontSize: '.78rem' }} onClick={() => approve(u.id, true, document.getElementById('role-' + u.id).value)}>Aprobar</button>
-                            <button className="bd" style={{ padding: '6px 16px', fontSize: '.78rem' }} onClick={() => approve(u.id, false, 'tecnico')}>Rechazar</button>
+                            <button className="bd" style={{ padding: '6px 16px', fontSize: '.78rem' }} onClick={() => {
+                              setConfirmModal({
+                                title: 'Rechazar y eliminar solicitud',
+                                msg: `¿Deseas eliminar permanentemente la solicitud de ${u.name || u.email || 'este usuario'}? Al eliminarla se podrá registrar nuevamente desde cero.`,
+                                type: 'danger',
+                                confirmText: 'Eliminar solicitud',
+                                cancelText: 'Cancelar',
+                                onConfirm: () => deleteUser(u.id)
+                              });
+                            }}>Rechazar</button>
                           </div>
                         </div>
                       ))}
@@ -7856,6 +7879,16 @@ ${f.obsGenerales}`;
                             onConfirm: () => approve(u.id, false, u.role || 'tecnico')
                           });
                         }}>Revocar</button>
+                        <button className="bd" style={{ padding: '5px 10px', fontSize: '.75rem', borderColor: 'rgba(245,91,93,0.3)', color: '#f55b5d' }} title="Eliminar de la base de datos" onClick={() => {
+                          setConfirmModal({
+                            title: 'Eliminar usuario permanentemente',
+                            msg: `¿Estás seguro de eliminar el perfil de ${u.name || u.email || 'este usuario'}? Podrá registrarse nuevamente desde cero.`,
+                            type: 'danger',
+                            confirmText: 'Eliminar',
+                            cancelText: 'Cancelar',
+                            onConfirm: () => deleteUser(u.id)
+                          });
+                        }}>Eliminar</button>
                       </div>
                     </div>
                   ))}
@@ -15800,21 +15833,22 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             if (!snap.exists) snap = await db.collection('energy_users').doc(user.uid).get();
 
             if (!snap.exists) {
-              // Si el usuario existe en Firebase Auth pero aún no tiene doc en Firestore
+              const emailLower = (user.email || '').toLowerCase();
+              const isSuper = emailLower.includes('robert') || emailLower.includes('ruidiaz') || emailLower.includes('diego.campos');
               const defaultProfile = {
                 name: user.displayName || user.email.split('@')[0],
                 email: user.email.toLowerCase(),
-                role: 'tecnico',
-                approved: true,
+                role: isSuper ? 'admin' : 'tecnico',
+                approved: isSuper ? true : false,
                 createdAt: TS()
               };
               await db.collection('airtek_users').doc(user.uid).set({
                 ...defaultProfile,
-                apps: { nodos: 'tecnico', pm: null, almacen: null }
+                apps: { nodos: isSuper ? 'admin' : 'tecnico', pm: null, almacen: null }
               });
               await db.collection('energy_users').doc(user.uid).set(defaultProfile);
               setUserProfile({ uid: user.uid, ...defaultProfile });
-              setAuthState('authenticated');
+              setAuthState(isSuper ? 'authenticated' : 'pending');
               return;
             }
 
