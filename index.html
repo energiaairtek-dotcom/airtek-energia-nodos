@@ -1252,7 +1252,7 @@
     const BAT_VN = { LFP: 48, GEL: 48, AGM: 48, VRLA: 48, NMC: 52.5 };
     // Valores por defecto para autonomía según tipo
     const BAT_DEFAULTS = {
-      LFP: { DoD: 0.8, SoH: 1.0, ebanco: 0.98, eTemp: 1.0, ereg: 0.85, eIny: 0.85 },
+      LFP: { DoD: 0.95, SoH: 1.0, ebanco: 0.98, eTemp: 1.0, ereg: 0.85, eIny: 0.85 },
       NMC: { DoD: 0.8, SoH: 0.45, ebanco: 0.95, eTemp: 1.0, ereg: 0.85, eIny: 0.85 },
       GEL: { DoD: 0.6, SoH: 0.25, ebanco: 0.95, eTemp: 1.0, ereg: 0.85, eIny: 0.85 },
       AGM: { DoD: 0.6, SoH: 0.25, ebanco: 0.95, eTemp: 1.0, ereg: 0.85, eIny: 0.85 },
@@ -3466,7 +3466,7 @@ function PendingPage({ onLogout }) {
                   </div>
                   <div>
                     <label className="lbl">Profund. Descarga (DoD %)</label>
-                    <input className="fi" type="number" step="1" value={eqAction.batDoD} onChange={e => setEqA({ ...eqAction, batDoD: e.target.value })} placeholder="Ej: 80 (opcional)" />
+                    <input className="fi" type="number" step="1" value={eqAction.batDoD} onChange={e => setEqA({ ...eqAction, batDoD: e.target.value })} placeholder="Ej: 95 (opcional)" />
                   </div>
                   <div>
                     <label className="lbl">Tipo de Celda</label>
@@ -5028,7 +5028,7 @@ function PendingPage({ onLogout }) {
                 </div>
                 <div>
                   <label className="lbl">Profund. Descarga (DoD %)</label>
-                  <input className="fi" type="number" step="1" value={f.batDoD} onChange={e => setF({ ...f, batDoD: e.target.value })} placeholder="Ej: 80" />
+                  <input className="fi" type="number" step="1" value={f.batDoD} onChange={e => setF({ ...f, batDoD: e.target.value })} placeholder="Ej: 95" />
                 </div>
                 {f.batCount > 0 && Array.from({ length: parseInt(f.batCount) || 0 }).map((_, i) => (
                   <div key={i}>
@@ -8492,11 +8492,11 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
     function AutonomiaCalc() {
       const [bancos, setBancos] = useState([
-        { id: 1, tipo: 'LFP', capacidad: '', Vn: '48', SoH: '1.0', DoD: '0.8', ebanco: '0.98', eTemp: '1.0', carga: '', resultado: null }
+        { id: 1, tipo: 'LFP', capacidad: '', Vn: '48', SoH: '1.0', DoD: '0.95', ebanco: '0.98', eTemp: '1.0', carga: '', resultado: null }
       ]);
 
       const addBanco = () => setBancos(prev => [...prev, {
-        id: Date.now(), tipo: 'LFP', capacidad: '', Vn: '48', SoH: '1.0', DoD: '0.8', ebanco: '0.98', eTemp: '1.0', carga: '', resultado: null
+        id: Date.now(), tipo: 'LFP', capacidad: '', Vn: '48', SoH: '1.0', DoD: '0.95', ebanco: '0.98', eTemp: '1.0', carga: '', resultado: null
       }]);
 
       const removeBanco = id => setBancos(prev => prev.filter(b => b.id !== id));
@@ -8520,7 +8520,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         if (cap > 0 && load > 0) {
           const Vn = toNum(nb.Vn) || 48;
           const SoH = toNum(nb.SoH) || 1;
-          const DoD = toNum(nb.DoD) || 0.8;
+          const DoD = toNum(nb.DoD) || (BAT_DEFAULTS[nb.tipo] || BAT_DEFAULTS.LFP).DoD;
           const eb = toNum(nb.ebanco) || 0.95;
           const eT = toNum(nb.eTemp) || 1;
           const ereg = (BAT_DEFAULTS[nb.tipo] || BAT_DEFAULTS.LFP).ereg;
@@ -8609,7 +8609,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
       const gel100 = P > 0 && t > 0 ? Math.ceil((P * t) / (48 * 100 * 0.6 * 0.25 * 0.95 * 0.85)) * 4 : 0;
       const gel200 = P > 0 && t > 0 ? Math.ceil((P * t) / (48 * 200 * 0.6 * 0.25 * 0.95 * 0.85)) * 4 : 0;
-      const lfp100 = P > 0 && t > 0 ? Math.ceil((P * t) / (48 * 100 * 0.8 * 1.0 * 0.98 * 0.85)) : 0;
+      const lfp100 = P > 0 && t > 0 ? Math.ceil((P * t) / (48 * 100 * 0.95 * 1.0 * 0.98 * 0.85)) : 0;
       const nmc52 = P > 0 && t > 0 ? Math.ceil((P * t) / (52.5 * 66 * 0.8 * 0.45 * 0.95 * 0.85)) : 0;
 
       return (
