@@ -14155,7 +14155,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         if (!cardEl) return;
         setGeneratingImg(true);
         setTimeout(() => {
-          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#070c18' : '#ffffff' }).then(canvas => {
+          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
           canvas.toBlob(blob => {
             if (navigator.clipboard && navigator.clipboard.write) {
               navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
@@ -14190,7 +14190,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         if (!cardEl) return;
         setGeneratingImg(true);
         setTimeout(() => {
-          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#070c18' : '#ffffff' }).then(canvas => {
+          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
           const link = document.createElement('a');
           link.download = `reporte_combustible_${Date.now()}.png`;
           link.href = canvas.toDataURL('image/png');
@@ -14444,18 +14444,18 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
             {/* Vista Previa: Cuadro Gráfico o Textarea */}
             {reportMode === 'cuadro' ? (
-              <div style={{ overflowX: 'auto', background: isDark ? '#020617' : 'var(--bg-surface)', borderRadius: 12, border: `1px solid ${isDark ? '#1e293b' : 'var(--border)'}`, padding: 8 }}>
+              <div style={{ overflowX: 'auto', background: isDark ? '#0c0c0e' : 'var(--bg-surface)', borderRadius: 12, border: `1px solid ${isDark ? '#26262a' : 'var(--border)'}`, padding: 8 }}>
                 <div
                   id="airtek-executive-fuel-card-surtidos"
                   style={{
                     minWidth: '980px',
                     padding: '24px 26px',
-                    background: isDark ? 'linear-gradient(180deg, #0a0f1d 0%, #060913 100%)' : '#ffffff',
+                    background: isDark ? '#121214' : '#ffffff',
                     borderRadius: 14,
                     fontFamily: "'Outfit', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif",
                     color: isDark ? '#f8fafc' : '#090d16',
-                    boxShadow: isDark ? '0 20px 40px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)',
-                    border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0'
+                    boxShadow: isDark ? '0 20px 40px rgba(0,0,0,0.85)' : '0 10px 30px rgba(0,0,0,0.06)',
+                    border: isDark ? '1px solid #26262a' : '1px solid #e2e8f0'
                   }}
                 >
                   {/* Banner Superior */}
@@ -14480,19 +14480,19 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
                   {/* Resumen KPI */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-                    <div style={{ background: isDark ? 'rgba(15, 23, 42, 0.85)' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0' }}>
+                    <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '.66rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Total Gasoil Neto</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900, color: isDark ? '#38bdf8' : '#0284c7', marginTop: 2 }}>{totalStockNeto.toLocaleString()} Lts</div>
                     </div>
-                    <div style={{ background: isDark ? 'rgba(15, 23, 42, 0.85)' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0' }}>
+                    <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '.66rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Horas Op. Acumuladas</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900, color: isDark ? '#f59e0b' : '#d97706', marginTop: 2 }}>+{totalHorasOp.toFixed(1)} h</div>
                     </div>
-                    <div style={{ background: isDark ? 'rgba(15, 23, 42, 0.85)' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0' }}>
+                    <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '.66rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Consumo Est. Acumulado</div>
                       <div style={{ fontSize: '1.2rem', fontWeight: 900, color: isDark ? '#ef4444' : '#dc2626', marginTop: 2 }}>~{totalConsumoEst.toLocaleString()} Lts</div>
                     </div>
-                    <div style={{ background: isDark ? 'rgba(15, 23, 42, 0.85)' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0' }}>
+                    <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '10px 14px', borderRadius: 10, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0' }}>
                       <div style={{ fontSize: '.66rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Semáforo de Nodos</div>
                       <div style={{ display: 'flex', gap: 6, marginTop: 4, fontSize: '.72rem', fontWeight: 800 }}>
                         <span style={{ color: isDark ? '#10b981' : '#15803d' }}>{optCount} Ópt</span>
@@ -14507,7 +14507,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   {/* Tabla Gráfica Ejecutiva */}
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.76rem', textAlign: 'left' }}>
                     <thead>
-                      <tr style={{ background: isDark ? '#0f172a' : '#f1f5f9', borderBottom: isDark ? '2px solid #334155' : '2px solid #cbd5e1', color: isDark ? '#94a3b8' : '#475569', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
+                      <tr style={{ background: isDark ? '#141416' : '#f1f5f9', borderBottom: isDark ? '2px solid #27272a' : '2px solid #cbd5e1', color: isDark ? '#a1a1aa' : '#475569', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
                         <th style={{ padding: '9px 12px' }}>Lugar / Nodo</th>
                         <th style={{ padding: '9px 10px' }}>Planta & Tag</th>
                         <th style={{ padding: '9px 10px' }}>Último Surtido</th>
@@ -14524,7 +14524,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         const badgeBg = item.status === 'critico' ? (isDark ? 'rgba(239,68,68,0.15)' : 'rgba(220,38,38,0.12)') : (item.status === 'alerta' ? (isDark ? 'rgba(245,158,11,0.15)' : 'rgba(217,119,6,0.12)') : (isDark ? 'rgba(16,185,129,0.15)' : 'rgba(21,128,61,0.12)'));
 
                         return (
-                          <tr key={idx} style={{ borderBottom: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', background: (idx % 2 === 0) ? (isDark ? 'rgba(15, 23, 42, 0.4)' : '#ffffff') : (isDark ? 'rgba(15, 23, 42, 0.75)' : '#f8fafc') }}>
+                          <tr key={idx} style={{ borderBottom: isDark ? '1px solid #222226' : '1px solid #e2e8f0', background: (idx % 2 === 0) ? (isDark ? '#141416' : '#ffffff') : (isDark ? '#18181b' : '#f8fafc') }}>
                             <td style={{ padding: '8px 12px' }}>
                               <div style={{ fontWeight: 800, color: isDark ? '#ffffff' : '#090d16', fontSize: '.8rem' }}>{item.lugar}</div>
                               <div style={{ fontSize: '.66rem', color: isDark ? '#64748b' : '#64748b' }}>{item.zona}</div>
@@ -14555,8 +14555,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                                     })}
                                     style={{
                                       width: '74px',
-                                      background: isDark ? 'rgba(15, 23, 42, 0.7)' : '#ffffff',
-                                      border: isDark ? '1px solid rgba(56, 189, 248, 0.35)' : '1px solid #cbd5e1',
+                                      background: isDark ? '#0e0e10' : '#ffffff',
+                                      border: isDark ? '1px solid #3f3f46' : '1px solid #cbd5e1',
                                       borderRadius: '6px',
                                       color: isDark ? '#38bdf8' : '#0166ff',
                                       fontSize: '.74rem',
@@ -14644,7 +14644,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   </table>
 
                   {/* Pie del Cuadro Gráfico */}
-                  <div style={{ marginTop: 14, paddingTop: 10, borderTop: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.66rem', color: isDark ? '#64748b' : '#64748b' }}>
+                  <div style={{ marginTop: 14, paddingTop: 10, borderTop: isDark ? '1px solid #26262a' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.66rem', color: isDark ? '#71717a' : '#64748b' }}>
                     <div>Airtek Energy • Coordinación de Grupos Electrógenos • Horas de Operación Acumuladas = Horo Actual - Horo Surtido</div>
                     <div>Generado el {new Date().toLocaleString('es-VE')}</div>
                   </div>
@@ -14710,7 +14710,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   </div>
                 </div>
 
-                <div style={{ overflowX: 'auto', padding: 8, background: isDark ? '#020617' : 'var(--bg-surface)', borderRadius: 12, border: `1px solid ${isDark ? '#1e293b' : 'var(--border)'}` }}>
+                <div style={{ overflowX: 'auto', padding: 8, background: isDark ? '#0c0c0e' : 'var(--bg-surface)', borderRadius: 12, border: `1px solid ${isDark ? '#26262a' : 'var(--border)'}` }}>
                   {/* Se renderiza el cuadro existente dentro del modal */}
                   <div style={{ fontSize: '.8rem', color: '#94a3b8', padding: '8px 0', textAlign: 'center' }}>
                     Haz clic en <strong>"Copiar Imagen"</strong> para llevarla directo al portapapeles y pegarla con <strong>Ctrl + V</strong> en WhatsApp.
@@ -15465,7 +15465,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                           const cardEl = document.getElementById('airtek-executive-fuel-card');
                           if (!cardEl) return;
                           setGeneratingImg(true);
-                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#070c18' : '#ffffff' }).then(canvas => {
+                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
                             canvas.toBlob(blob => {
                               if (navigator.clipboard && navigator.clipboard.write) {
                                 navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
@@ -15505,7 +15505,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                           const cardEl = document.getElementById('airtek-executive-fuel-card');
                           if (!cardEl) return;
                           setGeneratingImg(true);
-                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#070c18' : '#ffffff' }).then(canvas => {
+                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
                             const link = document.createElement('a');
                             link.download = `reporte_combustible_airtek_${Date.now()}.png`;
                             link.href = canvas.toDataURL('image/png');
@@ -15578,18 +15578,18 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   </div>
 
                   {/* Previsualización del Cuadro Gráfico (Elemento capturado por html2canvas) */}
-                  <div style={{ overflowX: 'auto', padding: 12, background: isDark ? '#020617' : 'var(--bg-surface)', borderRadius: 14, border: `1px solid ${isDark ? '#1e293b' : 'var(--border)'}` }}>
+                  <div style={{ overflowX: 'auto', padding: 12, background: isDark ? '#0c0c0e' : 'var(--bg-surface)', borderRadius: 14, border: `1px solid ${isDark ? '#26262a' : 'var(--border)'}` }}>
                     <div
                       id="airtek-executive-fuel-card"
                       style={{
                         width: '1060px',
                         padding: '28px 32px',
-                        background: isDark ? 'linear-gradient(180deg, #090e1c 0%, #050813 100%)' : '#ffffff',
+                        background: isDark ? '#121214' : '#ffffff',
                         borderRadius: 16,
                         fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
                         color: isDark ? '#f8fafc' : '#090d16',
-                        boxShadow: isDark ? '0 25px 50px rgba(0,0,0,0.7)' : '0 10px 30px rgba(0,0,0,0.06)',
-                        border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0'
+                        boxShadow: isDark ? '0 25px 50px rgba(0,0,0,0.85)' : '0 10px 30px rgba(0,0,0,0.06)',
+                        border: isDark ? '1px solid #26262a' : '1px solid #e2e8f0'
                       }}
                     >
                       {/* Banner Superior Corporativo Airtek */}
@@ -15617,7 +15617,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                       {/* Resumen KPI Ejecutivo (4 Tarjetas con Indicadores Clave) */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
                         {/* KPI 1 */}
-                        <div style={{ background: isDark ? '#0e1628' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
                           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #0166ff, #21c0fa)' }} />
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: '.68rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Total Gasoil Neto</div>
@@ -15634,7 +15634,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </div>
 
                         {/* KPI 2 */}
-                        <div style={{ background: isDark ? '#0e1628' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
                           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: '.68rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Horas Op. Acumuladas</div>
@@ -15649,7 +15649,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </div>
 
                         {/* KPI 3 */}
-                        <div style={{ background: isDark ? '#0e1628' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
                           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #ef4444, #f87171)' }} />
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: '.68rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Consumo Estimado</div>
@@ -15664,7 +15664,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </div>
 
                         {/* KPI 4 */}
-                        <div style={{ background: isDark ? '#0e1628' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
+                        <div style={{ background: isDark ? '#18181b' : '#f8fafc', padding: '14px 18px', borderRadius: 12, border: isDark ? '1px solid #27272a' : '1px solid #e2e8f0', position: 'relative', overflow: 'hidden' }}>
                           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ fontSize: '.68rem', color: isDark ? '#94a3b8' : '#64748b', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Semáforo de Disponibilidad</div>
@@ -15690,7 +15690,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                       {/* Tabla Estilizada con Agrupación y Barras Visuales de Autonomía */}
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.76rem', textAlign: 'left' }}>
                         <thead>
-                          <tr style={{ background: isDark ? '#0a101f' : '#f1f5f9', borderBottom: isDark ? '2px solid #334155' : '2px solid #cbd5e1', color: isDark ? '#94a3b8' : '#475569', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
+                          <tr style={{ background: isDark ? '#141416' : '#f1f5f9', borderBottom: isDark ? '2px solid #27272a' : '2px solid #cbd5e1', color: isDark ? '#a1a1aa' : '#475569', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
                             <th style={{ padding: '10px 14px' }}>Lugar / Nodo</th>
                             <th style={{ padding: '10px 10px' }}>Planta & Tag</th>
                             <th style={{ padding: '10px 10px' }}>Último Surtido</th>
@@ -15707,7 +15707,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                             return (
                               <React.Fragment key={gIdx}>
                                 {/* Separador de Grupo / Categoría */}
-                                <tr style={{ background: isDark ? 'linear-gradient(90deg, rgba(1, 102, 255, 0.15) 0%, rgba(15, 23, 42, 0.7) 100%)' : 'linear-gradient(90deg, rgba(1, 102, 255, 0.08) 0%, rgba(241, 245, 249, 0.95) 100%)', borderTop: isDark ? '2px solid rgba(1, 102, 255, 0.3)' : '2px solid rgba(1, 102, 255, 0.2)', borderBottom: isDark ? '1px solid rgba(1, 102, 255, 0.2)' : '1px solid #e2e8f0' }}>
+                                <tr style={{ background: isDark ? 'linear-gradient(90deg, rgba(1, 102, 255, 0.15) 0%, #18181b 100%)' : 'linear-gradient(90deg, rgba(1, 102, 255, 0.08) 0%, rgba(241, 245, 249, 0.95) 100%)', borderTop: isDark ? '2px solid rgba(1, 102, 255, 0.35)' : '2px solid rgba(1, 102, 255, 0.2)', borderBottom: isDark ? '1px solid #27272a' : '1px solid #e2e8f0' }}>
                                   <td colSpan={8} style={{ padding: '7px 14px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -15733,7 +15733,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                                     t.diasAutNeto >= 1.5 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #ef4444, #f87171)';
 
                                   return (
-                                    <tr key={idx} style={{ borderBottom: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', background: (idx % 2 === 0) ? (isDark ? 'rgba(15, 23, 42, 0.35)' : '#ffffff') : (isDark ? 'rgba(15, 23, 42, 0.65)' : '#f8fafc') }}>
+                                    <tr key={idx} style={{ borderBottom: isDark ? '1px solid #222226' : '1px solid #e2e8f0', background: (idx % 2 === 0) ? (isDark ? '#141416' : '#ffffff') : (isDark ? '#18181b' : '#f8fafc') }}>
                                       <td style={{ padding: '9px 14px' }}>
                                         <div style={{ fontWeight: 800, color: isDark ? '#ffffff' : '#090d16', fontSize: '.84rem' }}>{t.lugar}</div>
                                         <div style={{ fontSize: '.68rem', color: isDark ? '#64748b' : '#64748b', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
@@ -15823,7 +15823,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                       </table>
 
                       {/* Footer Oficial del Cuadro */}
-                      <div style={{ marginTop: 18, paddingTop: 12, borderTop: isDark ? '1px solid #1e293b' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.7rem', color: isDark ? '#64748b' : '#64748b' }}>
+                      <div style={{ marginTop: 18, paddingTop: 12, borderTop: isDark ? '1px solid #26262a' : '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.7rem', color: isDark ? '#71717a' : '#64748b' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ width: 8, height: 8, borderRadius: '50%', background: isDark ? '#10b981' : '#15803d' }} />
                           <span>Airtek Energy • Coordinación de Grupos Electrógenos • Monitoreo de Red 24/7</span>
