@@ -14880,6 +14880,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [copySuccess, setCopySuccess] = useState(false);
       const [showImageModal, setShowImageModal] = useState(false);
       const [generatingImg, setGeneratingImg] = useState(false);
+      const [modalZoneFilter, setModalZoneFilter] = useState('all');
 
       const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
 
@@ -15396,240 +15397,446 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           </div>
 
           {/* Modal de Exportación de Cuadro en Imagen para WhatsApp */}
-          {showImageModal && (
-            <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-              <div className="card fin" style={{ width: '95%', maxWidth: 1060, maxHeight: '90vh', overflowY: 'auto', padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-                {/* Header del Modal */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
-                  <div>
-                    <h3 className="fd" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--tx1)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      📸 Exportador de Cuadro Gráfico para WhatsApp
-                    </h3>
-                    <p style={{ fontSize: '.8rem', color: 'var(--tx3)', margin: '4px 0 0' }}>
-                      Genera una imagen en alta definición lista para copiar y pegar directamente en grupos de WhatsApp o informes.
-                    </p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button
-                      className="bp"
-                      disabled={generatingImg}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981' }}
-                      onClick={() => {
-                        const cardEl = document.getElementById('airtek-executive-fuel-card');
-                        if (!cardEl) return;
-                        setGeneratingImg(true);
-                        window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
-                          canvas.toBlob(blob => {
-                            if (navigator.clipboard && navigator.clipboard.write) {
-                              navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
-                                setGeneratingImg(false);
-                                if (toast) toast('¡Imagen copiada al portapapeles! Pégala en WhatsApp con Ctrl + V.', 'success');
-                              }).catch(() => {
+          {showImageModal && (() => {
+            const modalTanks = filtered.filter(t => {
+              if (modalZoneFilter === 'dc_sedes') return t.tipo === 'datacenter' || t.tipo === 'sede';
+              if (modalZoneFilter === 'maracaibo') return t.zona === 'Maracaibo' && t.tipo === 'nodo';
+              if (modalZoneFilter === 'col') return t.zona === 'Costa Oriental del Lago';
+              if (modalZoneFilter === 'subregiones') return !['Maracaibo', 'Costa Oriental del Lago', 'San Francisco', 'Móvil'].includes(t.zona) || t.zona.includes('Guajira') || t.zona.includes('Perijá') || t.zona.includes('Cañada') || t.zona.includes('Lossada');
+              return true;
+            });
+
+            const modalTotNeto = modalTanks.reduce((acc, t) => acc + (t.stockNeto || 0), 0);
+            const modalTotSub = modalTanks.reduce((acc, t) => acc + (parseFloat(t.subtanque_actual) || 0), 0);
+            const modalTotRes = modalTanks.reduce((acc, t) => acc + (parseFloat(t.sharedReserva) || 0), 0);
+            const modalTotDeltaH = modalTanks.reduce((acc, t) => acc + (t.deltaH || 0), 0);
+            const modalTotConsumo = modalTanks.reduce((acc, t) => acc + (t.combustibleConsumido || 0), 0);
+            const modalOptimos = modalTanks.filter(t => t.status === 'optimo').length;
+            const modalAlertas = modalTanks.filter(t => t.status === 'alerta').length;
+            const modalCriticos = modalTanks.filter(t => t.status === 'critico').length;
+
+            const dcTanks = modalTanks.filter(t => t.tipo === 'datacenter');
+            const sedeTanks = modalTanks.filter(t => t.tipo === 'sede');
+            const mcboTanks = modalTanks.filter(t => t.tipo === 'nodo' && t.zona === 'Maracaibo');
+            const colTanks = modalTanks.filter(t => t.tipo === 'nodo' && t.zona === 'Costa Oriental del Lago');
+            const subregTanks = modalTanks.filter(t => t.tipo === 'nodo' && t.zona !== 'Maracaibo' && t.zona !== 'Costa Oriental del Lago');
+            const auxTanks = modalTanks.filter(t => t.tipo === 'auxiliar');
+
+            const groups = [
+              { title: 'Datacenters de Misión Crítica', items: dcTanks, iconColor: '#0166ff', badge: 'Tier III High-Availability' },
+              { title: 'Sedes Principales & Oficinas Administrativas', items: sedeTanks, iconColor: '#21c0fa', badge: 'Continuidad de Operaciones' },
+              { title: 'Nodos Zona Maracaibo & Atlantis', items: mcboTanks, iconColor: '#38bdf8', badge: 'Red Troncal Metropolitana' },
+              { title: 'Nodos Costa Oriental del Lago (COL)', items: colTanks, iconColor: '#06b6d4', badge: 'Red Troncal Este' },
+              { title: 'Nodos Sub Regiones (Guajira, Perijá, Cañada, Lossada)', items: subregTanks, iconColor: '#8b5cf6', badge: 'Red Foránea & Sub-regiones' },
+              { title: 'Unidades Móviles & Generadores Auxiliares', items: auxTanks, iconColor: '#f59e0b', badge: 'Respaldo Móvil' }
+            ].filter(g => g.items.length > 0);
+
+            const activeZoneLabel = modalZoneFilter === 'dc_sedes' ? 'Datacenters & Sedes' :
+              modalZoneFilter === 'maracaibo' ? 'Zona Maracaibo' :
+              modalZoneFilter === 'col' ? 'Costa Oriental del Lago' :
+              modalZoneFilter === 'subregiones' ? 'Sub Regiones' : 'Toda la Red';
+
+            return (
+              <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+                <div className="card fin" style={{ width: '96%', maxWidth: 1120, maxHeight: '92vh', overflowY: 'auto', padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }}>
+                  {/* Header del Modal */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
+                    <div>
+                      <h3 className="fd" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--tx1)', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#0166ff', boxShadow: '0 0 10px #0166ff' }} />
+                        📸 Exportador de Cuadro Gráfico para WhatsApp
+                      </h3>
+                      <p style={{ fontSize: '.8rem', color: 'var(--tx3)', margin: '4px 0 0' }}>
+                        Diseño corporativo oficial Airtek Energy en alta definición. Listo para copiar al portapapeles y pegar directo con <kbd style={{ padding: '2px 6px', borderRadius: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>Ctrl + V</kbd>.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        className="bp"
+                        disabled={generatingImg}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981', boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)' }}
+                        onClick={() => {
+                          const cardEl = document.getElementById('airtek-executive-fuel-card');
+                          if (!cardEl) return;
+                          setGeneratingImg(true);
+                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
+                            canvas.toBlob(blob => {
+                              if (navigator.clipboard && navigator.clipboard.write) {
+                                navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                                  setGeneratingImg(false);
+                                  if (toast) toast('¡Imagen copiada al portapapeles! Pégala en WhatsApp con Ctrl + V.', 'success');
+                                }).catch(() => {
+                                  const link = document.createElement('a');
+                                  link.download = `reporte_combustible_airtek_${Date.now()}.png`;
+                                  link.href = canvas.toDataURL('image/png');
+                                  link.click();
+                                  setGeneratingImg(false);
+                                  if (toast) toast('¡Imagen descargada como archivo PNG!', 'success');
+                                });
+                              } else {
                                 const link = document.createElement('a');
                                 link.download = `reporte_combustible_airtek_${Date.now()}.png`;
                                 link.href = canvas.toDataURL('image/png');
                                 link.click();
                                 setGeneratingImg(false);
                                 if (toast) toast('¡Imagen descargada como archivo PNG!', 'success');
-                              });
-                            } else {
-                              const link = document.createElement('a');
-                              link.download = `reporte_combustible_airtek_${Date.now()}.png`;
-                              link.href = canvas.toDataURL('image/png');
-                              link.click();
-                              setGeneratingImg(false);
-                              if (toast) toast('¡Imagen descargada como archivo PNG!', 'success');
-                            }
+                              }
+                            });
+                          }).catch(e => {
+                            setGeneratingImg(false);
+                            if (toast) toast('Error al generar imagen: ' + e.message, 'error');
                           });
-                        }).catch(e => {
-                          setGeneratingImg(false);
-                          if (toast) toast('Error al generar imagen: ' + e.message, 'error');
-                        });
-                      }}
-                    >
-                      <IconCopy size={16} />
-                      {generatingImg ? 'Generando Imagen...' : '📋 Copiar Imagen (Pegar en WhatsApp)'}
-                    </button>
-                    <button
-                      className="bs"
-                      disabled={generatingImg}
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: '.84rem' }}
-                      onClick={() => {
-                        const cardEl = document.getElementById('airtek-executive-fuel-card');
-                        if (!cardEl) return;
-                        setGeneratingImg(true);
-                        window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
-                          const link = document.createElement('a');
-                          link.download = `reporte_combustible_airtek_${Date.now()}.png`;
-                          link.href = canvas.toDataURL('image/png');
-                          link.click();
-                          setGeneratingImg(false);
-                          if (toast) toast('¡Imagen PNG descargada con éxito!', 'success');
-                        }).catch(e => {
-                          setGeneratingImg(false);
-                          if (toast) toast('Error: ' + e.message, 'error');
-                        });
-                      }}
-                    >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                      Descargar PNG
-                    </button>
-                    <button className="bs" onClick={() => setShowImageModal(false)} style={{ padding: '8px 14px' }}>
-                      ✕ Cerrar
-                    </button>
+                        }}
+                      >
+                        <IconCopy size={16} />
+                        {generatingImg ? 'Generando Imagen HD...' : '📋 Copiar Imagen (Pegar en WhatsApp)'}
+                      </button>
+                      <button
+                        className="bs"
+                        disabled={generatingImg}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontSize: '.84rem' }}
+                        onClick={() => {
+                          const cardEl = document.getElementById('airtek-executive-fuel-card');
+                          if (!cardEl) return;
+                          setGeneratingImg(true);
+                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
+                            const link = document.createElement('a');
+                            link.download = `reporte_combustible_airtek_${Date.now()}.png`;
+                            link.href = canvas.toDataURL('image/png');
+                            link.click();
+                            setGeneratingImg(false);
+                            if (toast) toast('¡Imagen PNG descargada con éxito!', 'success');
+                          }).catch(e => {
+                            setGeneratingImg(false);
+                            if (toast) toast('Error: ' + e.message, 'error');
+                          });
+                        }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Descargar PNG
+                      </button>
+                      <button className="bs" onClick={() => setShowImageModal(false)} style={{ padding: '9px 16px' }}>
+                        ✕ Cerrar
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Previsualización del Cuadro Gráfico (Elemento que se captura) */}
-                <div style={{ overflowX: 'auto', padding: 8, background: '#020617', borderRadius: 12, border: '1px solid #1e293b' }}>
-                  <div
-                    id="airtek-executive-fuel-card"
-                    style={{
-                      width: '1020px',
-                      padding: '24px 28px',
-                      background: 'linear-gradient(180deg, #0a0f1d 0%, #060913 100%)',
-                      borderRadius: 14,
-                      fontFamily: "'Outfit', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif",
-                      color: '#f8fafc',
-                      boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
-                      border: '1px solid #1e293b'
-                    }}
-                  >
-                    {/* Header Banner */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid rgba(1, 102, 255, 0.3)', paddingBottom: 16, marginBottom: 18 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <div style={{ width: 46, height: 46, borderRadius: 12, background: 'linear-gradient(135deg, #0166ff 0%, #21c0fa 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(1, 102, 255, 0.4)' }}>
-                          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  {/* Selector Rápido de Zona / Grupo */}
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                      Corte Visual:
+                    </span>
+                    {[
+                      { id: 'all', label: '🌐 Toda la Red', count: filtered.length },
+                      { id: 'dc_sedes', label: '🏢 Datacenters & Sedes', count: filtered.filter(t => t.tipo === 'datacenter' || t.tipo === 'sede').length },
+                      { id: 'maracaibo', label: '📍 Maracaibo', count: filtered.filter(t => t.zona === 'Maracaibo' && t.tipo === 'nodo').length },
+                      { id: 'col', label: '🌊 Costa Oriental', count: filtered.filter(t => t.zona === 'Costa Oriental del Lago').length },
+                      { id: 'subregiones', label: '🌄 Sub Regiones', count: filtered.filter(t => !['Maracaibo', 'Costa Oriental del Lago', 'San Francisco', 'Móvil'].includes(t.zona) || t.zona.includes('Guajira') || t.zona.includes('Perijá') || t.zona.includes('Cañada') || t.zona.includes('Lossada')).length }
+                    ].map(btn => {
+                      const isActive = modalZoneFilter === btn.id;
+                      return (
+                        <button
+                          key={btn.id}
+                          onClick={() => setModalZoneFilter(btn.id)}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            fontSize: '.75rem',
+                            fontWeight: 700,
+                            fontFamily: "'Montserrat', sans-serif",
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            background: isActive ? 'linear-gradient(135deg, #0166ff 0%, #21c0fa 100%)' : 'var(--bg-surface)',
+                            color: isActive ? '#ffffff' : 'var(--tx2)',
+                            border: isActive ? '1px solid #0166ff' : '1px solid var(--border)',
+                            boxShadow: isActive ? '0 2px 10px rgba(1, 102, 255, 0.35)' : 'none'
+                          }}
+                        >
+                          <span>{btn.label}</span>
+                          <span style={{
+                            background: isActive ? 'rgba(255, 255, 255, 0.25)' : 'var(--bg-elevated)',
+                            color: isActive ? '#ffffff' : 'var(--tx3)',
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                            fontSize: '.68rem',
+                            fontWeight: 800
+                          }}>
+                            {btn.count}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Previsualización del Cuadro Gráfico (Elemento capturado por html2canvas) */}
+                  <div style={{ overflowX: 'auto', padding: 12, background: '#020617', borderRadius: 14, border: '1px solid #1e293b' }}>
+                    <div
+                      id="airtek-executive-fuel-card"
+                      style={{
+                        width: '1060px',
+                        padding: '28px 32px',
+                        background: 'linear-gradient(180deg, #090e1c 0%, #050813 100%)',
+                        borderRadius: 16,
+                        fontFamily: "'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                        color: '#f8fafc',
+                        boxShadow: '0 25px 50px rgba(0,0,0,0.7)',
+                        border: '1px solid #1e293b'
+                      }}
+                    >
+                      {/* Banner Superior Corporativo Airtek */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid rgba(1, 102, 255, 0.35)', paddingBottom: 18, marginBottom: 20 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                          <div style={{ width: 50, height: 50, borderRadius: 14, background: 'linear-gradient(135deg, #0166ff 0%, #21c0fa 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 18px rgba(1, 102, 255, 0.45)' }}>
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#21c0fa', letterSpacing: '.14em', textTransform: 'uppercase' }}>
+                              AIRTEK ENERGY • COORDINACIÓN DE GRUPOS ELECTRÓGENOS
+                            </div>
+                            <div style={{ fontSize: '1.42rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em', marginTop: 2, fontFamily: "'Heading Pro Wide', 'Outfit', 'Montserrat', sans-serif" }}>
+                              ESTADO DE COMBUSTIBLE & AUTONOMÍA EN NODOS
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 20, background: 'rgba(1, 102, 255, 0.15)', border: '1px solid rgba(1, 102, 255, 0.4)', fontSize: '.8rem', fontWeight: 800, color: '#60a5fa', marginBottom: 4 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#21c0fa', boxShadow: '0 0 8px #21c0fa' }} />
+                            <span>{activeZoneLabel.toUpperCase()}</span>
+                            {regionFilter !== 'all' && <span>• {regionFilter.toUpperCase()}</span>}
+                          </div>
+                          <div style={{ fontSize: '.74rem', color: '#94a3b8' }}>
+                            Fecha de Corte: <strong style={{ color: '#cbd5e1' }}>{new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong> • {new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Resumen KPI Ejecutivo (4 Tarjetas con Indicadores Clave) */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
+                        {/* KPI 1 */}
+                        <div style={{ background: '#0e1628', padding: '14px 18px', borderRadius: 12, border: '1px solid #1e293b', position: 'relative', overflow: 'hidden' }}>
+                          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #0166ff, #21c0fa)' }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Total Gasoil Neto</div>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#21c0fa" strokeWidth="2.2"><path d="M3 2v20M21 2v20M12 2v20M3 12h18"/></svg>
+                          </div>
+                          <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#38bdf8', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                            {modalTotNeto.toLocaleString()} <span style={{ fontSize: '.84rem', fontWeight: 700, color: '#94a3b8' }}>Lts</span>
+                          </div>
+                          <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 4, display: 'flex', gap: 6 }}>
+                            <span>Sub: <strong style={{ color: '#cbd5e1' }}>{modalTotSub.toLocaleString()}L</strong></span>
+                            <span>•</span>
+                            <span>Res: <strong style={{ color: '#cbd5e1' }}>{modalTotRes.toLocaleString()}L</strong></span>
+                          </div>
+                        </div>
+
+                        {/* KPI 2 */}
+                        <div style={{ background: '#0e1628', padding: '14px 18px', borderRadius: 12, border: '1px solid #1e293b', position: 'relative', overflow: 'hidden' }}>
+                          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Horas Op. Acumuladas</div>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+                          </div>
+                          <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#f59e0b', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                            +{modalTotDeltaH.toFixed(1)} <span style={{ fontSize: '.84rem', fontWeight: 700, color: '#94a3b8' }}>hrs</span>
+                          </div>
+                          <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 4 }}>
+                            Operación registrada post-surtido
+                          </div>
+                        </div>
+
+                        {/* KPI 3 */}
+                        <div style={{ background: '#0e1628', padding: '14px 18px', borderRadius: 12, border: '1px solid #1e293b', position: 'relative', overflow: 'hidden' }}>
+                          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #ef4444, #f87171)' }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Consumo Estimado</div>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                          </div>
+                          <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#ef4444', marginTop: 4, fontFamily: "'JetBrains Mono', monospace" }}>
+                            ~{modalTotConsumo.toLocaleString()} <span style={{ fontSize: '.84rem', fontWeight: 700, color: '#94a3b8' }}>Lts</span>
+                          </div>
+                          <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 4 }}>
+                            Combustible consumido en ciclo
+                          </div>
+                        </div>
+
+                        {/* KPI 4 */}
+                        <div style={{ background: '#0e1628', padding: '14px 18px', borderRadius: 12, border: '1px solid #1e293b', position: 'relative', overflow: 'hidden' }}>
+                          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '.06em' }}>Semáforo de Disponibilidad</div>
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
+                            <span style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', fontWeight: 800, fontSize: '.76rem', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                              {modalOptimos} Ópt
+                            </span>
+                            <span style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', fontWeight: 800, fontSize: '.76rem', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                              {modalAlertas} Alert
+                            </span>
+                            <span style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', fontWeight: 800, fontSize: '.76rem', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                              {modalCriticos} Crít
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '.68rem', color: '#64748b', marginTop: 6 }}>
+                            Total: <strong style={{ color: '#cbd5e1' }}>{modalTanks.length}</strong> plantas monitoreadas
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tabla Estilizada con Agrupación y Barras Visuales de Autonomía */}
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.76rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ background: '#0a101f', borderBottom: '2px solid #334155', color: '#94a3b8', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
+                            <th style={{ padding: '10px 14px' }}>Lugar / Nodo</th>
+                            <th style={{ padding: '10px 10px' }}>Planta & Tag</th>
+                            <th style={{ padding: '10px 10px' }}>Último Surtido</th>
+                            <th style={{ padding: '10px 10px' }}>Horómetro Actual</th>
+                            <th style={{ padding: '10px 10px', textAlign: 'center' }}>Horas Op. (+Δh)</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'right' }}>Gasoil Neto</th>
+                            <th style={{ padding: '10px 12px' }}>Autonomía Neta</th>
+                            <th style={{ padding: '10px 14px', textAlign: 'center' }}>Estado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groups.map((grp, gIdx) => {
+                            const groupTotLts = grp.items.reduce((acc, t) => acc + (t.stockNeto || 0), 0);
+                            return (
+                              <React.Fragment key={gIdx}>
+                                {/* Separador de Grupo / Categoría */}
+                                <tr style={{ background: 'linear-gradient(90deg, rgba(1, 102, 255, 0.15) 0%, rgba(15, 23, 42, 0.7) 100%)', borderTop: '2px solid rgba(1, 102, 255, 0.3)', borderBottom: '1px solid rgba(1, 102, 255, 0.2)' }}>
+                                  <td colSpan={8} style={{ padding: '7px 14px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: grp.iconColor }} />
+                                        <span style={{ fontSize: '.75rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                                          {grp.title}
+                                        </span>
+                                        <span style={{ fontSize: '.68rem', color: '#94a3b8', background: 'rgba(255, 255, 255, 0.08)', padding: '1px 8px', borderRadius: 10, fontWeight: 700 }}>
+                                          {grp.items.length} {grp.items.length === 1 ? 'unidad' : 'unidades'}
+                                        </span>
+                                      </div>
+                                      <div style={{ fontSize: '.72rem', color: '#38bdf8', fontWeight: 800, fontFamily: "'JetBrains Mono', monospace" }}>
+                                        Total Grupo: {groupTotLts.toLocaleString()} Lts
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Filas del Grupo */}
+                                {grp.items.map((t, idx) => {
+                                  const autPct = Math.min(100, Math.round((t.diasAutNeto / 7) * 100));
+                                  const barGradient = t.diasAutNeto >= 3 ? 'linear-gradient(90deg, #10b981, #34d399)' :
+                                    t.diasAutNeto >= 1.5 ? 'linear-gradient(90deg, #f59e0b, #fbbf24)' : 'linear-gradient(90deg, #ef4444, #f87171)';
+
+                                  return (
+                                    <tr key={idx} style={{ borderBottom: '1px solid #1e293b', background: (idx % 2 === 0) ? 'rgba(15, 23, 42, 0.35)' : 'rgba(15, 23, 42, 0.65)' }}>
+                                      <td style={{ padding: '9px 14px' }}>
+                                        <div style={{ fontWeight: 800, color: '#ffffff', fontSize: '.84rem' }}>{t.lugar}</div>
+                                        <div style={{ fontSize: '.68rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                          <span>{t.zona}</span>
+                                          {t.kva && <span>• {t.kva} kVA</span>}
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '9px 10px' }}>
+                                        <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace", fontSize: '.8rem' }}>{t.tag}</div>
+                                        <div style={{ fontSize: '.68rem', color: '#94a3b8' }}>Consumo: {t.consumo_lh} L/h</div>
+                                      </td>
+                                      <td style={{ padding: '9px 10px' }}>
+                                        <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{t.fechaSur}</div>
+                                        <div style={{ fontSize: '.66rem', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>Horo: {t.hSurStr}</div>
+                                      </td>
+                                      <td style={{ padding: '9px 10px' }}>
+                                        <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace", fontSize: '.84rem' }}>
+                                          {t.hActStr}
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '9px 10px', textAlign: 'center' }}>
+                                        <span style={{
+                                          display: 'inline-block',
+                                          padding: '2px 8px',
+                                          borderRadius: 6,
+                                          fontSize: '.72rem',
+                                          fontWeight: 800,
+                                          background: t.deltaH > 20 ? 'rgba(245, 158, 11, 0.2)' : (t.deltaH > 0 ? 'rgba(33, 192, 250, 0.15)' : 'rgba(100, 116, 139, 0.15)'),
+                                          color: t.deltaH > 20 ? '#f59e0b' : (t.deltaH > 0 ? '#38bdf8' : '#94a3b8'),
+                                          border: `1px solid ${t.deltaH > 20 ? 'rgba(245, 158, 11, 0.4)' : (t.deltaH > 0 ? 'rgba(33, 192, 250, 0.3)' : 'rgba(100, 116, 139, 0.3)')}`
+                                        }}>
+                                          +{t.deltaH.toFixed(1)} h
+                                        </span>
+                                        {t.combustibleConsumido > 0 && (
+                                          <div style={{ fontSize: '.64rem', color: '#ef4444', fontWeight: 600, marginTop: 2 }}>
+                                            ~{t.combustibleConsumido} L quemados
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '9px 12px', textAlign: 'right' }}>
+                                        <div style={{ fontSize: '.96rem', fontWeight: 900, color: '#10b981', fontFamily: "'JetBrains Mono', monospace" }}>
+                                          {t.stockNeto.toLocaleString()} <span style={{ fontSize: '.72rem', color: '#94a3b8' }}>Lts</span>
+                                        </div>
+                                        <div style={{ fontSize: '.64rem', color: '#64748b' }}>
+                                          Sub: {t.subtanque_actual}L | Res: {t.sharedReserva}L
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '9px 12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                                          <span style={{ fontWeight: 800, color: t.badgeColor, fontSize: '.9rem' }}>{t.diasAutNeto} Días</span>
+                                          <span style={{ fontSize: '.68rem', color: '#94a3b8' }}>({t.autNetoH}h)</span>
+                                        </div>
+                                        {/* Barra Visual de Nivel de Autonomía */}
+                                        <div style={{ width: '100%', maxWidth: 110, height: 5, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 3, marginTop: 4, overflow: 'hidden' }}>
+                                          <div style={{
+                                            width: `${autPct}%`,
+                                            height: '100%',
+                                            background: barGradient,
+                                            borderRadius: 3
+                                          }} />
+                                        </div>
+                                      </td>
+                                      <td style={{ padding: '9px 14px', textAlign: 'center' }}>
+                                        <span style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: 5,
+                                          padding: '3px 9px',
+                                          borderRadius: 6,
+                                          fontSize: '.7rem',
+                                          fontWeight: 800,
+                                          background: t.badgeBg,
+                                          color: t.badgeColor,
+                                          border: `1px solid ${t.badgeColor}40`
+                                        }}>
+                                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.badgeColor, boxShadow: `0 0 6px ${t.badgeColor}` }} />
+                                          {t.statusText}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+
+                      {/* Footer Oficial del Cuadro */}
+                      <div style={{ marginTop: 18, paddingTop: 12, borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.7rem', color: '#64748b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+                          <span>Airtek Energy • Coordinación de Grupos Electrógenos • Monitoreo de Red 24/7</span>
                         </div>
                         <div>
-                          <div style={{ fontSize: '.76rem', fontWeight: 800, color: '#21c0fa', letterSpacing: '.12em', textTransform: 'uppercase' }}>
-                            AIRTEK ENERGY • CONTROL DE COMBUSTIBLE
-                          </div>
-                          <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em', marginTop: 2 }}>
-                            ESTADO DE GASOIL & AUTONOMÍA EN NODOS
-                          </div>
+                          Generado el {new Date().toLocaleString('es-VE')} • Sistema Oficial
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 20, background: 'rgba(1, 102, 255, 0.15)', border: '1px solid rgba(1, 102, 255, 0.35)', fontSize: '.78rem', fontWeight: 700, color: '#60a5fa', marginBottom: 4 }}>
-                          Región: {regionFilter !== 'all' ? regionFilter.toUpperCase() : 'TODAS'} {zonaFilter !== 'all' ? `• ${zonaFilter}` : ''}
-                        </div>
-                        <div style={{ fontSize: '.74rem', color: '#94a3b8' }}>
-                          Fecha de Corte: {new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Resumen KPI */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
-                      <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Total Gasoil Neto</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#38bdf8', marginTop: 2 }}>{totalLtsRedNeto.toLocaleString()} Lts</div>
-                      </div>
-                      <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Horas Op. Acumuladas</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#f59e0b', marginTop: 2 }}>+{totalHorasOpRed.toFixed(1)} h</div>
-                      </div>
-                      <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Consumo Est. Acumulado</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', marginTop: 2 }}>~{totalConsumoEstRed.toLocaleString()} Lts</div>
-                      </div>
-                      <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Semáforo de Nodos</div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 4, fontSize: '.76rem', fontWeight: 800 }}>
-                          <span style={{ color: '#10b981' }}>{optimos} Ópt</span>
-                          <span style={{ color: '#64748b' }}>•</span>
-                          <span style={{ color: '#f59e0b' }}>{alertas} Alert</span>
-                          <span style={{ color: '#64748b' }}>•</span>
-                          <span style={{ color: '#ef4444' }}>{criticos} Crít</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Tabla Estilizada para Imagen */}
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.76rem', textAlign: 'left' }}>
-                      <thead>
-                        <tr style={{ background: '#0f172a', borderBottom: '2px solid #334155', color: '#94a3b8', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
-                          <th style={{ padding: '9px 12px' }}>Lugar / Nodo</th>
-                          <th style={{ padding: '9px 10px' }}>Planta & Tag</th>
-                          <th style={{ padding: '9px 10px' }}>Último Surtido</th>
-                          <th style={{ padding: '9px 10px' }}>Horómetro Actual</th>
-                          <th style={{ padding: '9px 10px', textAlign: 'center' }}>Horas Op. Acum.</th>
-                          <th style={{ padding: '9px 10px', textAlign: 'right' }}>Gasoil Neto</th>
-                          <th style={{ padding: '9px 10px' }}>Autonomía Neta</th>
-                          <th style={{ padding: '9px 12px', textAlign: 'center' }}>Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filtered.map((t, idx) => {
-                          return (
-                            <tr key={idx} style={{ borderBottom: '1px solid #1e293b', background: (idx % 2 === 0) ? 'rgba(15, 23, 42, 0.4)' : 'rgba(15, 23, 42, 0.7)' }}>
-                              <td style={{ padding: '8px 12px' }}>
-                                <div style={{ fontWeight: 800, color: '#ffffff', fontSize: '.82rem' }}>{t.lugar}</div>
-                                <div style={{ fontSize: '.68rem', color: '#64748b' }}>{t.zona}</div>
-                              </td>
-                              <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 700, color: '#e2e8f0', fontFamily: "'JetBrains Mono', monospace" }}>{t.tag}</div>
-                                <div style={{ fontSize: '.68rem', color: '#38bdf8' }}>Consumo: {t.consumo_lh} L/h</div>
-                              </td>
-                              <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{t.fechaSur}</div>
-                                <div style={{ fontSize: '.66rem', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>Horo: {t.hSurStr}</div>
-                              </td>
-                              <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace" }}>
-                                  {t.hActStr}
-                                </div>
-                              </td>
-                              <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                                <span style={{
-                                  display: 'inline-block',
-                                  padding: '2px 8px',
-                                  borderRadius: 6,
-                                  fontSize: '.72rem',
-                                  fontWeight: 800,
-                                  background: t.deltaH > 20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(33, 192, 250, 0.15)',
-                                  color: t.deltaH > 20 ? '#f59e0b' : '#38bdf8',
-                                  border: `1px solid ${t.deltaH > 20 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(33, 192, 250, 0.3)'}`
-                                }}>
-                                  +{t.deltaH.toFixed(1)} h
-                                </span>
-                                {t.combustibleConsumido > 0 && (
-                                  <div style={{ fontSize: '.64rem', color: '#94a3b8', marginTop: 2 }}>
-                                    ~{t.combustibleConsumido} L quemados
-                                  </div>
-                                )}
-                              </td>
-                              <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                                <div style={{ fontSize: '.95rem', fontWeight: 900, color: '#10b981' }}>{t.stockNeto.toLocaleString()} Lts</div>
-                                <div style={{ fontSize: '.64rem', color: '#64748b' }}>Sub: {t.subtanque_actual}L | Res: {t.sharedReserva}L</div>
-                              </td>
-                              <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 800, color: t.badgeColor, fontSize: '.88rem' }}>{t.diasAutNeto} Días</div>
-                                <div style={{ fontSize: '.68rem', color: '#94a3b8' }}>({t.autNetoH} hrs)</div>
-                              </td>
-                              <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                                <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: '.7rem', fontWeight: 800, background: t.badgeBg, color: t.badgeColor, border: `1px solid ${t.badgeColor}33` }}>
-                                  {t.statusText}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-
-                    {/* Footer del Cuadro */}
-                    <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.68rem', color: '#64748b' }}>
-                      <div>Airtek Energy • Coordinación de Grupos Electrógenos • Monitoreo de Red 24/7</div>
-                      <div>Generado el {new Date().toLocaleString('es-VE')}</div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            );
+          })()}</div>
       );
     }
 
