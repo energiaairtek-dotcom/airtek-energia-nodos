@@ -13317,6 +13317,114 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         } catch (e) {}
       }, [tanks]);
 
+      // Estado de horómetros manuales y horas acumuladas por planta (persistencia local)
+      const [customHorometers, setCustomHorometers] = useState(() => {
+        try {
+          const saved = localStorage.getItem('airtek_plant_horometers_v1');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+      });
+      const [showBatchHoroModal, setShowBatchHoroModal] = useState(false);
+
+      useEffect(() => {
+        try {
+          localStorage.setItem('airtek_plant_horometers_v1', JSON.stringify(customHorometers));
+        } catch (e) {}
+      }, [customHorometers]);
+
+      // Actualizar horómetro/horas acumuladas de una planta de forma bidireccional
+      const handleUpdatePlantHorometer = (plantKey, updates) => {
+        if (!plantKey) return;
+        const { horometro_actual, delta_h, hSur } = updates;
+        const parsedHSur = (hSur !== undefined && hSur !== null) ? parseFloat(hSur) : 0;
+
+        let finalHAct = (horometro_actual !== undefined && horometro_actual !== null && horometro_actual !== '') 
+          ? parseFloat(horometro_actual) : null;
+        let finalDelta = (delta_h !== undefined && delta_h !== null && delta_h !== '') 
+          ? parseFloat(delta_h) : null;
+
+        if (finalHAct !== null && !isNaN(finalHAct)) {
+          finalDelta = Math.max(0, parseFloat((finalHAct - parsedHSur).toFixed(1)));
+        } else if (finalDelta !== null && !isNaN(finalDelta)) {
+          finalHAct = parseFloat((parsedHSur + finalDelta).toFixed(1));
+        }
+
+        setCustomHorometers(prev => ({
+          ...prev,
+          [plantKey]: {
+            ...(prev[plantKey] || {}),
+            horometro_actual: finalHAct,
+            delta_h: finalDelta,
+            updatedAt: new Date().toISOString()
+          }
+        }));
+
+        // Sincronizar con maintenances y Firestore si hay valor numérico
+        if (finalHAct !== null && !isNaN(finalHAct) && finalHAct > 0) {
+          const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+          setMaintenances(prev => prev.map(m => {
+            if (m.tag === plantKey || normFn(m.planta) === normFn(plantKey)) {
+              const horasTrab = parseFloat((finalHAct - m.horometro_mtto).toFixed(1));
+              const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
+              let status = 'optimo';
+              if (horasRest <= 0 || horasRest <= 20) status = 'critico';
+              else if (horasRest <= 50) status = 'alerta';
+              return { ...m, horometro_actual: finalHAct, horas_trabajadas: horasTrab, horas_restantes: horasRest, status };
+            }
+            return m;
+          }));
+
+          if (db) {
+            db.collection('energy_nodes').get().then(nodesSnap => {
+              for (const nDoc of nodesSnap.docs) {
+                nDoc.ref.collection('energy_equipment')
+                  .where('type', '==', 'GEN')
+                  .where('tag', '==', plantKey)
+                  .get().then(eqSnap => {
+                    if (!eqSnap.empty) {
+                      eqSnap.docs[0].ref.update({ horometer: finalHAct }).catch(console.error);
+                    }
+                  }).catch(console.error);
+              }
+            }).catch(console.error);
+          }
+        }
+      };
+
+      // Guardar lote completo desde el modal de horómetros
+      const handleBatchUpdateHorometers = (updatedEntries) => {
+        setCustomHorometers(prev => {
+          const merged = { ...prev };
+          Object.keys(updatedEntries).forEach(k => {
+            merged[k] = {
+              ...(merged[k] || {}),
+              ...updatedEntries[k],
+              updatedAt: new Date().toISOString()
+            };
+          });
+          return merged;
+        });
+
+        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        setMaintenances(prev => prev.map(m => {
+          const entry = updatedEntries[m.tag] || Object.entries(updatedEntries).find(([k]) => normFn(k) === normFn(m.planta))?.[1];
+          if (entry && entry.horometro_actual != null) {
+            const hAct = parseFloat(entry.horometro_actual);
+            if (!isNaN(hAct) && hAct > 0) {
+              const horasTrab = parseFloat((hAct - m.horometro_mtto).toFixed(1));
+              const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
+              let status = 'optimo';
+              if (horasRest <= 0 || horasRest <= 20) status = 'critico';
+              else if (horasRest <= 50) status = 'alerta';
+              return { ...m, horometro_actual: hAct, horas_trabajadas: horasTrab, horas_restantes: horasRest, status };
+            }
+          }
+          return m;
+        }));
+
+        if (toast) toast('Horómetros y horas de operación actualizados correctamente.', 'success');
+      };
+
 
 
       const handleAddRefill = async (newRefill) => {
@@ -13558,6 +13666,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               refills={refills}
               tanks={tanks}
               maintenances={maintenances}
+              customHorometers={customHorometers}
+              onUpdatePlantHorometer={handleUpdatePlantHorometer}
+              onOpenBatchHoroModal={() => setShowBatchHoroModal(true)}
               onOpenNewModal={() => setShowNewRefillModal(true)}
               onDeleteRefill={handleDeleteRefill}
               toast={toast}
@@ -13569,6 +13680,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               tanks={tanks}
               refills={refills}
               maintenances={maintenances}
+              customHorometers={customHorometers}
+              onUpdatePlantHorometer={handleUpdatePlantHorometer}
+              onOpenBatchHoroModal={() => setShowBatchHoroModal(true)}
               toast={toast}
             />
           )}
@@ -13577,6 +13691,18 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             <MantenimientoPlantasView
               maintenances={maintenances}
               onOpenNewModal={() => setShowNewMttoModal(true)}
+              toast={toast}
+            />
+          )}
+
+          {showBatchHoroModal && (
+            <UpdateHorometersModal
+              tanks={tanks}
+              refills={refills}
+              maintenances={maintenances}
+              customHorometers={customHorometers}
+              onSave={handleBatchUpdateHorometers}
+              onClose={() => setShowBatchHoroModal(false)}
               toast={toast}
             />
           )}
@@ -13604,7 +13730,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ── VISTA 1: CONTROL DE SURTIDOS ─────────────────────────────────────────
-    function SurtidosView({ refills = [], tanks = [], maintenances = [], onOpenNewModal, onDeleteRefill, toast }) {
+    function SurtidosView({ refills = [], tanks = [], maintenances = [], customHorometers = {}, onUpdatePlantHorometer, onOpenBatchHoroModal, onOpenNewModal, onDeleteRefill, toast }) {
       const [regionFilter, setRegionFilter] = useState('all'); // all | zulia | falcon
       const [zonaFilter, setZonaFilter] = useState('all');
       const [semanaFilter, setSemanaFilter] = useState('all');
@@ -13684,25 +13810,47 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           const hSurStr = lastRefill?.horometro ? formatCleanHoro(lastRefill.horometro) : '—';
           const fechaSur = lastRefill?.fecha || '—';
 
-          // Horómetro actual (de mantenimientos o del propio tanque)
-          const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+          // Ver si hay un valor ingresado manualmente en customHorometers
+          const plantKey = t.tag || sn;
+          const customEntry = customHorometers[plantKey] || (t.tag ? customHorometers[t.tag] : null);
+
           let hAct = null;
-          if (mMtto && mMtto.horometro_actual != null) {
-            hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+          let deltaH = null;
+
+          if (customEntry) {
+            if (customEntry.horometro_actual != null && !isNaN(customEntry.horometro_actual)) {
+              hAct = parseFloat(customEntry.horometro_actual);
+            }
+            if (customEntry.delta_h != null && !isNaN(customEntry.delta_h)) {
+              deltaH = parseFloat(customEntry.delta_h);
+            }
           }
-          if (hAct === null && t.horometro_actual != null) {
-            hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+
+          if (hAct === null) {
+            const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+            if (mMtto && mMtto.horometro_actual != null) {
+              hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+            }
+            if (hAct === null && t.horometro_actual != null) {
+              hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+            }
+            if (hAct === null && hSur !== null) {
+              hAct = hSur;
+            }
           }
-          if (hAct === null && hSur !== null) {
-            hAct = hSur;
-          }
-          const hActStr = hAct !== null ? formatCleanHoro(hAct) : '—';
 
           // Horas de operación acumuladas desde el último surtido (Delta H)
-          let deltaH = 0;
-          if (hAct !== null && hSur !== null && hAct >= hSur) {
-            deltaH = parseFloat((hAct - hSur).toFixed(1));
+          if (deltaH === null) {
+            if (hAct !== null && hSur !== null && hAct >= hSur) {
+              deltaH = parseFloat((hAct - hSur).toFixed(1));
+            } else {
+              deltaH = 0;
+            }
+          } else if (hAct === null && hSur !== null) {
+            hAct = parseFloat((hSur + deltaH).toFixed(1));
           }
+
+          const hActStr = hAct !== null ? formatCleanHoro(hAct) : '—';
 
           const consumoLh = parseFloat(t.consumo_lh) || 10;
           // Combustible consumido estimado desde último surtido
@@ -13725,6 +13873,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           return {
             t,
             sn,
+            plantKey,
             lugar: t.lugar,
             tag: t.tag,
             zona: t.zona,
@@ -13880,12 +14029,13 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         });
       };
 
-      // Copiar cuadro como imagen usando html2canvas
+      // Copiar cuadro como imagen usando html2canvas (con pausa para renderizar vista limpia sin inputs)
       const copyExecutiveImage = () => {
         const cardEl = document.getElementById('airtek-executive-fuel-card-surtidos');
         if (!cardEl) return;
         setGeneratingImg(true);
-        window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
+        setTimeout(() => {
+          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
           canvas.toBlob(blob => {
             if (navigator.clipboard && navigator.clipboard.write) {
               navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
@@ -13912,13 +14062,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           setGeneratingImg(false);
           if (toast) toast('Error al generar imagen: ' + e.message, 'error');
         });
+        }, 120);
       };
 
       const downloadExecutiveImage = () => {
         const cardEl = document.getElementById('airtek-executive-fuel-card-surtidos');
         if (!cardEl) return;
         setGeneratingImg(true);
-        window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
+        setTimeout(() => {
+          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
           const link = document.createElement('a');
           link.download = `reporte_combustible_director_${Date.now()}.png`;
           link.href = canvas.toDataURL('image/png');
@@ -13929,6 +14081,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           setGeneratingImg(false);
           if (toast) toast('Error al descargar: ' + e.message, 'error');
         });
+        }, 120);
       };
 
       const exportExcel = () => {
@@ -13975,6 +14128,24 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="bs"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 18px',
+                  fontSize: '.84rem',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  borderColor: 'rgba(245, 158, 11, 0.4)',
+                  color: '#f59e0b',
+                  fontWeight: 700
+                }}
+                onClick={onOpenBatchHoroModal}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                ⚡ Actualizar Horómetros
+              </button>
               <button
                 className="bp"
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981' }}
@@ -14253,26 +14424,89 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                               <div style={{ fontSize: '.66rem', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>Horo: {item.hSurStr}</div>
                             </td>
                             <td style={{ padding: '8px 10px' }}>
-                              <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace" }}>
-                                {item.hActStr}
-                              </div>
+                              {generatingImg ? (
+                                <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace" }}>
+                                  {item.hActStr}
+                                </div>
+                              ) : (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    value={item.hAct !== null ? item.hAct : ''}
+                                    placeholder={item.hSur !== null ? item.hSur : '0'}
+                                    onChange={e => onUpdatePlantHorometer && onUpdatePlantHorometer(item.tag || item.sn, {
+                                      horometro_actual: e.target.value,
+                                      hSur: item.hSur
+                                    })}
+                                    style={{
+                                      width: '74px',
+                                      background: 'rgba(15, 23, 42, 0.7)',
+                                      border: '1px solid rgba(56, 189, 248, 0.35)',
+                                      borderRadius: '6px',
+                                      color: '#38bdf8',
+                                      fontSize: '.74rem',
+                                      fontWeight: 700,
+                                      fontFamily: "'JetBrains Mono', monospace",
+                                      padding: '2px 6px',
+                                      textAlign: 'right',
+                                      outline: 'none'
+                                    }}
+                                    title="Clic para editar horómetro actual (calcula Delta H automáticamente)"
+                                  />
+                                  <span style={{ fontSize: '.68rem', color: '#94a3b8' }}>h</span>
+                                </div>
+                              )}
                             </td>
                             <td style={{ padding: '8px 10px', textAlign: 'center' }}>
-                              <span style={{
-                                display: 'inline-block',
-                                padding: '2px 8px',
-                                borderRadius: 6,
-                                fontSize: '.72rem',
-                                fontWeight: 800,
-                                background: item.deltaH > 20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(33, 192, 250, 0.15)',
-                                color: item.deltaH > 20 ? '#f59e0b' : '#38bdf8',
-                                border: `1px solid ${item.deltaH > 20 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(33, 192, 250, 0.3)'}`
-                              }}>
-                                +{item.deltaH.toFixed(1)} h
-                              </span>
-                              {item.combustibleConsumido > 0 && (
-                                <div style={{ fontSize: '.64rem', color: '#94a3b8', marginTop: 2 }}>
-                                  ~{item.combustibleConsumido} L quemados
+                              {generatingImg ? (
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  fontSize: '.72rem',
+                                  fontWeight: 800,
+                                  background: item.deltaH > 20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(33, 192, 250, 0.15)',
+                                  color: item.deltaH > 20 ? '#f59e0b' : '#38bdf8',
+                                  border: `1px solid ${item.deltaH > 20 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(33, 192, 250, 0.3)'}`
+                                }}>
+                                  +{item.deltaH.toFixed(1)} h
+                                </span>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                                    <span style={{ fontSize: '.72rem', fontWeight: 800, color: item.deltaH > 20 ? '#f59e0b' : '#38bdf8' }}>+</span>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={item.deltaH !== undefined && item.deltaH !== null ? item.deltaH : ''}
+                                      placeholder="0.0"
+                                      onChange={e => onUpdatePlantHorometer && onUpdatePlantHorometer(item.tag || item.sn, {
+                                        delta_h: e.target.value,
+                                        hSur: item.hSur
+                                      })}
+                                      style={{
+                                        width: '56px',
+                                        background: item.deltaH > 20 ? 'rgba(245, 158, 11, 0.18)' : 'rgba(33, 192, 250, 0.15)',
+                                        border: `1px solid ${item.deltaH > 20 ? 'rgba(245, 158, 11, 0.45)' : 'rgba(33, 192, 250, 0.35)'}`,
+                                        borderRadius: '6px',
+                                        color: item.deltaH > 20 ? '#f59e0b' : '#38bdf8',
+                                        fontSize: '.72rem',
+                                        fontWeight: 800,
+                                        fontFamily: "'JetBrains Mono', monospace",
+                                        padding: '2px 4px',
+                                        textAlign: 'center',
+                                        outline: 'none'
+                                      }}
+                                      title="Clic para editar horas trabajadas post-surtido (calcula horómetro actual)"
+                                    />
+                                    <span style={{ fontSize: '.68rem', fontWeight: 700, color: item.deltaH > 20 ? '#f59e0b' : '#38bdf8' }}>h</span>
+                                  </div>
+                                  {item.combustibleConsumido > 0 && (
+                                    <div style={{ fontSize: '.64rem', color: '#94a3b8', marginTop: 2 }}>
+                                      ~{item.combustibleConsumido} L quemados
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </td>
@@ -14528,7 +14762,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ── VISTA 2: ESTADO DE TANQUES & AUTONOMÍA ────────────────────────────────
-    function TanquesAutonomiaView({ tanks = [], refills = [], maintenances = [], toast }) {
+    function TanquesAutonomiaView({ tanks = [], refills = [], maintenances = [], customHorometers = {}, onUpdatePlantHorometer, onOpenBatchHoroModal, toast }) {
       const [regionFilter, setRegionFilter] = useState('all');
       const [zonaFilter, setZonaFilter] = useState('all');
       const [statusFilter, setStatusFilter] = useState('all');
@@ -14560,24 +14794,47 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         const hSurStr = lastRefill?.horometro ? formatCleanHoro(lastRefill.horometro) : '—';
         const fechaSur = lastRefill?.fecha || '—';
 
-        const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+        // Ver si hay un valor ingresado manualmente en customHorometers
+        const plantKey = t.tag || sn;
+        const customEntry = customHorometers[plantKey] || (t.tag ? customHorometers[t.tag] : null);
+
         let hAct = null;
-        if (mMtto && mMtto.horometro_actual != null) {
-          hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+        let deltaH = null;
+
+        if (customEntry) {
+          if (customEntry.horometro_actual != null && !isNaN(customEntry.horometro_actual)) {
+            hAct = parseFloat(customEntry.horometro_actual);
+          }
+          if (customEntry.delta_h != null && !isNaN(customEntry.delta_h)) {
+            deltaH = parseFloat(customEntry.delta_h);
+          }
         }
-        if (hAct === null && t.horometro_actual != null) {
-          hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+
+        if (hAct === null) {
+          const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+          if (mMtto && mMtto.horometro_actual != null) {
+            hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+          }
+          if (hAct === null && t.horometro_actual != null) {
+            hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+          }
+          if (hAct === null && hSur !== null) {
+            hAct = hSur;
+          }
         }
-        if (hAct === null && hSur !== null) {
-          hAct = hSur;
-        }
-        const hActStr = hAct !== null ? formatCleanHoro(hAct) : '—';
 
         // Horas de operación acumuladas desde el último surtido
-        let deltaH = 0;
-        if (hAct !== null && hSur !== null && hAct >= hSur) {
-          deltaH = parseFloat((hAct - hSur).toFixed(1));
+        if (deltaH === null) {
+          if (hAct !== null && hSur !== null && hAct >= hSur) {
+            deltaH = parseFloat((hAct - hSur).toFixed(1));
+          } else {
+            deltaH = 0;
+          }
+        } else if (hAct === null && hSur !== null) {
+          hAct = parseFloat((hSur + deltaH).toFixed(1));
         }
+
+        const hActStr = hAct !== null ? formatCleanHoro(hAct) : '—';
 
         const consumoLh = parseFloat(t.consumo_lh) || 10;
         const combustibleConsumido = Math.round(deltaH * consumoLh);
@@ -14599,6 +14856,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         return {
           ...t,
           sn,
+          plantKey,
           isMultiPlant,
           sharedReserva,
           sharedCapReserva,
@@ -14720,21 +14978,27 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           'ZONA': t.zona,
           'LUGAR / DATACENTER': t.lugar,
           'EQUIPO': t.equipo,
+          'TAG PLANTA': t.tag,
           'POTENCIA (kVA)': t.kva,
+          'ÚLTIMO SURTIDO FECHA': t.fechaSur,
+          'HORÓMETRO ÚLTIMO SURTIDO': t.hSurStr,
+          'HORÓMETRO ACTUAL': t.hActStr,
+          'HORAS OP. ACUMULADAS': t.deltaH,
+          'CONSUMO ESTIMADO (Lts)': t.combustibleConsumido,
           'SUB-TANQUE (Lts)': t.subtanque_actual,
           'CAPACIDAD SUB-TANQUE (Lts)': t.tanque_lts,
           'RESERVA ACTUAL (Lts)': t.reserva_lts,
           'CAPACIDAD RESERVA (Lts)': t.cap_reserva,
           'TOTAL EN NODO (Lts)': (t.subtanque_actual || 0) + (t.reserva_lts || 0),
           'CONSUMO (L/h)': t.consumo_lh,
-          'AUTONOMÍA TANQUE (h)': t.aut_tanque_h,
-          'AUTONOMÍA TOTAL (h)': t.aut_total_h,
-          'DÍAS DE AUTONOMÍA': t.dias_aut,
-          'CANTIDAD FALTANTE (Lts)': t.cant_faltante
+          'GASOIL NETO REAL (Lts)': t.stockNeto,
+          'AUTONOMÍA NETA (h)': t.autNetoH,
+          'AUTONOMÍA NETA (Días)': t.diasAutNeto,
+          'ESTADO': t.statusText
         }));
         const wb = window.XLSX.utils.book_new();
         const ws = window.XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 24 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 20 }];
+        ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 24 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
         window.XLSX.utils.book_append_sheet(wb, ws, 'Autonomía de Combustible');
         window.XLSX.writeFile(wb, 'reporte_autonomia_combustible_' + Date.now() + '.xlsx');
       };
@@ -14752,6 +15016,24 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="bs"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 18px',
+                  fontSize: '.84rem',
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  borderColor: 'rgba(245, 158, 11, 0.4)',
+                  color: '#f59e0b',
+                  fontWeight: 700
+                }}
+                onClick={onOpenBatchHoroModal}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                ⚡ Actualizar Horómetros
+              </button>
               <button
                 className="bp"
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem', background: 'linear-gradient(135deg, #0166ff 0%, #21c0fa 100%)', boxShadow: '0 4px 14px rgba(1, 102, 255, 0.35)' }}
@@ -14913,22 +15195,59 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </td>
                         <td style={{ padding: '12px 14px' }}>
                           <div style={{ fontSize: '.76rem', color: 'var(--tx1)', fontWeight: 600 }}>{t.fechaSur} (Horo: {t.hSurStr})</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                            <span style={{
-                              display: 'inline-block',
-                              padding: '1px 6px',
-                              borderRadius: 4,
-                              fontSize: '.7rem',
-                              fontWeight: 700,
-                              background: t.deltaH > 20 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(33, 192, 250, 0.12)',
-                              color: t.deltaH > 20 ? '#f59e0b' : '#38bdf8'
-                            }}>
-                              +{t.deltaH.toFixed(1)}h op
-                            </span>
-                            {t.combustibleConsumido > 0 && (
-                              <span style={{ fontSize: '.68rem', color: 'var(--tx3)' }}>~{t.combustibleConsumido}L quemados</span>
-                            )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }} title="Horómetro Actual (calcula Delta H automáticamente)">
+                              <span style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>H.Act:</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={t.hAct !== null ? t.hAct : ''}
+                                placeholder={t.hSur !== null ? t.hSur : '0'}
+                                onChange={(e) => onUpdatePlantHorometer && onUpdatePlantHorometer(t.tag || t.sn, { horometro_actual: e.target.value, hSur: t.hSur })}
+                                style={{
+                                  width: '68px',
+                                  background: 'var(--bg-surface)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: '5px',
+                                  color: 'var(--blue)',
+                                  fontSize: '.74rem',
+                                  fontWeight: 700,
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                  padding: '2px 4px',
+                                  textAlign: 'right'
+                                }}
+                              />
+                              <span style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>h</span>
+                            </div>
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }} title="Horas acumuladas trabajadas post-surtido (Delta H)">
+                              <span style={{ fontSize: '.74rem', fontWeight: 800, color: t.deltaH > 20 ? '#f59e0b' : 'var(--blue)' }}>+</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={t.deltaH !== undefined && t.deltaH !== null ? t.deltaH : ''}
+                                placeholder="0.0"
+                                onChange={(e) => onUpdatePlantHorometer && onUpdatePlantHorometer(t.tag || t.sn, { delta_h: e.target.value, hSur: t.hSur })}
+                                style={{
+                                  width: '54px',
+                                  background: t.deltaH > 20 ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-surface)',
+                                  border: `1px solid ${t.deltaH > 20 ? 'rgba(245, 158, 11, 0.45)' : 'var(--border)'}`,
+                                  borderRadius: '5px',
+                                  color: t.deltaH > 20 ? '#f59e0b' : 'var(--tx1)',
+                                  fontSize: '.74rem',
+                                  fontWeight: 800,
+                                  fontFamily: "'JetBrains Mono', monospace",
+                                  padding: '2px 4px',
+                                  textAlign: 'center'
+                                }}
+                              />
+                              <span style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>h op</span>
+                            </div>
                           </div>
+                          {t.combustibleConsumido > 0 && (
+                            <div style={{ fontSize: '.68rem', color: 'var(--tx3)', marginTop: 2 }}>
+                              ~{t.combustibleConsumido}L quemados ({t.consumoLh} L/h)
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '12px 14px' }}>
                           <div className="fm" style={{ fontWeight: 700, color: 'var(--tx1)' }}>{t.subtanque_actual} / {t.tanque_lts} Lts</div>
@@ -15765,7 +16084,389 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
 
-        function MaterialesWrapper() {
+    
+    // ── MODAL: ACTUALIZACIÓN RÁPIDA DE HORÓMETROS (BIDIRECCIONAL) ─────────────
+    function UpdateHorometersModal({ tanks = [], refills = [], maintenances = [], customHorometers = {}, onSave, onClose, toast }) {
+      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+
+      // Inicializar el estado de edición local para todas las plantas
+      const [entries, setEntries] = useState(() => {
+        const map = {};
+        tanks.forEach(t => {
+          const sn = normFn(t.lugar);
+          const plantKey = t.tag || sn;
+          const plantRefills = refills.filter(r => (r.tag && t.tag && r.tag === t.tag) || normFn(r.lugar) === sn);
+          const lastRefill = plantRefills.length > 0 ? plantRefills[0] : null;
+
+          const hSur = lastRefill?.horometro ? parseHorometerToHours(lastRefill.horometro) : null;
+          const hSurStr = lastRefill?.horometro ? formatCleanHoro(lastRefill.horometro) : '—';
+          const fechaSur = lastRefill?.fecha || '—';
+
+          const custom = customHorometers[plantKey] || (t.tag ? customHorometers[t.tag] : null);
+          let hAct = null;
+          let deltaH = null;
+
+          if (custom) {
+            if (custom.horometro_actual != null && !isNaN(custom.horometro_actual)) {
+              hAct = parseFloat(custom.horometro_actual);
+            }
+            if (custom.delta_h != null && !isNaN(custom.delta_h)) {
+              deltaH = parseFloat(custom.delta_h);
+            }
+          }
+
+          if (hAct === null) {
+            const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+            if (mMtto && mMtto.horometro_actual != null) {
+              hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+            }
+            if (hAct === null && t.horometro_actual != null) {
+              hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+            }
+            if (hAct === null && hSur !== null) {
+              hAct = hSur;
+            }
+          }
+
+          if (deltaH === null) {
+            if (hAct !== null && hSur !== null && hAct >= hSur) {
+              deltaH = parseFloat((hAct - hSur).toFixed(1));
+            } else {
+              deltaH = 0;
+            }
+          } else if (hAct === null && hSur !== null) {
+            hAct = parseFloat((hSur + deltaH).toFixed(1));
+          }
+
+          map[plantKey] = {
+            plantKey,
+            tag: t.tag,
+            lugar: t.lugar,
+            zona: t.zona,
+            region: t.region || 'Zulia',
+            equipo: t.equipo || t.tag,
+            consumoLh: parseFloat(t.consumo_lh) || 10,
+            subActual: parseFloat(t.subtanque_actual) || 0,
+            reservaLts: parseFloat(t.reserva_lts) || 0,
+            hSur,
+            hSurStr,
+            fechaSur,
+            horometro_actual: hAct !== null ? hAct : (hSur !== null ? hSur : ''),
+            delta_h: deltaH !== null ? deltaH : 0
+          };
+        });
+        return map;
+      });
+
+      const [search, setSearch] = useState('');
+      const [regionFilter, setRegionFilter] = useState('all');
+      const [zonaFilter, setZonaFilter] = useState('all');
+
+      // Modificación bidireccional desde Horómetro Actual -> calcula Delta H
+      const handleHoroActualChange = (key, val) => {
+        setEntries(prev => {
+          const cur = prev[key];
+          if (!cur) return prev;
+          const hSur = cur.hSur !== null ? cur.hSur : 0;
+          let newDelta = cur.delta_h;
+          if (val === '') {
+            newDelta = 0;
+          } else {
+            const parsed = parseFloat(val);
+            if (!isNaN(parsed)) {
+              newDelta = Math.max(0, parseFloat((parsed - hSur).toFixed(1)));
+            }
+          }
+          return {
+            ...prev,
+            [key]: {
+              ...cur,
+              horometro_actual: val,
+              delta_h: newDelta
+            }
+          };
+        });
+      };
+
+      // Modificación bidireccional desde Horas Op. (Delta H) -> calcula Horómetro Actual
+      const handleDeltaHChange = (key, val) => {
+        setEntries(prev => {
+          const cur = prev[key];
+          if (!cur) return prev;
+          const hSur = cur.hSur !== null ? cur.hSur : 0;
+          let newHoro = cur.horometro_actual;
+          if (val === '') {
+            newHoro = hSur;
+          } else {
+            const parsed = parseFloat(val);
+            if (!isNaN(parsed)) {
+              newHoro = parseFloat((hSur + parsed).toFixed(1));
+            }
+          }
+          return {
+            ...prev,
+            [key]: {
+              ...cur,
+              delta_h: val,
+              horometro_actual: newHoro
+            }
+          };
+        });
+      };
+
+      // Restablecer planta individual a 0 delta
+      const handleResetPlant = (key) => {
+        setEntries(prev => {
+          const cur = prev[key];
+          if (!cur) return prev;
+          return {
+            ...prev,
+            [key]: {
+              ...cur,
+              delta_h: 0,
+              horometro_actual: cur.hSur !== null ? cur.hSur : 0
+            }
+          };
+        });
+      };
+
+      // Guardar todos los cambios
+      const handleSave = () => {
+        const payload = {};
+        Object.keys(entries).forEach(k => {
+          const e = entries[k];
+          const hAct = e.horometro_actual !== '' ? parseFloat(e.horometro_actual) : null;
+          const dH = e.delta_h !== '' ? parseFloat(e.delta_h) : 0;
+          payload[k] = {
+            horometro_actual: !isNaN(hAct) ? hAct : null,
+            delta_h: !isNaN(dH) ? dH : 0,
+            hSur: e.hSur
+          };
+        });
+        onSave(payload);
+        onClose();
+      };
+
+      const plantList = Object.values(entries);
+      const uniqueZonas = Array.from(new Set(plantList.map(p => p.zona))).filter(Boolean).sort();
+
+      const filteredList = plantList.filter(p => {
+        if (regionFilter !== 'all' && (p.region || '').toLowerCase() !== regionFilter.toLowerCase()) return false;
+        if (zonaFilter !== 'all' && p.zona !== zonaFilter) return false;
+        if (search) {
+          const q = search.toLowerCase();
+          if (!p.lugar.toLowerCase().includes(q) && !(p.tag || '').toLowerCase().includes(q) && !(p.zona || '').toLowerCase().includes(q)) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      const totalModificadas = plantList.filter(p => (parseFloat(p.delta_h) || 0) > 0).length;
+
+      return (
+        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div className="card fin" style={{ width: '96%', maxWidth: 1100, maxHeight: '92vh', display: 'flex', flexDirection: 'column', padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.7)' }}>
+            
+            {/* Header del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <h3 className="fd" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--tx1)', margin: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ display: 'inline-flex', width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+                    ⚡
+                  </span>
+                  Actualización Rápida de Horómetros & Horas de Operación
+                </h3>
+                <p style={{ fontSize: '.82rem', color: 'var(--tx3)', margin: '6px 0 0', maxWidth: 780 }}>
+                  Ingresa manualmente el <strong>Horómetro Actual</strong> o las <strong>Horas Trabajadas (Delta H)</strong> de cada planta. El cálculo es bidireccional y recalcula el combustible consumido y la autonomía en tiempo real.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button className="bp" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981' }} onClick={handleSave}>
+                  💾 Guardar Horómetros
+                </button>
+                <button className="bs" onClick={onClose} style={{ padding: '8px 14px' }}>
+                  ✕ Cerrar
+                </button>
+              </div>
+            </div>
+
+            {/* Filtros Rápidos */}
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <input
+                  type="text"
+                  className="fi"
+                  placeholder="🔍 Buscar nodo, tag de planta o zona..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  style={{ padding: '7px 12px', fontSize: '.82rem' }}
+                />
+              </div>
+              <div>
+                <select className="fi" value={regionFilter} onChange={e => setRegionFilter(e.target.value)} style={{ padding: '7px 12px', fontSize: '.82rem' }}>
+                  <option value="all">Todas las Regiones</option>
+                  <option value="zulia">Zulia</option>
+                  <option value="falcon">Falcón</option>
+                </select>
+              </div>
+              <div>
+                <select className="fi" value={zonaFilter} onChange={e => setZonaFilter(e.target.value)} style={{ padding: '7px 12px', fontSize: '.82rem' }}>
+                  <option value="all">Todas las Zonas ({uniqueZonas.length})</option>
+                  {uniqueZonas.map(z => <option key={z} value={z}>{z}</option>)}
+                </select>
+              </div>
+              <div style={{ fontSize: '.76rem', color: 'var(--tx3)', display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
+                <span>Mostrando: <strong style={{ color: 'var(--tx1)' }}>{filteredList.length}</strong> plantas</span>
+                <span>•</span>
+                <span style={{ color: '#f59e0b' }}>Con Horas Op: <strong>{totalModificadas}</strong></span>
+              </div>
+            </div>
+
+            {/* Tabla Editable */}
+            <div style={{ flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--bg-surface)' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.82rem' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-elevated)' }}>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--tx3)', textTransform: 'uppercase', fontSize: '.68rem', letterSpacing: '.05em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
+                    <th style={{ padding: '10px 14px' }}>Lugar / Nodo</th>
+                    <th style={{ padding: '10px 12px' }}>Planta & Tag</th>
+                    <th style={{ padding: '10px 12px' }}>Último Surtido</th>
+                    <th style={{ padding: '10px 12px', width: 140 }}>Horómetro Actual</th>
+                    <th style={{ padding: '10px 12px', width: 130, textAlign: 'center' }}>Horas Op. (Δh)</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Consumo Est.</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Gasoil Neto</th>
+                    <th style={{ padding: '10px 12px' }}>Autonomía</th>
+                    <th style={{ padding: '10px 10px', textAlign: 'center' }}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredList.map((p, idx) => {
+                    const deltaHNum = parseFloat(p.delta_h) || 0;
+                    const consumoEst = Math.round(deltaHNum * p.consumoLh);
+                    const stockTotal = p.subActual + p.reservaLts;
+                    const stockNeto = Math.max(0, Math.round(stockTotal - consumoEst));
+                    const autNetoH = p.consumoLh > 0 ? parseFloat((stockNeto / p.consumoLh).toFixed(1)) : 0;
+                    const diasAutNeto = parseFloat((autNetoH / 24.0).toFixed(1));
+                    const isCrit = diasAutNeto < 1.5;
+                    const isAlert = diasAutNeto >= 1.5 && diasAutNeto < 3.0;
+                    const badgeColor = isCrit ? '#ef4444' : (isAlert ? '#f59e0b' : '#10b981');
+                    const badgeBg = isCrit ? 'rgba(239,68,68,0.12)' : (isAlert ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)');
+
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)', background: (idx % 2 === 0) ? 'var(--bg-card)' : 'transparent' }}>
+                        <td style={{ padding: '8px 14px' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--tx1)', fontSize: '.84rem' }}>{p.lugar}</div>
+                          <div style={{ fontSize: '.68rem', color: 'var(--tx3)' }}>{p.zona}</div>
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--blue)', fontFamily: "'JetBrains Mono', monospace", fontSize: '.78rem' }}>{p.tag}</div>
+                          <div style={{ fontSize: '.66rem', color: 'var(--tx3)' }}>{p.consumoLh} L/h</div>
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <div style={{ fontWeight: 600, color: 'var(--tx1)', fontSize: '.76rem' }}>{p.fechaSur}</div>
+                          <div style={{ fontSize: '.68rem', color: 'var(--tx3)', fontFamily: "'JetBrains Mono', monospace" }}>Horo: {p.hSurStr}</div>
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="fi fm"
+                              value={p.horometro_actual}
+                              onChange={e => handleHoroActualChange(p.plantKey, e.target.value)}
+                              placeholder={p.hSur !== null ? p.hSur : '0'}
+                              style={{
+                                width: 88,
+                                padding: '4px 6px',
+                                fontSize: '.8rem',
+                                fontWeight: 700,
+                                color: 'var(--blue)',
+                                textAlign: 'right'
+                              }}
+                              title="Ingresa el horómetro actual (calcula Delta H automáticamente)"
+                            />
+                            <span style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>h</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <span style={{ fontSize: '.76rem', fontWeight: 800, color: deltaHNum > 20 ? '#f59e0b' : 'var(--blue)' }}>+</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="fi fm"
+                              value={p.delta_h}
+                              onChange={e => handleDeltaHChange(p.plantKey, e.target.value)}
+                              placeholder="0.0"
+                              style={{
+                                width: 66,
+                                padding: '4px 6px',
+                                fontSize: '.8rem',
+                                fontWeight: 800,
+                                textAlign: 'center',
+                                color: deltaHNum > 20 ? '#f59e0b' : 'var(--blue)',
+                                background: deltaHNum > 20 ? 'rgba(245, 158, 11, 0.15)' : undefined,
+                                borderColor: deltaHNum > 20 ? 'rgba(245, 158, 11, 0.45)' : undefined
+                              }}
+                              title="Ingresa horas acumuladas post-surtido (calcula horómetro actual)"
+                            />
+                            <span style={{ fontSize: '.7rem', fontWeight: 700, color: deltaHNum > 20 ? '#f59e0b' : 'var(--blue)' }}>h</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          <div className="fm" style={{ fontWeight: 700, color: consumoEst > 0 ? '#ef4444' : 'var(--tx3)', fontSize: '.8rem' }}>
+                            {consumoEst > 0 ? `~${consumoEst} L` : '0 L'}
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          <div className="fm" style={{ fontWeight: 800, color: 'var(--tx1)', fontSize: '.84rem' }}>
+                            {stockNeto.toLocaleString()} L
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px 12px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 6, fontSize: '.72rem', fontWeight: 800, background: badgeBg, color: badgeColor }}>
+                            {diasAutNeto} Días ({autNetoH}h)
+                          </span>
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                          <button
+                            type="button"
+                            className="bs"
+                            onClick={() => handleResetPlant(p.plantKey)}
+                            style={{ padding: '3px 8px', fontSize: '.68rem', opacity: deltaHNum > 0 ? 1 : 0.4 }}
+                            title="Restablecer horas acumuladas a 0"
+                          >
+                            🔄 Reset
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, flexWrap: 'wrap', gap: 10 }}>
+              <div style={{ fontSize: '.76rem', color: 'var(--tx3)' }}>
+                💡 <em>Al ingresar el horómetro actual o las horas acumuladas, ambos se calculan automáticamente y se actualizan en reportes, WhatsApp y descargas de Excel.</em>
+              </div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="bs" onClick={onClose} style={{ padding: '8px 16px', fontSize: '.84rem' }}>
+                  Cancelar
+                </button>
+                <button className="bp" onClick={handleSave} style={{ padding: '8px 22px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981', fontWeight: 800 }}>
+                  💾 Guardar Horómetros
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    function MaterialesWrapper() {
       const [tab, setTab] = useState('proyecto');
       return (
         <div className="fin">
