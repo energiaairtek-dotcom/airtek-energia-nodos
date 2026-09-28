@@ -2311,43 +2311,62 @@ function PendingPage({ onLogout }) {
       return lines.join('\n');
     }
 
-    // Helper para formatear horómetros limpios (evitar decimales flotantes largos)
+    // Helper para formatear horómetros limpios (ej. 674:12 o 674h)
     function formatCleanHoro(val) {
       if (val === null || val === undefined || val === '') return '—';
       const s = String(val).trim();
-      if (s.endsWith('h') || s.endsWith('m') || s.includes(':')) return s;
-      const num = parseFloat(s);
+      if (s === '—' || s === '-' || s === '' || s.toLowerCase() === 'none') return '—';
+      if (s.includes(':')) {
+        const parts = s.split(':');
+        return `${parts[0]}:${String(parts[1] || '00').padStart(2, '0').slice(0, 2)}`;
+      }
+      const hmMatch = s.match(/^(\d+)\s*h(?:(?:oras?)?\s*(\d{1,2})\s*m(?:in)?)?$/i);
+      if (hmMatch) {
+        const h = hmMatch[1];
+        const m = hmMatch[2] ? String(hmMatch[2]).padStart(2, '0') : '00';
+        return `${h}:${m}`;
+      }
+      const num = parseFloat(s.replace(',', '.'));
       if (isNaN(num)) return s;
-      if (Number.isInteger(num)) return `${num}h`;
       const h = Math.floor(num);
       const m = Math.round((num - h) * 60);
-      if (m === 60) return `${h + 1}h`;
+      if (m === 60) return `${h + 1}:00`;
       return `${h}:${String(m).padStart(2, '0')}`;
+    }
+
+    // Helper para parsear cualquier formato de horómetro a número flotante de horas
+    function parseHorometerToHours(val) {
+      if (val === null || val === undefined || val === '') return null;
+      const s = String(val).trim();
+      if (s === '—' || s === '-' || s === '' || s.toLowerCase() === 'none') return null;
+      const colonMatch = s.match(/^(\d+):(\d{1,2})(?::\d{1,2})?$/);
+      if (colonMatch) {
+        return parseInt(colonMatch[1]) + (parseInt(colonMatch[2]) / 60);
+      }
+      const hmMatch = s.match(/^(\d+)\s*h(?:(?:oras?)?\s*(\d{1,2})\s*m(?:in)?)?$/i);
+      if (hmMatch) {
+        return parseInt(hmMatch[1]) + (parseInt(hmMatch[2] || 0) / 60);
+      }
+      const num = parseFloat(s.replace(',', '.'));
+      return isNaN(num) ? null : num;
     }
 
     // Generador de Formato de Texto de Surtido para WhatsApp / Reportes
     function generateFuelReportText({ nodeName, date, record, equipment = [], tanks = [] }) {
       const d = date instanceof Date ? date : (date?.toDate ? date.toDate() : new Date(date || Date.now()));
-      const diaNum = String(d.getDate()).padStart(2, '0');
-      const mes = String(d.getMonth() + 1).padStart(2, '0');
-      const anio = d.getFullYear();
-      const fechaStr = `${diaNum}/${mes}/${anio}`;
-
-      // Formatear encabezado según el tipo de sede sin duplicar prefijos
-      let cleanNode = (nodeName || 'Nodo').trim();
-      let headerLabel = '';
-      if (cleanNode.toLowerCase().startsWith('datacenter') || cleanNode.toLowerCase().startsWith('data center')) {
-        const nameOnly = cleanNode.replace(/^datacenter\s*/i, '').replace(/^data\s*center\s*/i, '').trim();
-        headerLabel = 'DataCenter: ' + (nameOnly || cleanNode);
-      } else if (cleanNode.toLowerCase().startsWith('sede') || cleanNode.toLowerCase().startsWith('oficina')) {
-        const nameOnly = cleanNode.replace(/^sede\s*administrativa\s*/i, '').replace(/^sede\s*/i, '').replace(/^oficina\s*/i, '').trim();
-        headerLabel = 'Sede: ' + (nameOnly || cleanNode);
-      } else if (cleanNode.toLowerCase().startsWith('nodo')) {
-        const nameOnly = cleanNode.replace(/^nodo\s*/i, '').trim();
-        headerLabel = 'Nodo: ' + (nameOnly || cleanNode);
+      let fechaStr;
+      if (typeof date === 'string' && date.includes('/')) {
+        fechaStr = date;
       } else {
-        headerLabel = 'Nodo: ' + cleanNode;
+        const diaNum = String(d.getDate()).padStart(2, '0');
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const anio = d.getFullYear();
+        fechaStr = `${diaNum}/${mes}/${anio}`;
       }
+
+      // Nombre de la sede limpio (ej. "Nodo Comedor" -> "Comedor", "Comedor" -> "Comedor")
+      let cleanNode = (nodeName || record?.lugar || 'Nodo').trim();
+      cleanNode = cleanNode.replace(/^nodo\s+/i, '').trim();
 
       // Buscar tanques de este nodo
       const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
@@ -2365,48 +2384,34 @@ function PendingPage({ onLogout }) {
       const gens = (equipment || []).filter(e => e.type === 'GEN').sort((a,b) => (a.tag || '').localeCompare(b.tag || ''));
 
       // Determinar litros a planta y a reserva
-      const isDual = record.fuelDestination === 'Surtido Planta y Reserva' || (record.litros_planta > 0 && record.litros_reserva > 0);
-      const isPlanta = isDual || record.fuelDestination === 'Surtido Planta' || record.destino === 'Surtido Planta' || record.destino === 'Sub-tanque';
-      const isReserva = isDual || record.fuelDestination === 'Surtido Reserva' || record.destino === 'Surtido Reserva' || record.destino === 'Reserva';
+      const isDual = record?.fuelDestination === 'Surtido Planta y Reserva' || record?.destino === 'Surtido Planta y Reserva' || ((record?.litros_planta > 0 || record?.fuelLitersPlanta > 0) && (record?.litros_reserva > 0 || record?.fuelLitersReserva > 0));
+      const isPlanta = isDual || record?.fuelDestination === 'Surtido Planta' || record?.destino === 'Surtido Planta' || record?.destino === 'Sub-tanque';
+      const isReserva = isDual || record?.fuelDestination === 'Surtido Reserva' || record?.destino === 'Surtido Reserva' || record?.destino === 'Reserva';
 
-      const ltsPlantaTotal = isDual ? (parseFloat(record.fuelLitersPlanta || record.litros_planta) || 0) : (isPlanta ? (parseFloat(record.fuelLiters || record.litros) || 0) : 0);
-      const ltsReserva = isDual ? (parseFloat(record.fuelLitersReserva || record.litros_reserva) || 0) : (isReserva ? (parseFloat(record.fuelLiters || record.litros) || 0) : 0);
+      const ltsPlantaTotal = isDual ? (parseFloat(record?.fuelLitersPlanta || record?.litros_planta) || 0) : (isPlanta ? (parseFloat(record?.fuelLiters || record?.litros) || 0) : 0);
+      const ltsReserva = isDual ? (parseFloat(record?.fuelLitersReserva || record?.litros_reserva) || 0) : (isReserva ? (parseFloat(record?.fuelLiters || record?.litros) || 0) : 0);
 
-      const selTag = record.generatorTag || record.tag || (gens[0]?.tag || '');
+      // Horas del generador
+      const gHoro = formatCleanHoro(record?.fuelHorometer || record?.horometro || gens[0]?.horometer || '');
 
       let lines = [];
-      lines.push(headerLabel);
-      lines.push('');
-      lines.push(`  Fecha: ${fechaStr}`);
-      lines.push('');
+      lines.push(`${cleanNode} ${fechaStr}`);
 
-      if (gens.length >= 2) {
-        gens.slice(0, 2).forEach((g, idx) => {
-          const gNum = idx + 1;
-          const isTargetGen = g.tag === selTag;
-          const gLts = isTargetGen ? ltsPlantaTotal : 0;
-          const gHoro = isTargetGen 
-            ? formatCleanHoro(record.fuelHorometer || record.horometro || g.horometer)
-            : formatCleanHoro(g.horometer);
-          
-          const fmtLts = gLts > 0 ? `${gLts} LTS` : '00 LTS';
-          lines.push(`          Surtido Generador ${gNum}: ${fmtLts}`);
-          lines.push(`          Horas: ${gHoro}`);
-        });
+      if (isDual) {
+        lines.push(`Surtido a la planta: ${ltsPlantaTotal} litros`);
+        lines.push(`Surtido a la reserva: ${ltsReserva} litros`);
+      } else if (isReserva) {
+        lines.push(`Surtido a la reserva: ${ltsReserva} litros`);
       } else {
-        const gHoro = formatCleanHoro(record.fuelHorometer || record.horometro || gens[0]?.horometer);
-        const fmtLts = ltsPlantaTotal > 0 ? `${ltsPlantaTotal} LTS` : '00 LTS';
-        lines.push(`          Surtido Generador: ${fmtLts}`);
-        lines.push(`          Horas: ${gHoro}`);
+        lines.push(`Surtido a la planta: ${ltsPlantaTotal} litros`);
       }
 
-      const fmtReservaSurtida = ltsReserva > 0 ? `${ltsReserva} LTS` : '00 LTS';
-      lines.push(`          Surtido a la Reserva: ${fmtReservaSurtida}`);
-      lines.push(`          Reserva: ${currentReserva} LTS`);
+      lines.push(`Reserva: ${currentReserva} litros`);
+      lines.push(`Horas: ${gHoro}`);
 
-      if (record.observations && record.observations.trim()) {
-        lines.push('');
-        lines.push(`  Observaciones: ${record.observations.trim()}`);
+      const obsText = (record?.observations || record?.obs || '').trim();
+      if (obsText) {
+        lines.push(`Obs: ${obsText}`);
       }
 
       return lines.join('\n');
@@ -13552,6 +13557,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             <SurtidosView
               refills={refills}
               tanks={tanks}
+              maintenances={maintenances}
               onOpenNewModal={() => setShowNewRefillModal(true)}
               onDeleteRefill={handleDeleteRefill}
               toast={toast}
@@ -13561,6 +13567,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           {tab === 'tanques' && (
             <TanquesAutonomiaView
               tanks={tanks}
+              refills={refills}
+              maintenances={maintenances}
               toast={toast}
             />
           )}
@@ -13579,6 +13587,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               userProfile={userProfile}
               onSave={handleAddRefill}
               onClose={() => setShowNewRefillModal(false)}
+              toast={toast}
             />
           )}
 
@@ -13595,15 +13604,17 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ── VISTA 1: CONTROL DE SURTIDOS ─────────────────────────────────────────
-    function SurtidosView({ refills, tanks, onOpenNewModal, onDeleteRefill, toast }) {
+    function SurtidosView({ refills = [], tanks = [], maintenances = [], onOpenNewModal, onDeleteRefill, toast }) {
       const [regionFilter, setRegionFilter] = useState('all'); // all | zulia | falcon
       const [zonaFilter, setZonaFilter] = useState('all');
       const [semanaFilter, setSemanaFilter] = useState('all');
       const [lugarFilter, setLugarFilter] = useState('all');
       const [search, setSearch] = useState('');
-      const [reportMode, setReportMode] = useState('autonomia'); // autonomia | surtidos
+      const [reportMode, setReportMode] = useState('cuadro'); // cuadro | monospace | lista | surtidos
       const [showTextReport, setShowTextReport] = useState(true);
       const [copySuccess, setCopySuccess] = useState(false);
+      const [showImageModal, setShowImageModal] = useState(false);
+      const [generatingImg, setGeneratingImg] = useState(false);
 
       const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
 
@@ -13634,8 +13645,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const totalDespachos = filtered.length;
       const lugaresAtendidos = new Set(filtered.map(r => r.lugar)).size;
 
-      // Generador del Reporte Rápido de Autonomía y Stock (sin horómetros, con días y horas)
-      const generateAutonomiaReport = () => {
+      // Cálculo de resumen ejecutivo con delta de horas operativas (H_act - H_surtido) y combustible consumido
+      const getSitesSummaryData = () => {
         let filteredTanks = tanks;
         if (regionFilter !== 'all') {
           filteredTanks = filteredTanks.filter(t => (t.region || 'Zulia').toLowerCase() === regionFilter.toLowerCase());
@@ -13646,64 +13657,204 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         if (lugarFilter !== 'all') {
           filteredTanks = filteredTanks.filter(t => normFn(t.lugar) === normFn(lugarFilter));
         }
+        if (search) {
+          const q = search.toLowerCase();
+          filteredTanks = filteredTanks.filter(t => 
+            (t.lugar || '').toLowerCase().includes(q) || 
+            (t.tag || '').toLowerCase().includes(q) || 
+            (t.zona || '').toLowerCase().includes(q)
+          );
+        }
 
-        const uniqueSites = [];
-        const seen = new Set();
-        filteredTanks.forEach(t => {
+        return filteredTanks.map(t => {
           const sn = normFn(t.lugar);
-          if (!seen.has(sn)) {
-            seen.add(sn);
-            uniqueSites.push(sn);
-          }
-        });
+          const siteTanks = tanks.filter(x => normFn(x.lugar) === sn);
+          const isMulti = siteTanks.length > 1;
+          const sharedRes = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.reserva_lts) || 0), 0);
+          const sharedCapRes = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.cap_reserva || x.cap_reserva_lts) || 0), 0);
+          const sumSub = siteTanks.reduce((acc, x) => acc + (parseFloat(x.subtanque_actual) || 0), 0);
+          const totNodo = sumSub + sharedRes;
 
+          // Buscar último surtido para esta planta específica por tag o por sitio
+          const plantRefills = refills.filter(r => (r.tag && t.tag && r.tag === t.tag) || normFn(r.lugar) === sn);
+          const lastRefill = plantRefills.length > 0 ? plantRefills[0] : null;
+
+          // Horómetro del último surtido
+          const hSur = lastRefill?.horometro ? parseHorometerToHours(lastRefill.horometro) : null;
+          const hSurStr = lastRefill?.horometro ? formatCleanHoro(lastRefill.horometro) : '—';
+          const fechaSur = lastRefill?.fecha || '—';
+
+          // Horómetro actual (de mantenimientos o del propio tanque)
+          const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+          let hAct = null;
+          if (mMtto && mMtto.horometro_actual != null) {
+            hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+          }
+          if (hAct === null && t.horometro_actual != null) {
+            hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+          }
+          if (hAct === null && hSur !== null) {
+            hAct = hSur;
+          }
+          const hActStr = hAct !== null ? formatCleanHoro(hAct) : '—';
+
+          // Horas de operación acumuladas desde el último surtido (Delta H)
+          let deltaH = 0;
+          if (hAct !== null && hSur !== null && hAct >= hSur) {
+            deltaH = parseFloat((hAct - hSur).toFixed(1));
+          }
+
+          const consumoLh = parseFloat(t.consumo_lh) || 10;
+          // Combustible consumido estimado desde último surtido
+          const combustibleConsumido = Math.round(deltaH * consumoLh);
+
+          // Stock neto disponible en nodo
+          const subActual = parseFloat(t.subtanque_actual) || 0;
+          const stockBruto = isMulti ? (subActual + Math.round(sharedRes / siteTanks.length)) : (subActual + sharedRes);
+          const stockNeto = Math.max(0, Math.round(stockBruto - combustibleConsumido));
+
+          // Autonomía neta
+          const autNetoH = consumoLh > 0 ? parseFloat((stockNeto / consumoLh).toFixed(1)) : 0;
+          const diasAutNeto = parseFloat((autNetoH / 24.0).toFixed(1));
+
+          const isCrit = diasAutNeto < 1.5;
+          const isAlert = diasAutNeto >= 1.5 && diasAutNeto < 3.0;
+          const status = isCrit ? 'critico' : (isAlert ? 'alerta' : 'optimo');
+          const statusLabel = isCrit ? 'Crítico' : (isAlert ? 'Alerta' : 'Óptimo');
+
+          return {
+            t,
+            sn,
+            lugar: t.lugar,
+            tag: t.tag,
+            zona: t.zona,
+            region: t.region || 'Zulia',
+            equipo: t.equipo || t.tag,
+            consumoLh,
+            subActual,
+            sharedRes,
+            sharedCapRes,
+            totNodo,
+            lastRefill,
+            fechaSur,
+            hSur,
+            hSurStr,
+            hAct,
+            hActStr,
+            deltaH,
+            combustibleConsumido,
+            stockNeto,
+            autNetoH,
+            diasAutNeto,
+            status,
+            statusLabel,
+            isMulti
+          };
+        });
+      };
+
+      // Generador del Reporte de Texto (Lista detallada con Delta H y Horómetros)
+      const generateAutonomiaReport = () => {
+        const data = getSitesSummaryData();
         const regLabel = regionFilter !== 'all' ? regionFilter.toUpperCase() : 'TODAS';
         const zonaLabel = zonaFilter !== 'all' ? ` | Zona: ${zonaFilter}` : '';
         const todayStr = new Date().toLocaleDateString('es-VE');
 
+        const siteMap = new Map();
+        data.forEach(item => {
+          if (!siteMap.has(item.sn)) siteMap.set(item.sn, []);
+          siteMap.get(item.sn).push(item);
+        });
+
         let lines = [
           `📊 Reporte de Autonomía y Combustible en Nodos (Coordinación de Grupos Electrógenos)`,
-          `Región: ${regLabel}${zonaLabel} | Fecha: ${todayStr} | Nodos: ${uniqueSites.length}`,
+          `Región: ${regLabel}${zonaLabel} | Fecha: ${todayStr} | Nodos: ${siteMap.size}`,
           ''
         ];
 
-        let totSub = 0;
-        let totRes = 0;
+        let totNetoTotal = 0;
+        let totConsumoTotal = 0;
 
-        uniqueSites.forEach(sn => {
-          const st = filteredTanks.filter(t => normFn(t.lugar) === sn);
-          const lugarName = st[0]?.lugar || sn;
-          const isMulti = st.length > 1;
-
-          const sharedRes = st.reduce((max, t) => Math.max(max, parseFloat(t.reserva_lts) || 0), 0);
-          const sumSub = st.reduce((acc, t) => acc + (parseFloat(t.subtanque_actual) || 0), 0);
-          const totNodo = sumSub + sharedRes;
-
-          totSub += sumSub;
-          totRes += sharedRes;
-
-          const totalConsumo = st.reduce((acc, t) => acc + (parseFloat(t.consumo_lh) || 10), 0);
-          const autTotH = totalConsumo > 0 ? Math.round(totNodo / totalConsumo * 10) / 10 : 0;
+        siteMap.forEach((plants, sn) => {
+          const lugarName = plants[0]?.lugar || sn;
+          const isMulti = plants.length > 1;
+          const sharedRes = plants[0]?.sharedRes || 0;
+          const sumSub = plants.reduce((acc, p) => acc + p.subActual, 0);
+          const sumNeto = plants.reduce((acc, p) => acc + p.stockNeto, 0);
+          const sumBurned = plants.reduce((acc, p) => acc + p.combustibleConsumido, 0);
+          const sumConsumoLh = plants.reduce((acc, p) => acc + p.consumoLh, 0);
+          const autTotH = sumConsumoLh > 0 ? Math.round(sumNeto / sumConsumoLh * 10) / 10 : 0;
           const diasAut = Math.round(autTotH / 24.0 * 10) / 10;
 
+          totNetoTotal += sumNeto;
+          totConsumoTotal += sumBurned;
+
+          lines.push(`• ${lugarName}:`);
           if (isMulti) {
-            const subsDetail = st.map(t => `${t.tag}: ${t.subtanque_actual}L`).join(', ');
-            lines.push(`• ${lugarName}:`);
-            lines.push(`  Planta: ${sumSub} Lts (${subsDetail}) | Reserva: ${sharedRes} Lts | Total: ${totNodo} Lts | Autonomía: ${diasAut} Días (${autTotH}h)`);
+            plants.forEach(p => {
+              lines.push(`  Planta ${p.tag}: Sub: ${p.subActual}L | Horo Act: ${p.hActStr} | Surtido: ${p.fechaSur} (${p.hSurStr}) | Op: +${p.deltaH}h (Consumo: ~${p.combustibleConsumido}L)`);
+            });
+            lines.push(`  Reserva: ${sharedRes} Lts | Stock Neto: ${sumNeto} Lts | Autonomía: ${diasAut} Días (${autTotH}h)`);
           } else {
-            lines.push(`• ${lugarName}:`);
-            lines.push(`  Planta: ${sumSub} Lts | Reserva: ${sharedRes} Lts | Total: ${totNodo} Lts | Autonomía: ${diasAut} Días (${autTotH}h)`);
+            const p = plants[0];
+            lines.push(`  Planta: ${p.subActual} Lts | Reserva: ${sharedRes} Lts | Stock Neto: ${sumNeto} Lts | Horo: ${p.hActStr} (+${p.deltaH}h op) | Autonomía: ${diasAut} Días (${autTotH}h)`);
           }
         });
 
         lines.push('');
         lines.push('══════════════════════════════════════════════');
-        lines.push(`Total Gasoil: ${totSub + totRes} Lts (Plantas: ${totSub} Lts | Reservas: ${totRes} Lts)`);
+        lines.push(`Total Gasoil Neto en Red: ${totNetoTotal.toLocaleString()} Lts | Consumo Est. Acumulado: ${totConsumoTotal.toLocaleString()} Lts`);
 
         return lines.join('\n');
       };
 
-      // Generador del Reporte de Despachos de Combustible
+      // Generador del Reporte en Tabla Monospace (formato limpio y alineado para WhatsApp)
+      const generateMonospaceTableReport = () => {
+        const data = getSitesSummaryData();
+        const regLabel = regionFilter !== 'all' ? regionFilter.toUpperCase() : 'TODAS';
+        const zonaLabel = zonaFilter !== 'all' ? ` | Zona: ${zonaFilter}` : '';
+        const todayStr = new Date().toLocaleDateString('es-VE');
+
+        const pad = (s, len, right = false) => {
+          const str = String(s || '');
+          if (str.length > len) return str.slice(0, len - 1) + '…';
+          return right ? str.padStart(len) : str.padEnd(len);
+        };
+
+        let lines = [
+          '```',
+          '📊 AIRTEK ENERGY • REPORTE EJECUTIVO DE COMBUSTIBLE EN NODOS',
+          `Región: ${regLabel}${zonaLabel} | Fecha: ${todayStr} | Plantas: ${data.length}`,
+          '─'.repeat(74),
+          `${pad('NODO / PLANTA', 22)} | ${pad('ÚLT. SURTIDO', 12)} | ${pad('HORÓM.', 8)} | ${pad('OP.ACUM', 7)} | ${pad('GASOIL', 7, true)} | ${pad('AUTONOMÍA', 11)}`,
+          '─'.repeat(74)
+        ];
+
+        let totalGasoil = 0;
+        let totalConsumo = 0;
+
+        data.forEach(item => {
+          totalGasoil += item.stockNeto;
+          totalConsumo += item.combustibleConsumido;
+
+          const nodoCol = `${item.lugar.slice(0, 14)} (${item.tag.slice(0, 6)})`;
+          const surCol = `${item.fechaSur.slice(0, 5)} ${item.hSurStr.slice(0, 6)}`;
+          const horoCol = item.hActStr.slice(0, 8);
+          const opCol = `+${item.deltaH.toFixed(1)}h`;
+          const gasCol = `${item.stockNeto}L`;
+          const autCol = `${item.diasAutNeto}d (${item.autNetoH}h)`;
+
+          lines.push(`${pad(nodoCol, 22)} | ${pad(surCol, 12)} | ${pad(horoCol, 8)} | ${pad(opCol, 7)} | ${pad(gasCol, 7, true)} | ${pad(autCol, 11)}`);
+        });
+
+        lines.push('─'.repeat(74));
+        lines.push(`TOTAL GASOIL EN RED: ${totalGasoil.toLocaleString()} Lts | CONSUMO EST.: ${totalConsumo.toLocaleString()} Lts`);
+        lines.push('```');
+
+        return lines.join('\n');
+      };
+
+      // Generador del Reporte de Despachos Semanales
       const generateSurtidosReport = () => {
         const titleSemana = semanaFilter !== 'all' ? ` - ${semanaFilter}` : '';
         let text = `Reporte de Surtidos de Combustible (Coordinación de Grupos Electrógenos)${titleSemana}\n\n`;
@@ -13715,14 +13866,68 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       };
 
       const generateTextReport = () => {
-        return reportMode === 'autonomia' ? generateAutonomiaReport() : generateSurtidosReport();
+        if (reportMode === 'monospace') return generateMonospaceTableReport();
+        if (reportMode === 'lista') return generateAutonomiaReport();
+        return generateSurtidosReport();
       };
 
       const copyReport = () => {
         const text = generateTextReport();
         navigator.clipboard.writeText(text).then(() => {
           setCopySuccess(true);
+          if (toast) toast('¡Reporte de texto copiado al portapapeles!', 'success');
           setTimeout(() => setCopySuccess(false), 2200);
+        });
+      };
+
+      // Copiar cuadro como imagen usando html2canvas
+      const copyExecutiveImage = () => {
+        const cardEl = document.getElementById('airtek-executive-fuel-card-surtidos');
+        if (!cardEl) return;
+        setGeneratingImg(true);
+        window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
+          canvas.toBlob(blob => {
+            if (navigator.clipboard && navigator.clipboard.write) {
+              navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
+                setGeneratingImg(false);
+                if (toast) toast('¡Cuadro copiado como imagen! Pégalo directamente en WhatsApp con Ctrl + V.', 'success');
+              }).catch(() => {
+                const link = document.createElement('a');
+                link.download = `reporte_combustible_director_${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                setGeneratingImg(false);
+                if (toast) toast('¡Imagen descargada como archivo PNG!', 'success');
+              });
+            } else {
+              const link = document.createElement('a');
+              link.download = `reporte_combustible_director_${Date.now()}.png`;
+              link.href = canvas.toDataURL('image/png');
+              link.click();
+              setGeneratingImg(false);
+              if (toast) toast('¡Imagen descargada como archivo PNG!', 'success');
+            }
+          });
+        }).catch(e => {
+          setGeneratingImg(false);
+          if (toast) toast('Error al generar imagen: ' + e.message, 'error');
+        });
+      };
+
+      const downloadExecutiveImage = () => {
+        const cardEl = document.getElementById('airtek-executive-fuel-card-surtidos');
+        if (!cardEl) return;
+        setGeneratingImg(true);
+        window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: '#070c18' }).then(canvas => {
+          const link = document.createElement('a');
+          link.download = `reporte_combustible_director_${Date.now()}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          setGeneratingImg(false);
+          if (toast) toast('¡Imagen PNG descargada con éxito!', 'success');
+        }).catch(e => {
+          setGeneratingImg(false);
+          if (toast) toast('Error al descargar: ' + e.message, 'error');
         });
       };
 
@@ -13749,6 +13954,14 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         window.XLSX.writeFile(wb, 'reporte_surtidos_combustible_' + Date.now() + '.xlsx');
       };
 
+      const summaryData = getSitesSummaryData();
+      const totalStockNeto = summaryData.reduce((acc, x) => acc + x.stockNeto, 0);
+      const totalHorasOp = summaryData.reduce((acc, x) => acc + x.deltaH, 0);
+      const totalConsumoEst = summaryData.reduce((acc, x) => acc + x.combustibleConsumido, 0);
+      const optCount = summaryData.filter(x => x.diasAutNeto >= 3).length;
+      const alertCount = summaryData.filter(x => x.diasAutNeto >= 1.5 && x.diasAutNeto < 3).length;
+      const critCount = summaryData.filter(x => x.diasAutNeto < 1.5).length;
+
       return (
         <div>
           {/* Header con Acciones */}
@@ -13762,6 +13975,14 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="bp"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981' }}
+                onClick={() => setShowImageModal(true)}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                📸 Cuadro para WhatsApp (Director)
+              </button>
               <button className="bp" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem' }} onClick={onOpenNewModal}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Registrar Surtido
@@ -13800,39 +14021,79 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
               </div>
               <div>
-                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Lugares Atendidos</div>
-                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{lugaresAtendidos}</div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Gasoil Neto en Red</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{totalStockNeto.toLocaleString()} Lts</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(245, 158, 11, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Horas Op. Acumuladas</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b' }}>+{totalHorasOp.toFixed(1)} h</div>
               </div>
             </div>
           </div>
 
-          {/* Formato de Texto Rápido para WhatsApp / Slack */}
-          <div className="card" style={{ marginBottom: 16, border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
+          {/* Módulo Ejecutivo: Reportes para WhatsApp / Director */}
+          <div className="card" style={{ marginBottom: 16, border: '1px solid var(--border)', background: 'var(--bg-card)', padding: '16px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span className="fd" style={{ fontSize: '.8rem', fontWeight: 800, color: 'var(--tx1)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                  Reporte de Texto para WhatsApp / Slack
+                <span className="fd" style={{ fontSize: '.84rem', fontWeight: 800, color: 'var(--tx1)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  📊 Reporte Ejecutivo de Combustible & Operación
                 </span>
                 <div style={{ display: 'inline-flex', background: 'var(--bg-elevated)', borderRadius: 8, padding: 2, border: '1px solid var(--border)' }}>
                   <button
                     style={{
-                      padding: '4px 10px',
-                      fontSize: '.72rem',
-                      fontWeight: reportMode === 'autonomia' ? 700 : 500,
+                      padding: '5px 12px',
+                      fontSize: '.74rem',
+                      fontWeight: reportMode === 'cuadro' ? 700 : 500,
                       borderRadius: 6,
                       border: 'none',
                       cursor: 'pointer',
-                      background: reportMode === 'autonomia' ? 'var(--primary)' : 'transparent',
-                      color: reportMode === 'autonomia' ? '#fff' : 'var(--tx2)'
+                      background: reportMode === 'cuadro' ? '#10b981' : 'transparent',
+                      color: reportMode === 'cuadro' ? '#fff' : 'var(--tx2)'
                     }}
-                    onClick={() => setReportMode('autonomia')}
+                    onClick={() => setReportMode('cuadro')}
                   >
-                    📊 Autonomía y Stock
+                    🖼️ Cuadro Gráfico (Director)
                   </button>
                   <button
                     style={{
-                      padding: '4px 10px',
-                      fontSize: '.72rem',
+                      padding: '5px 12px',
+                      fontSize: '.74rem',
+                      fontWeight: reportMode === 'monospace' ? 700 : 500,
+                      borderRadius: 6,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: reportMode === 'monospace' ? 'var(--primary)' : 'transparent',
+                      color: reportMode === 'monospace' ? '#fff' : 'var(--tx2)'
+                    }}
+                    onClick={() => setReportMode('monospace')}
+                  >
+                    📊 Tabla en Texto (WhatsApp)
+                  </button>
+                  <button
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '.74rem',
+                      fontWeight: reportMode === 'lista' ? 700 : 500,
+                      borderRadius: 6,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: reportMode === 'lista' ? 'var(--primary)' : 'transparent',
+                      color: reportMode === 'lista' ? '#fff' : 'var(--tx2)'
+                    }}
+                    onClick={() => setReportMode('lista')}
+                  >
+                    📝 Lista Detallada
+                  </button>
+                  <button
+                    style={{
+                      padding: '5px 12px',
+                      fontSize: '.74rem',
                       fontWeight: reportMode === 'surtidos' ? 700 : 500,
                       borderRadius: 6,
                       border: 'none',
@@ -13846,36 +14107,270 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   </button>
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button className="bs" style={{ padding: '4px 10px', fontSize: '.72rem' }} onClick={() => setShowTextReport(!showTextReport)}>
-                  {showTextReport ? 'Ocultar' : 'Mostrar'}
-                </button>
-                <button className="bp" style={{ padding: '6px 14px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }} onClick={copyReport}>
-                  <IconCopy size={14} />
-                  {copySuccess ? '¡Copiado!' : 'Copiar Reporte'}
-                </button>
+
+              {/* Botones de Acción del Reporte */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {reportMode === 'cuadro' ? (
+                  <>
+                    <button
+                      className="bp"
+                      disabled={generatingImg}
+                      style={{ padding: '6px 14px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6, background: '#10b981', borderColor: '#10b981' }}
+                      onClick={copyExecutiveImage}
+                    >
+                      <IconCopy size={14} />
+                      {generatingImg ? 'Generando Imagen...' : '📸 Copiar como Imagen para WhatsApp'}
+                    </button>
+                    <button
+                      className="bs"
+                      disabled={generatingImg}
+                      style={{ padding: '6px 14px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }}
+                      onClick={downloadExecutiveImage}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Descargar PNG
+                    </button>
+                    <button
+                      className="bs"
+                      style={{ padding: '6px 12px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }}
+                      onClick={() => setShowImageModal(true)}
+                    >
+                      🔍 Pantalla Completa
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="bs" style={{ padding: '5px 12px', fontSize: '.74rem' }} onClick={() => setShowTextReport(!showTextReport)}>
+                      {showTextReport ? 'Ocultar' : 'Mostrar'}
+                    </button>
+                    <button className="bp" style={{ padding: '6px 14px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 6 }} onClick={copyReport}>
+                      <IconCopy size={14} />
+                      {copySuccess ? '¡Copiado!' : 'Copiar Reporte'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
-            {showTextReport && (
-              <textarea
-                className="fi fm"
-                readOnly
-                value={generateTextReport()}
-                style={{
-                  width: '100%',
-                  height: 140,
-                  fontSize: '.82rem',
-                  lineHeight: 1.5,
-                  resize: 'vertical',
-                  background: 'var(--bg-surface)',
-                  color: 'var(--tx1)',
-                  padding: '10px 14px',
-                  borderRadius: 8
-                }}
-              />
+            {/* Vista Previa: Cuadro Gráfico o Textarea */}
+            {reportMode === 'cuadro' ? (
+              <div style={{ overflowX: 'auto', background: '#020617', borderRadius: 12, border: '1px solid #1e293b', padding: 8 }}>
+                <div
+                  id="airtek-executive-fuel-card-surtidos"
+                  style={{
+                    minWidth: '980px',
+                    padding: '24px 26px',
+                    background: 'linear-gradient(180deg, #0a0f1d 0%, #060913 100%)',
+                    borderRadius: 14,
+                    fontFamily: "'Outfit', 'Montserrat', -apple-system, BlinkMacSystemFont, sans-serif",
+                    color: '#f8fafc',
+                    boxShadow: '0 20px 40px rgba(0,0,0,0.6)',
+                    border: '1px solid #1e293b'
+                  }}
+                >
+                  {/* Banner Superior */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid rgba(1, 102, 255, 0.3)', paddingBottom: 14, marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #0166ff 0%, #21c0fa 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(1, 102, 255, 0.4)' }}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '.74rem', fontWeight: 800, color: '#21c0fa', letterSpacing: '.12em', textTransform: 'uppercase' }}>
+                          AIRTEK ENERGY • COORDINACIÓN DE GRUPOS ELECTRÓGENOS
+                        </div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.02em', marginTop: 1 }}>
+                          ESTADO DE GASOIL & OPERACIÓN DE PLANTAS
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 20, background: 'rgba(1, 102, 255, 0.15)', border: '1px solid rgba(1, 102, 255, 0.35)', fontSize: '.76rem', fontWeight: 700, color: '#60a5fa', marginBottom: 3 }}>
+                        Región: {regionFilter !== 'all' ? regionFilter.toUpperCase() : 'TODAS'} {zonaFilter !== 'all' ? `• ${zonaFilter}` : ''}
+                      </div>
+                      <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>
+                        Fecha de Corte: {new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Resumen KPI */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+                    <div style={{ background: 'rgba(15, 23, 42, 0.85)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
+                      <div style={{ fontSize: '.66rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Total Gasoil Neto</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#38bdf8', marginTop: 2 }}>{totalStockNeto.toLocaleString()} Lts</div>
+                    </div>
+                    <div style={{ background: 'rgba(15, 23, 42, 0.85)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
+                      <div style={{ fontSize: '.66rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Horas Op. Acumuladas</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#f59e0b', marginTop: 2 }}>+{totalHorasOp.toFixed(1)} h</div>
+                    </div>
+                    <div style={{ background: 'rgba(15, 23, 42, 0.85)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
+                      <div style={{ fontSize: '.66rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Consumo Est. Acumulado</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: '#ef4444', marginTop: 2 }}>~{totalConsumoEst.toLocaleString()} Lts</div>
+                    </div>
+                    <div style={{ background: 'rgba(15, 23, 42, 0.85)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
+                      <div style={{ fontSize: '.66rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Semáforo de Nodos</div>
+                      <div style={{ display: 'flex', gap: 6, marginTop: 4, fontSize: '.72rem', fontWeight: 800 }}>
+                        <span style={{ color: '#10b981' }}>{optCount} Ópt</span>
+                        <span style={{ color: '#64748b' }}>•</span>
+                        <span style={{ color: '#f59e0b' }}>{alertCount} Alert</span>
+                        <span style={{ color: '#64748b' }}>•</span>
+                        <span style={{ color: '#ef4444' }}>{critCount} Crít</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tabla Gráfica Ejecutiva */}
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.76rem', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ background: '#0f172a', borderBottom: '2px solid #334155', color: '#94a3b8', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
+                        <th style={{ padding: '9px 12px' }}>Lugar / Nodo</th>
+                        <th style={{ padding: '9px 10px' }}>Planta & Tag</th>
+                        <th style={{ padding: '9px 10px' }}>Último Surtido</th>
+                        <th style={{ padding: '9px 10px' }}>Horómetro Actual</th>
+                        <th style={{ padding: '9px 10px', textAlign: 'center' }}>Horas Op. Acum.</th>
+                        <th style={{ padding: '9px 10px', textAlign: 'right' }}>Gasoil Neto</th>
+                        <th style={{ padding: '9px 10px' }}>Autonomía Neta</th>
+                        <th style={{ padding: '9px 12px', textAlign: 'center' }}>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summaryData.map((item, idx) => {
+                        const badgeColor = item.status === 'critico' ? '#ef4444' : (item.status === 'alerta' ? '#f59e0b' : '#10b981');
+                        const badgeBg = item.status === 'critico' ? 'rgba(239,68,68,0.15)' : (item.status === 'alerta' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)');
+
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #1e293b', background: (idx % 2 === 0) ? 'rgba(15, 23, 42, 0.4)' : 'rgba(15, 23, 42, 0.75)' }}>
+                            <td style={{ padding: '8px 12px' }}>
+                              <div style={{ fontWeight: 800, color: '#ffffff', fontSize: '.8rem' }}>{item.lugar}</div>
+                              <div style={{ fontSize: '.66rem', color: '#64748b' }}>{item.zona}</div>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ fontWeight: 700, color: '#e2e8f0', fontFamily: "'JetBrains Mono', monospace" }}>{item.tag}</div>
+                              <div style={{ fontSize: '.66rem', color: '#38bdf8' }}>Consumo: {item.consumoLh} L/h</div>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{item.fechaSur}</div>
+                              <div style={{ fontSize: '.66rem', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>Horo: {item.hSurStr}</div>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace" }}>
+                                {item.hActStr}
+                              </div>
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '2px 8px',
+                                borderRadius: 6,
+                                fontSize: '.72rem',
+                                fontWeight: 800,
+                                background: item.deltaH > 20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(33, 192, 250, 0.15)',
+                                color: item.deltaH > 20 ? '#f59e0b' : '#38bdf8',
+                                border: `1px solid ${item.deltaH > 20 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(33, 192, 250, 0.3)'}`
+                              }}>
+                                +{item.deltaH.toFixed(1)} h
+                              </span>
+                              {item.combustibleConsumido > 0 && (
+                                <div style={{ fontSize: '.64rem', color: '#94a3b8', marginTop: 2 }}>
+                                  ~{item.combustibleConsumido} L quemados
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                              <div style={{ fontSize: '.92rem', fontWeight: 900, color: '#10b981' }}>{item.stockNeto.toLocaleString()} Lts</div>
+                              <div style={{ fontSize: '.64rem', color: '#64748b' }}>Sub: {item.subActual}L | Res: {item.sharedRes}L</div>
+                            </td>
+                            <td style={{ padding: '8px 10px' }}>
+                              <div style={{ fontWeight: 800, color: badgeColor, fontSize: '.84rem' }}>{item.diasAutNeto} Días</div>
+                              <div style={{ fontSize: '.66rem', color: '#94a3b8' }}>({item.autNetoH} hrs)</div>
+                            </td>
+                            <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                              <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: '.68rem', fontWeight: 800, background: badgeBg, color: badgeColor, border: `1px solid ${badgeColor}33` }}>
+                                {item.statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* Pie del Cuadro Gráfico */}
+                  <div style={{ marginTop: 14, paddingTop: 10, borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.66rem', color: '#64748b' }}>
+                    <div>Airtek Energy • Coordinación de Grupos Electrógenos • Horas de Operación Acumuladas = Horo Actual - Horo Surtido</div>
+                    <div>Generado el {new Date().toLocaleString('es-VE')}</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              showTextReport && (
+                <textarea
+                  className="fi fm"
+                  readOnly
+                  value={generateTextReport()}
+                  style={{
+                    width: '100%',
+                    height: 180,
+                    fontSize: '.82rem',
+                    lineHeight: 1.5,
+                    resize: 'vertical',
+                    background: 'var(--bg-surface)',
+                    color: 'var(--tx1)',
+                    padding: '10px 14px',
+                    borderRadius: 8
+                  }}
+                />
+              )
             )}
           </div>
+
+          {/* Modal de Pantalla Completa para Exportación de Imagen */}
+          {showImageModal && (
+            <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+              <div className="card fin" style={{ width: '95%', maxWidth: 1060, maxHeight: '90vh', overflowY: 'auto', padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+                  <div>
+                    <h3 className="fd" style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--tx1)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      📸 Exportador de Cuadro Gráfico para WhatsApp (Director)
+                    </h3>
+                    <p style={{ fontSize: '.8rem', color: 'var(--tx3)', margin: '4px 0 0' }}>
+                      Genera la imagen en alta resolución lista para copiar y pegar directamente en WhatsApp con Ctrl + V.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      className="bp"
+                      disabled={generatingImg}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px', fontSize: '.84rem', background: '#10b981', borderColor: '#10b981' }}
+                      onClick={copyExecutiveImage}
+                    >
+                      <IconCopy size={16} />
+                      {generatingImg ? 'Generando Imagen...' : '📋 Copiar Imagen (Pegar en WhatsApp)'}
+                    </button>
+                    <button
+                      className="bs"
+                      disabled={generatingImg}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: '.84rem' }}
+                      onClick={downloadExecutiveImage}
+                    >
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Descargar PNG
+                    </button>
+                    <button className="bs" onClick={() => setShowImageModal(false)} style={{ padding: '8px 14px' }}>
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ overflowX: 'auto', padding: 8, background: '#020617', borderRadius: 12, border: '1px solid #1e293b' }}>
+                  {/* Se renderiza el cuadro existente dentro del modal */}
+                  <div style={{ fontSize: '.8rem', color: '#94a3b8', padding: '8px 0', textAlign: 'center' }}>
+                    Haz clic en <strong>"Copiar Imagen"</strong> para llevarla directo al portapapeles y pegarla con <strong>Ctrl + V</strong> en WhatsApp.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Filtros */}
           <div className="card" style={{ padding: '14px 18px', marginBottom: 14, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
@@ -13920,7 +14415,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* Tabla de Surtidos */}
+          {/* Tabla Histórica de Surtidos con Botón de WhatsApp por Registro */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.84rem' }}>
@@ -13987,21 +14482,39 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         {r.obs && <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>{r.obs}</div>}
                       </td>
                       <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-                        {onDeleteRefill && (
+                        <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                           <button
-                            className="bd"
-                            style={{ padding: '5px 10px', fontSize: '.74rem', borderRadius: 6, color: '#f55b5d', borderColor: 'rgba(245, 91, 93, 0.3)', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                            className="bs"
+                            style={{ padding: '5px 10px', fontSize: '.74rem', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}
                             onClick={() => {
-                              if (window.confirm(`¿Deseas eliminar este registro de surtido (${r.litros}L en ${r.lugar})? Se revertirán los niveles de combustible y el horómetro a sus valores anteriores.`)) {
-                                onDeleteRefill(r);
+                              const text = generateFuelReportText({ nodeName: r.lugar, date: r.fecha, record: r, tanks });
+                              if (navigator.clipboard && navigator.clipboard.writeText) {
+                                navigator.clipboard.writeText(text).then(() => {
+                                  if (toast) toast('¡Mensaje de surtido para WhatsApp copiado al portapapeles!', 'success');
+                                });
                               }
                             }}
-                            title="Eliminar surtido y revertir valores"
+                            title="Copiar mensaje de este surtido para WhatsApp"
                           >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            Eliminar
+                            <IconCopy size={12} />
+                            WhatsApp
                           </button>
-                        )}
+                          {onDeleteRefill && (
+                            <button
+                              className="bd"
+                              style={{ padding: '5px 10px', fontSize: '.74rem', borderRadius: 6, color: '#f55b5d', borderColor: 'rgba(245, 91, 93, 0.3)', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                              onClick={() => {
+                                if (window.confirm(`¿Deseas eliminar este registro de surtido (${r.litros}L en ${r.lugar})? Se revertirán los niveles de combustible y el horómetro a sus valores anteriores.`)) {
+                                  onDeleteRefill(r);
+                                }
+                              }}
+                              title="Eliminar surtido y revertir valores"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                              Eliminar
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -14010,13 +14523,12 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-
         </div>
       );
     }
 
     // ── VISTA 2: ESTADO DE TANQUES & AUTONOMÍA ────────────────────────────────
-    function TanquesAutonomiaView({ tanks, toast }) {
+    function TanquesAutonomiaView({ tanks = [], refills = [], maintenances = [], toast }) {
       const [regionFilter, setRegionFilter] = useState('all');
       const [zonaFilter, setZonaFilter] = useState('all');
       const [statusFilter, setStatusFilter] = useState('all');
@@ -14026,41 +14538,116 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [showImageModal, setShowImageModal] = useState(false);
       const [generatingImg, setGeneratingImg] = useState(false);
 
+      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+
       const uniqueZonas = Array.from(new Set(tanks.map(t => t.zona))).filter(Boolean).sort();
 
-      const filtered = tanks.filter(t => {
+      // Cálculo de métricas avanzadas (Delta H, consumo y stock neto) para cada planta
+      const enrichedTanks = tanks.map(t => {
+        const sn = normFn(t.lugar);
+        const siteTanks = tanks.filter(x => normFn(x.lugar) === sn);
+        const isMultiPlant = siteTanks.length > 1;
+        const sharedReserva = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.reserva_lts) || 0), 0);
+        const sharedCapReserva = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.cap_reserva || x.cap_reserva_lts) || 0), 0);
+        const sumSubtanques = siteTanks.reduce((acc, x) => acc + (parseFloat(x.subtanque_actual) || 0), 0);
+        const totNodo = sumSubtanques + sharedReserva;
+
+        // Buscar último surtido por tag o sitio
+        const plantRefills = refills.filter(r => (r.tag && t.tag && r.tag === t.tag) || normFn(r.lugar) === sn);
+        const lastRefill = plantRefills.length > 0 ? plantRefills[0] : null;
+
+        const hSur = lastRefill?.horometro ? parseHorometerToHours(lastRefill.horometro) : null;
+        const hSurStr = lastRefill?.horometro ? formatCleanHoro(lastRefill.horometro) : '—';
+        const fechaSur = lastRefill?.fecha || '—';
+
+        const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+        let hAct = null;
+        if (mMtto && mMtto.horometro_actual != null) {
+          hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
+        }
+        if (hAct === null && t.horometro_actual != null) {
+          hAct = typeof t.horometro_actual === 'number' ? t.horometro_actual : parseHorometerToHours(t.horometro_actual);
+        }
+        if (hAct === null && hSur !== null) {
+          hAct = hSur;
+        }
+        const hActStr = hAct !== null ? formatCleanHoro(hAct) : '—';
+
+        // Horas de operación acumuladas desde el último surtido
+        let deltaH = 0;
+        if (hAct !== null && hSur !== null && hAct >= hSur) {
+          deltaH = parseFloat((hAct - hSur).toFixed(1));
+        }
+
+        const consumoLh = parseFloat(t.consumo_lh) || 10;
+        const combustibleConsumido = Math.round(deltaH * consumoLh);
+
+        const subActual = parseFloat(t.subtanque_actual) || 0;
+        const stockBruto = isMultiPlant ? (subActual + Math.round(sharedReserva / siteTanks.length)) : (subActual + sharedReserva);
+        const stockNeto = Math.max(0, Math.round(stockBruto - combustibleConsumido));
+
+        const autNetoH = consumoLh > 0 ? parseFloat((stockNeto / consumoLh).toFixed(1)) : 0;
+        const diasAutNeto = parseFloat((autNetoH / 24.0).toFixed(1));
+
+        const isCrit = diasAutNeto < 1.5;
+        const isAlert = diasAutNeto >= 1.5 && diasAutNeto < 3.0;
+        const status = isCrit ? 'critico' : (isAlert ? 'alerta' : 'optimo');
+        const statusText = isCrit ? 'Crítico (<1.5d)' : isAlert ? 'Alerta (1.5-3d)' : 'Óptimo (>3d)';
+        const badgeColor = isCrit ? '#ef4444' : isAlert ? '#f59e0b' : '#10b981';
+        const badgeBg = isCrit ? 'rgba(239,68,68,0.12)' : isAlert ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)';
+
+        return {
+          ...t,
+          sn,
+          isMultiPlant,
+          sharedReserva,
+          sharedCapReserva,
+          sumSubtanques,
+          totNodo,
+          lastRefill,
+          fechaSur,
+          hSur,
+          hSurStr,
+          hAct,
+          hActStr,
+          deltaH,
+          combustibleConsumido,
+          stockNeto,
+          autNetoH,
+          diasAutNeto,
+          status,
+          statusText,
+          badgeColor,
+          badgeBg
+        };
+      });
+
+      const filtered = enrichedTanks.filter(t => {
         const tankRegion = (t.region || 'Zulia').toLowerCase();
         if (regionFilter !== 'all' && tankRegion !== regionFilter.toLowerCase()) return false;
         if (zonaFilter !== 'all' && t.zona !== zonaFilter) return false;
         if (statusFilter !== 'all') {
-          if (statusFilter === 'optimo' && (t.dias_aut < 3)) return false;
-          if (statusFilter === 'alerta' && (t.dias_aut < 1.5 || t.dias_aut >= 3)) return false;
-          if (statusFilter === 'critico' && (t.dias_aut >= 1.5)) return false;
+          if (statusFilter === 'optimo' && t.status !== 'optimo') return false;
+          if (statusFilter === 'alerta' && t.status !== 'alerta') return false;
+          if (statusFilter === 'critico' && t.status !== 'critico') return false;
         }
         if (search) {
           const q = search.toLowerCase();
           const matchLugar = (t.lugar || '').toLowerCase().includes(q);
           const matchEq = (t.equipo || '').toLowerCase().includes(q);
+          const matchTag = (t.tag || '').toLowerCase().includes(q);
           const matchZona = (t.zona || '').toLowerCase().includes(q);
-          if (!matchLugar && !matchEq && !matchZona) return false;
+          if (!matchLugar && !matchEq && !matchTag && !matchZona) return false;
         }
         return true;
       });
 
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
-
-      // Calcular total en red sumando todos los sub-tanques + reservas únicas compartidas por sitio
-      const uniqueSites = Array.from(new Set(tanks.map(t => normFn(t.lugar))));
-      let totalLtsRed = tanks.reduce((acc, t) => acc + (parseFloat(t.subtanque_actual) || 0), 0);
-      uniqueSites.forEach(siteNorm => {
-        const siteT = tanks.filter(t => normFn(t.lugar) === siteNorm);
-        const maxRes = siteT.reduce((max, t) => Math.max(max, parseFloat(t.reserva_lts) || 0), 0);
-        totalLtsRed += maxRes;
-      });
-
-      const optimos = tanks.filter(t => t.dias_aut >= 3).length;
-      const alertas = tanks.filter(t => t.dias_aut >= 1.5 && t.dias_aut < 3).length;
-      const criticos = tanks.filter(t => t.dias_aut < 1.5).length;
+      const totalLtsRedNeto = filtered.reduce((acc, t) => acc + t.stockNeto, 0);
+      const totalHorasOpRed = filtered.reduce((acc, t) => acc + t.deltaH, 0);
+      const totalConsumoEstRed = filtered.reduce((acc, t) => acc + t.combustibleConsumido, 0);
+      const optimos = filtered.filter(t => t.status === 'optimo').length;
+      const alertas = filtered.filter(t => t.status === 'alerta').length;
+      const criticos = filtered.filter(t => t.status === 'critico').length;
 
       const generateAutonomiaReportText = () => {
         const uniqueSites = [];
@@ -14184,40 +14771,34 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
             <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
               <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(1, 102, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--blue)' }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 22V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v17"/><line x1="3" y1="22" x2="15" y2="22"/></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               </div>
               <div>
-                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total en Red</div>
-                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--tx1)' }}>{totalLtsRed.toLocaleString()} Lts</div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Total Gasoil Neto</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--tx1)' }}>{totalLtsRedNeto.toLocaleString()} Lts</div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
-                <IconCheckCircle size={22} color="#10b981" />
-              </div>
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(245, 158, 11, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
               <div>
-                <div style={{ fontSize: '.7rem', color: '#10b981', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Óptimos (&gt;3 Días)</div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Horas Op. Acumuladas</div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b' }}>+{totalHorasOpRed.toFixed(1)} h</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(16, 185, 129, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              <div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Nodos Óptimos (&gt;3d)</div>
                 <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#10b981' }}>{optimos}</div>
               </div>
             </div>
 
-            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(245, 158, 11, 0.05)', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(245, 158, 11, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              </div>
+            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
               <div>
-                <div style={{ fontSize: '.7rem', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Alerta (1.5-3 Días)</div>
-                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f59e0b' }}>{alertas}</div>
-              </div>
-            </div>
-
-            <div className="card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
-                <IconAlertTriangle size={22} color="#ef4444" />
-              </div>
-              <div>
-                <div style={{ fontSize: '.7rem', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>Críticos (&lt;1.5 Días)</div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 600 }}>Nodos Críticos (&lt;1.5d)</div>
                 <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 800, color: '#ef4444' }}>{criticos}</div>
               </div>
             </div>
@@ -14231,7 +14812,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   Reporte Rápido de Autonomía y Stock para WhatsApp
                 </span>
                 <span style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>
-                  (Días y horas de respaldo sin horómetro)
+                  (Con Horómetros y Horas de Operación Acumuladas)
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -14302,41 +14883,24 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* Tabla de Autonomías */}
+          {/* Tabla de Autonomías con Horas de Operación Acumuladas */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--bg-card)' }}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '.84rem' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', color: 'var(--tx3)', textTransform: 'uppercase', fontSize: '.7rem', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
                     <th style={{ padding: '12px 16px' }}>Lugar / Datacenter</th>
-                    <th style={{ padding: '12px 14px' }}>Equipo & Potencia</th>
+                    <th style={{ padding: '12px 14px' }}>Equipo & Consumo</th>
+                    <th style={{ padding: '12px 14px' }}>Último Surtido & Horas Op.</th>
                     <th style={{ padding: '12px 14px' }}>Sub-tanque</th>
                     <th style={{ padding: '12px 14px' }}>Reserva Externa</th>
-                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Total en Nodo</th>
-                    <th style={{ padding: '12px 14px' }}>Autonomía</th>
+                    <th style={{ padding: '12px 14px', textAlign: 'right' }}>Gasoil Neto</th>
+                    <th style={{ padding: '12px 14px' }}>Autonomía Neta</th>
                     <th style={{ padding: '12px 14px' }}>Estado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((t, i) => {
-                    const siteTanks = tanks.filter(x => normFn(x.lugar) === normFn(t.lugar));
-                    const isMultiPlant = siteTanks.length > 1;
-                    const sharedReserva = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.reserva_lts) || 0), 0);
-                    const sharedCapReserva = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.cap_reserva || x.cap_reserva_lts) || 0), 0);
-                    const sumSubtanques = siteTanks.reduce((acc, x) => acc + (parseFloat(x.subtanque_actual) || 0), 0);
-                    const totNodo = sumSubtanques + sharedReserva;
-
-                    // Autonomía calculada con el combustible disponible para este generador + reserva compartida
-                    const autTotH = t.consumo_lh > 0 ? Math.round(((parseFloat(t.subtanque_actual) || 0) + sharedReserva) / t.consumo_lh * 10) / 10 : 0;
-                    const diasAut = Math.round((autTotH / 24.0) * 100) / 100;
-
-                    const isCrit = diasAut < 1.5;
-                    const isAlert = diasAut >= 1.5 && diasAut < 3.0;
-                    const isOpt = diasAut >= 3.0;
-                    const badgeColor = isCrit ? '#ef4444' : isAlert ? '#f59e0b' : '#10b981';
-                    const badgeBg = isCrit ? 'rgba(239,68,68,0.12)' : isAlert ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)';
-                    const statusText = isCrit ? 'Crítico (<1.5d)' : isAlert ? 'Alerta (1.5-3d)' : 'Óptimo (>3d)';
-
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid var(--border)', background: (i % 2 === 0) ? 'var(--bg-card)' : 'var(--bg-surface)' }}>
                         <td style={{ padding: '12px 16px' }}>
@@ -14345,43 +14909,54 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </td>
                         <td style={{ padding: '12px 14px' }}>
                           <div style={{ fontWeight: 600, color: 'var(--tx1)' }}>{t.equipo}</div>
-                          <div style={{ fontSize: '.72rem', color: 'var(--blue)' }}>Consumo: {t.consumo_lh} L/h</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--blue)', fontFamily: "'JetBrains Mono', monospace" }}>{t.tag} • {t.consumo_lh} L/h</div>
+                        </td>
+                        <td style={{ padding: '12px 14px' }}>
+                          <div style={{ fontSize: '.76rem', color: 'var(--tx1)', fontWeight: 600 }}>{t.fechaSur} (Horo: {t.hSurStr})</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                              fontSize: '.7rem',
+                              fontWeight: 700,
+                              background: t.deltaH > 20 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(33, 192, 250, 0.12)',
+                              color: t.deltaH > 20 ? '#f59e0b' : '#38bdf8'
+                            }}>
+                              +{t.deltaH.toFixed(1)}h op
+                            </span>
+                            {t.combustibleConsumido > 0 && (
+                              <span style={{ fontSize: '.68rem', color: 'var(--tx3)' }}>~{t.combustibleConsumido}L quemados</span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ padding: '12px 14px' }}>
                           <div className="fm" style={{ fontWeight: 700, color: 'var(--tx1)' }}>{t.subtanque_actual} / {t.tanque_lts} Lts</div>
-                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>Aut: {t.aut_tanque_h}h</div>
                         </td>
                         <td style={{ padding: '12px 14px' }}>
-                          <div className="fm" style={{ fontWeight: 700, color: sharedReserva > 0 ? 'var(--green)' : 'var(--tx3)' }}>
-                            {sharedReserva} {sharedCapReserva > 0 ? `/ ${sharedCapReserva}` : ''} Lts
+                          <div className="fm" style={{ fontWeight: 700, color: t.sharedReserva > 0 ? 'var(--green)' : 'var(--tx3)' }}>
+                            {t.sharedReserva} {t.sharedCapReserva > 0 ? `/ ${t.sharedCapReserva}` : ''} Lts
                           </div>
-                          {isMultiPlant && (
+                          {t.isMultiPlant && (
                             <div style={{ fontSize: '.68rem', color: 'var(--blue)', fontWeight: 600, marginTop: 1 }}>
                               (Compartida en Datacenter)
                             </div>
                           )}
-                          {sharedCapReserva > sharedReserva && (
-                            <div style={{ fontSize: '.7rem', color: 'var(--amber)' }}>Faltan: {sharedCapReserva - sharedReserva} Lts</div>
-                          )}
                         </td>
                         <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                          <div className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)' }}>{totNodo.toLocaleString()} Lts</div>
-                          {isMultiPlant && (
-                            <div style={{ fontSize: '.68rem', color: 'var(--tx3)', marginTop: 2 }}>
-                              Sub: {sumSubtanques}L | Res: {sharedReserva}L
-                            </div>
-                          )}
+                          <div className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--tx1)' }}>{t.stockNeto.toLocaleString()} Lts</div>
+                          <div style={{ fontSize: '.68rem', color: 'var(--tx3)' }}>Bruto: {t.totNodo}L</div>
                         </td>
                         <td style={{ padding: '12px 14px' }}>
-                          <div className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: badgeColor }}>
-                            {t.dias_aut} Días
+                          <div className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: t.badgeColor }}>
+                            {t.diasAutNeto} Días
                           </div>
-                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>({t.aut_total_h} horas continuas)</div>
+                          <div style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>({t.autNetoH} horas continuas)</div>
                         </td>
                         <td style={{ padding: '12px 14px' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 8, fontSize: '.74rem', fontWeight: 700, background: badgeBg, color: badgeColor }}>
-                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: badgeColor }} />
-                            {statusText}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 8, fontSize: '.74rem', fontWeight: 700, background: t.badgeBg, color: t.badgeColor }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: t.badgeColor }} />
+                            {t.statusText}
                           </span>
                         </td>
                       </tr>
@@ -14482,7 +15057,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   <div
                     id="airtek-executive-fuel-card"
                     style={{
-                      width: '1000px',
+                      width: '1020px',
                       padding: '24px 28px',
                       background: 'linear-gradient(180deg, #0a0f1d 0%, #060913 100%)',
                       borderRadius: 14,
@@ -14520,53 +15095,45 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     {/* Resumen KPI */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 18 }}>
                       <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Total Gasoil en Red</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#38bdf8', marginTop: 2 }}>{totalLtsRed.toLocaleString()} Lts</div>
+                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Total Gasoil Neto</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#38bdf8', marginTop: 2 }}>{totalLtsRedNeto.toLocaleString()} Lts</div>
                       </div>
                       <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Nodos Óptimos (&gt;3d)</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#10b981', marginTop: 2 }}>{optimos}</div>
+                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Horas Op. Acumuladas</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#f59e0b', marginTop: 2 }}>+{totalHorasOpRed.toFixed(1)} h</div>
                       </div>
                       <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Alerta (1.5 - 3d)</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#f59e0b', marginTop: 2 }}>{alertas}</div>
+                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Consumo Est. Acumulado</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', marginTop: 2 }}>~{totalConsumoEstRed.toLocaleString()} Lts</div>
                       </div>
                       <div style={{ background: 'rgba(15, 23, 42, 0.8)', padding: '10px 14px', borderRadius: 10, border: '1px solid #1e293b' }}>
-                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Críticos (&lt;1.5d)</div>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 900, color: '#ef4444', marginTop: 2 }}>{criticos}</div>
+                        <div style={{ fontSize: '.68rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700 }}>Semáforo de Nodos</div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4, fontSize: '.76rem', fontWeight: 800 }}>
+                          <span style={{ color: '#10b981' }}>{optimos} Ópt</span>
+                          <span style={{ color: '#64748b' }}>•</span>
+                          <span style={{ color: '#f59e0b' }}>{alertas} Alert</span>
+                          <span style={{ color: '#64748b' }}>•</span>
+                          <span style={{ color: '#ef4444' }}>{criticos} Crít</span>
+                        </div>
                       </div>
                     </div>
 
                     {/* Tabla Estilizada para Imagen */}
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.78rem', textAlign: 'left' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '.76rem', textAlign: 'left' }}>
                       <thead>
-                        <tr style={{ background: '#0f172a', borderBottom: '2px solid #334155', color: '#94a3b8', textTransform: 'uppercase', fontSize: '.68rem', letterSpacing: '.06em' }}>
-                          <th style={{ padding: '10px 12px' }}>Lugar / Nodo</th>
-                          <th style={{ padding: '10px 10px' }}>Planta(s) / Sub-tanque</th>
-                          <th style={{ padding: '10px 10px' }}>Reserva Externa</th>
-                          <th style={{ padding: '10px 10px', textAlign: 'right' }}>Total Gasoil</th>
-                          <th style={{ padding: '10px 10px' }}>Autonomía</th>
-                          <th style={{ padding: '10px 12px', textAlign: 'center' }}>Estado</th>
+                        <tr style={{ background: '#0f172a', borderBottom: '2px solid #334155', color: '#94a3b8', textTransform: 'uppercase', fontSize: '.66rem', letterSpacing: '.06em' }}>
+                          <th style={{ padding: '9px 12px' }}>Lugar / Nodo</th>
+                          <th style={{ padding: '9px 10px' }}>Planta & Tag</th>
+                          <th style={{ padding: '9px 10px' }}>Último Surtido</th>
+                          <th style={{ padding: '9px 10px' }}>Horómetro Actual</th>
+                          <th style={{ padding: '9px 10px', textAlign: 'center' }}>Horas Op. Acum.</th>
+                          <th style={{ padding: '9px 10px', textAlign: 'right' }}>Gasoil Neto</th>
+                          <th style={{ padding: '9px 10px' }}>Autonomía Neta</th>
+                          <th style={{ padding: '9px 12px', textAlign: 'center' }}>Estado</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filtered.map((t, idx) => {
-                          const siteTanks = tanks.filter(x => normFn(x.lugar) === normFn(t.lugar));
-                          const isMultiPlant = siteTanks.length > 1;
-                          const sharedReserva = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.reserva_lts) || 0), 0);
-                          const sharedCapReserva = siteTanks.reduce((max, x) => Math.max(max, parseFloat(x.cap_reserva || x.cap_reserva_lts) || 0), 0);
-                          const sumSubtanques = siteTanks.reduce((acc, x) => acc + (parseFloat(x.subtanque_actual) || 0), 0);
-                          const totNodo = sumSubtanques + sharedReserva;
-
-                          const autTotH = t.consumo_lh > 0 ? Math.round(((parseFloat(t.subtanque_actual) || 0) + sharedReserva) / t.consumo_lh * 10) / 10 : 0;
-                          const diasAut = Math.round((autTotH / 24.0) * 100) / 100;
-
-                          const isCrit = diasAut < 1.5;
-                          const isAlert = diasAut >= 1.5 && diasAut < 3.0;
-                          const badgeColor = isCrit ? '#ef4444' : isAlert ? '#f59e0b' : '#10b981';
-                          const badgeBg = isCrit ? 'rgba(239,68,68,0.15)' : isAlert ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)';
-                          const statusText = isCrit ? 'Crítico' : isAlert ? 'Alerta' : 'Óptimo';
-
                           return (
                             <tr key={idx} style={{ borderBottom: '1px solid #1e293b', background: (idx % 2 === 0) ? 'rgba(15, 23, 42, 0.4)' : 'rgba(15, 23, 42, 0.7)' }}>
                               <td style={{ padding: '8px 12px' }}>
@@ -14574,27 +15141,48 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                                 <div style={{ fontSize: '.68rem', color: '#64748b' }}>{t.zona}</div>
                               </td>
                               <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{t.subtanque_actual} Lts <span style={{ color: '#64748b', fontSize: '.7rem' }}>({t.tag})</span></div>
+                                <div style={{ fontWeight: 700, color: '#e2e8f0', fontFamily: "'JetBrains Mono', monospace" }}>{t.tag}</div>
                                 <div style={{ fontSize: '.68rem', color: '#38bdf8' }}>Consumo: {t.consumo_lh} L/h</div>
                               </td>
                               <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 700, color: sharedReserva > 0 ? '#10b981' : '#64748b' }}>
-                                  {sharedReserva} {sharedCapReserva > 0 ? `/ ${sharedCapReserva}` : ''} Lts
+                                <div style={{ fontWeight: 600, color: '#f1f5f9' }}>{t.fechaSur}</div>
+                                <div style={{ fontSize: '.66rem', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>Horo: {t.hSurStr}</div>
+                              </td>
+                              <td style={{ padding: '8px 10px' }}>
+                                <div style={{ fontWeight: 700, color: '#38bdf8', fontFamily: "'JetBrains Mono', monospace" }}>
+                                  {t.hActStr}
                                 </div>
-                                {isMultiPlant && (
-                                  <div style={{ fontSize: '.65rem', color: '#38bdf8', fontWeight: 600 }}>Compartida</div>
+                              </td>
+                              <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                                <span style={{
+                                  display: 'inline-block',
+                                  padding: '2px 8px',
+                                  borderRadius: 6,
+                                  fontSize: '.72rem',
+                                  fontWeight: 800,
+                                  background: t.deltaH > 20 ? 'rgba(245, 158, 11, 0.2)' : 'rgba(33, 192, 250, 0.15)',
+                                  color: t.deltaH > 20 ? '#f59e0b' : '#38bdf8',
+                                  border: `1px solid ${t.deltaH > 20 ? 'rgba(245, 158, 11, 0.4)' : 'rgba(33, 192, 250, 0.3)'}`
+                                }}>
+                                  +{t.deltaH.toFixed(1)} h
+                                </span>
+                                {t.combustibleConsumido > 0 && (
+                                  <div style={{ fontSize: '.64rem', color: '#94a3b8', marginTop: 2 }}>
+                                    ~{t.combustibleConsumido} L quemados
+                                  </div>
                                 )}
                               </td>
                               <td style={{ padding: '8px 10px', textAlign: 'right' }}>
-                                <div style={{ fontSize: '.95rem', fontWeight: 900, color: '#10b981' }}>{totNodo.toLocaleString()} Lts</div>
+                                <div style={{ fontSize: '.95rem', fontWeight: 900, color: '#10b981' }}>{t.stockNeto.toLocaleString()} Lts</div>
+                                <div style={{ fontSize: '.64rem', color: '#64748b' }}>Sub: {t.subtanque_actual}L | Res: {t.sharedReserva}L</div>
                               </td>
                               <td style={{ padding: '8px 10px' }}>
-                                <div style={{ fontWeight: 800, color: badgeColor, fontSize: '.88rem' }}>{diasAut} Días</div>
-                                <div style={{ fontSize: '.68rem', color: '#94a3b8' }}>({autTotH} hrs)</div>
+                                <div style={{ fontWeight: 800, color: t.badgeColor, fontSize: '.88rem' }}>{t.diasAutNeto} Días</div>
+                                <div style={{ fontSize: '.68rem', color: '#94a3b8' }}>({t.autNetoH} hrs)</div>
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                                <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: '.7rem', fontWeight: 800, background: badgeBg, color: badgeColor, border: `1px solid ${badgeColor}33` }}>
-                                  {statusText}
+                                <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: '.7rem', fontWeight: 800, background: t.badgeBg, color: t.badgeColor, border: `1px solid ${t.badgeColor}33` }}>
+                                  {t.statusText}
                                 </span>
                               </td>
                             </tr>
@@ -14786,7 +15374,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ── MODAL: REGISTRAR NUEVO SURTIDO ───────────────────────────────────────
-    function NewFuelRefillModal({ tanks, userProfile, onSave, onClose }) {
+    function NewFuelRefillModal({ tanks, userProfile, onSave, onClose, toast }) {
       const [lugar, setLugar] = useState(tanks[0]?.lugar || '');
       const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
       const [semana, setSemana] = useState('Semana Actual');
@@ -14798,6 +15386,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [horasTrabajo, setHorasTrabajo] = useState('');
       const [tecnico, setTecnico] = useState(userProfile?.name || 'Cuadrilla Electrógenos');
       const [obs, setObs] = useState('');
+      const [savedReport, setSavedReport] = useState(null);
 
       const selTank = tanks.find(t => t.lugar === lugar) || tanks[0];
       const curSub = parseFloat(selTank?.subtanque_actual || selTank?.tanque_lts) || 0;
@@ -14857,12 +15446,12 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           }
         }
 
-        onSave({
+        const newRecord = {
           id: 'r_' + Date.now(),
           fecha,
           semana,
           lugar,
-          tag: selTank?.equipo || 'PLT-GEN',
+          tag: selTank?.tag || selTank?.equipo || 'PLT-GEN',
           litros: addedTotal,
           litros_planta: ltsP,
           litros_reserva: ltsR,
@@ -14870,12 +15459,66 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           subtanque_lts: newSub,
           reserva_lts: newRes,
           total_nodo: newTotal,
-          horometro: horometro ? (String(horometro).includes('h') ? horometro : `${horometro}h`) : '—',
+          horometro: horometro ? (String(horometro).includes('h') || String(horometro).includes(':') ? horometro : `${horometro}h`) : '—',
           horas_trabajo: horasTrabajo ? (String(horasTrabajo).includes('h') ? horasTrabajo : `${horasTrabajo}h`) : '—',
           tecnico,
           obs
+        };
+
+        onSave(newRecord);
+
+        const msg = generateFuelReportText({
+          nodeName: lugar,
+          date: fecha,
+          record: newRecord,
+          tanks: selTank ? [selTank] : []
         });
+        setSavedReport(msg);
       };
+
+      if (savedReport) {
+        return (
+          <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+            <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: 480, padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981', flexShrink: 0 }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div>
+                  <h3 className="fd" style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>¡Surtido Registrado con Éxito!</h3>
+                  <p style={{ color: 'var(--tx3)', fontSize: '.78rem', margin: '2px 0 0' }}>Mensaje listo para enviar al grupo de WhatsApp:</p>
+                </div>
+              </div>
+
+              <textarea
+                className="fi fm"
+                rows={6}
+                readOnly
+                value={savedReport}
+                style={{ width: '100%', resize: 'none', fontSize: '.88rem', lineHeight: 1.6, background: 'var(--bg-deep)', color: 'var(--tx1)', borderRadius: 8, padding: '12px 14px', border: '1px solid var(--border)' }}
+              />
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+                <button
+                  className="bp"
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px', fontSize: '.88rem' }}
+                  onClick={() => {
+                    navigator.clipboard.writeText(savedReport).then(() => {
+                      if (toast) toast('¡Mensaje copiado para WhatsApp!', 'success');
+                      else alert('¡Mensaje copiado para WhatsApp!');
+                    });
+                  }}
+                >
+                  <IconCopy size={16} /> Copiar Mensaje para WhatsApp
+                </button>
+                <button className="bs" onClick={onClose} style={{ padding: '10px 18px', fontSize: '.88rem' }}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
 
       return (
         <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onClose}>
