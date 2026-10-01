@@ -2086,6 +2086,7 @@ function PendingPage({ onLogout }) {
       if (eq.type === 'INV') {
         const is220 = eq.voltage === '220V';
         const hasPV = eq.hasSolar;
+        const pvCount = Math.max(1, parseInt(eq.pvCount, 10) || 1);
         return (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <MF label="Carga L1" unit="%" vals={vals} k="L1_carga" onChange={onChange} />
@@ -2093,19 +2094,139 @@ function PendingPage({ onLogout }) {
             {is220 && <><MF label="Carga L2" unit="%" vals={vals} k="L2_carga" onChange={onChange} /><MF label="Potencia L2" unit="kW" vals={vals} k="L2_pot" onChange={onChange} /></>}
             <MF label="V AC OUT" unit="Vac" vals={vals} k="V_ac_out" onChange={onChange} />
             <MF label="Carga Total" unit="kW" vals={vals} k="load_kw" onChange={onChange} />
-            {hasPV && <><MF label="V Paneles" unit="V" vals={vals} k="V_panel" onChange={onChange} /><MF label="P Paneles" unit="kW" vals={vals} k="P_panel" onChange={onChange} /></>}
+            {hasPV && (
+              <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.72rem', fontWeight: 800, color: 'var(--tx1)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: 'var(--blue)' }}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    {pvCount > 1 ? `Módulos Solares PV (${pvCount})` : 'Módulo Solar PV'}
+                  </div>
+                  {pvCount > 1 && (
+                    <span style={{ fontSize: '.68rem', color: 'var(--tx3)', fontWeight: 600 }}>Arreglos independientes</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {Array.from({ length: pvCount }).map((_, i) => {
+                    const modNum = i + 1;
+                    const vKey = pvCount === 1 ? 'V_panel' : `V_panel_${modNum}`;
+                    const pKey = pvCount === 1 ? 'P_panel' : `P_panel_${modNum}`;
+                    const effectiveVals = { ...vals };
+                    if (pvCount > 1 && modNum === 1) {
+                      if (effectiveVals[vKey] === undefined && effectiveVals['V_panel'] !== undefined) effectiveVals[vKey] = effectiveVals['V_panel'];
+                      if (effectiveVals[pKey] === undefined && effectiveVals['P_panel'] !== undefined) effectiveVals[pKey] = effectiveVals['P_panel'];
+                    }
+                    return (
+                      <div
+                        key={modNum}
+                        style={{
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: '6px 10px',
+                          display: 'grid',
+                          gridTemplateColumns: pvCount > 1 ? 'auto 1fr 1fr' : '1fr 1fr',
+                          gap: 8,
+                          alignItems: 'center'
+                        }}
+                      >
+                        {pvCount > 1 && (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            background: 'rgba(1, 102, 255, 0.12)',
+                            color: 'var(--blue)',
+                            fontSize: '.72rem',
+                            fontWeight: 800,
+                            fontFamily: "'JetBrains Mono', monospace"
+                          }}>
+                            PV {modNum}
+                          </span>
+                        )}
+                        <MF label={pvCount > 1 ? `V Paneles PV${modNum}` : 'V Paneles'} unit="V" vals={effectiveVals} k={vKey} onChange={onChange} />
+                        <MF label={pvCount > 1 ? `P Paneles PV${modNum}` : 'P Paneles'} unit="kW" vals={effectiveVals} k={pKey} onChange={onChange} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <MF label="I Batería" unit="Adc" vals={vals} k="I_bat" onChange={onChange} />
           </div>
         );
       }
-      if (eq.type === 'ETP') return (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <MF label="DC Load" unit="kW" vals={vals} k="DC_load" onChange={onChange} />
-          <MF label="AC Load" unit="kW" vals={vals} k="AC_load" onChange={onChange} />
-          <MF label="I Bat" unit="Acc" vals={vals} k="I_bat" onChange={onChange} />
-          {eq.hasSolar && <><MF label="V Paneles" unit="V" vals={vals} k="V_panel" onChange={onChange} /><MF label="I Paneles" unit="A" vals={vals} k="I_panel" onChange={onChange} /></>}
-        </div>
-      );
+      if (eq.type === 'ETP') {
+        const hasPV = eq.hasSolar;
+        const pvCount = Math.max(1, parseInt(eq.pvCount, 10) || 1);
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <MF label="DC Load" unit="kW" vals={vals} k="DC_load" onChange={onChange} />
+            <MF label="AC Load" unit="kW" vals={vals} k="AC_load" onChange={onChange} />
+            <MF label="I Bat" unit="Acc" vals={vals} k="I_bat" onChange={onChange} />
+            {hasPV && (
+              <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '.72rem', fontWeight: 800, color: 'var(--tx1)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ color: 'var(--blue)' }}><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    {pvCount > 1 ? `Módulos Solares PV (${pvCount})` : 'Módulo Solar PV'}
+                  </div>
+                  {pvCount > 1 && (
+                    <span style={{ fontSize: '.68rem', color: 'var(--tx3)', fontWeight: 600 }}>Arreglos independientes</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {Array.from({ length: pvCount }).map((_, i) => {
+                    const modNum = i + 1;
+                    const vKey = pvCount === 1 ? 'V_panel' : `V_panel_${modNum}`;
+                    const iKey = pvCount === 1 ? 'I_panel' : `I_panel_${modNum}`;
+                    const effectiveVals = { ...vals };
+                    if (pvCount > 1 && modNum === 1) {
+                      if (effectiveVals[vKey] === undefined && effectiveVals['V_panel'] !== undefined) effectiveVals[vKey] = effectiveVals['V_panel'];
+                      if (effectiveVals[iKey] === undefined && effectiveVals['I_panel'] !== undefined) effectiveVals[iKey] = effectiveVals['I_panel'];
+                    }
+                    return (
+                      <div
+                        key={modNum}
+                        style={{
+                          background: 'var(--bg-elevated)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 8,
+                          padding: '6px 10px',
+                          display: 'grid',
+                          gridTemplateColumns: pvCount > 1 ? 'auto 1fr 1fr' : '1fr 1fr',
+                          gap: 8,
+                          alignItems: 'center'
+                        }}
+                      >
+                        {pvCount > 1 && (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '2px 8px',
+                            borderRadius: 6,
+                            background: 'rgba(1, 102, 255, 0.12)',
+                            color: 'var(--blue)',
+                            fontSize: '.72rem',
+                            fontWeight: 800,
+                            fontFamily: "'JetBrains Mono', monospace"
+                          }}>
+                            PV {modNum}
+                          </span>
+                        )}
+                        <MF label={pvCount > 1 ? `V Paneles PV${modNum}` : 'V Paneles'} unit="V" vals={effectiveVals} k={vKey} onChange={onChange} />
+                        <MF label={pvCount > 1 ? `I Paneles PV${modNum}` : 'I Paneles'} unit="A" vals={effectiveVals} k={iKey} onChange={onChange} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
       if (eq.type === 'ATS' || eq.type === 'BKR') {
         const maxA = eq.conductorGauge ? AWG_AMPACITY[eq.conductorGauge] : (eq.capacity ? parseFloat(eq.capacity) : null);
         const alarm = (line) => {
@@ -2244,6 +2365,26 @@ function PendingPage({ onLogout }) {
       batVAT: 'V'
     };
 
+    const getFieldLabel = (k) => {
+      const pvMatch = k.match(/^(V|I|P)_panel(?:_(\d+))?$/);
+      if (pvMatch) {
+        const type = pvMatch[1];
+        const modNum = pvMatch[2];
+        const typeLbl = type === 'V' ? 'V Paneles' : (type === 'I' ? 'I Paneles' : 'P Paneles');
+        return modNum ? `PV${modNum} ${typeLbl}` : typeLbl;
+      }
+      return FIELD_LABELS[k] || k.replace(/_/g, ' ');
+    };
+
+    const getFieldUnit = (k) => {
+      const pvMatch = k.match(/^(V|I|P)_panel(?:_\d+)?$/);
+      if (pvMatch) {
+        const type = pvMatch[1];
+        return type === 'V' ? 'V' : (type === 'I' ? 'A' : 'kW');
+      }
+      return FIELD_UNITS[k] || '';
+    };
+
     function generateReportText({ nodeName, date, shift, technicianName, measurements, observations, equipment }) {
       const d = date instanceof Date ? date : new Date(date);
       const dia = DIAS_ES[d.getDay()];
@@ -2255,6 +2396,15 @@ function PendingPage({ onLogout }) {
 
       const fmtVal = (k, v) => {
         if (v === '' || v === null || v === undefined) return null;
+        const pvMatch = k.match(/^(V|I|P)_panel(?:_(\d+))?$/);
+        if (pvMatch) {
+          const type = pvMatch[1];
+          const modNum = pvMatch[2];
+          const typeLbl = type === 'V' ? 'Vpaneles' : (type === 'I' ? 'Ipaneles' : 'Ppaneles');
+          const unit = type === 'V' ? 'V' : (type === 'I' ? 'A' : 'kW');
+          const prefix = modNum ? `PV${modNum} ` : '';
+          return `${prefix}${typeLbl}: ${v} ${unit}`;
+        }
         const lbl = FIELD_LABELS[k] || k.replace(/_/g, ' ');
         const unit = FIELD_UNITS[k] || '';
         return `${lbl}: ${v}${unit ? ' ' + unit : ''}`;
@@ -2589,7 +2739,7 @@ function PendingPage({ onLogout }) {
       const { newSub: resultingSub, newRes: resultingRes, newTotal: resultingTotal, addedTotalDespacho, ltsP: resultingLtsP, ltsR: resultingLtsR } = calcResultingLevels();
       const [lastSavedTime, setLastSavedTime] = useState(() => initialDraft?.savedAt ? new Date(initialDraft.savedAt).toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }) : null);
       const [eqAction, setEqA] = useState(() => initialDraft?.eqAction || {
-        tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false,
+        tag: '', type: 'INV', voltage: '220V', voltageDC: '', hasAcIn: false, hasAcOut: true, hasDcOut: false, hasSolar: false, pvCount: 1,
         batteryType: 'LFP', batCapacity: '', batCount: '', batCellType: 'No aplica', notes: '', serial: '',
         batSoH: '', batDoD: '', batSerials: [], solarRegPercentage: '', invMode: 'Cargador/Descargador',
         capacity: '', phases: '', horometer: '', lastMaintenanceHorometer: '', maintenanceInterval: 250
@@ -2741,6 +2891,7 @@ function PendingPage({ onLogout }) {
               hasAcOut: !!eqAction.hasAcOut,
               hasDcOut: !!eqAction.hasDcOut,
               hasSolar: !!eqAction.hasSolar,
+              pvCount: eqAction.hasSolar ? Math.max(1, parseInt(eqAction.pvCount, 10) || 1) : 0,
               batteryType: sanitize(eqAction.batteryType || ''),
               batCapacity: sanitize(eqAction.batCapacity || ''),
               batCount: sanitize(eqAction.batCount || ''),
@@ -2774,7 +2925,9 @@ function PendingPage({ onLogout }) {
                 voltage: isDC ? '' : sanitize(eqAction.voltage),
                 voltageDC: sanitize(eqAction.voltageDC || ''),
                 hasAcIn: !!eqAction.hasAcIn, hasAcOut: !!eqAction.hasAcOut, hasDcOut: !!eqAction.hasDcOut,
-                hasSolar: !!eqAction.hasSolar, batteryType: sanitize(eqAction.batteryType),
+                hasSolar: !!eqAction.hasSolar,
+                pvCount: eqAction.hasSolar ? Math.max(1, parseInt(eqAction.pvCount, 10) || 1) : 0,
+                batteryType: sanitize(eqAction.batteryType),
                 batCapacity: sanitize(eqAction.batCapacity || ''), batCount: sanitize(eqAction.batCount || ''),
                 batCellType: sanitize(eqAction.batCellType || 'No aplica'),
                 batSoH: sanitize(eqAction.batSoH || ''), batDoD: sanitize(eqAction.batDoD || ''),
@@ -3340,7 +3493,7 @@ function PendingPage({ onLogout }) {
                             {eq.hasAcIn && <span style={{ color: '#0166ff', fontSize: '.74rem' }}>AC/IN</span>}
                             {eq.hasAcOut && <span style={{ color: '#008000', fontSize: '.74rem' }}>AC/OUT</span>}
                             {eq.hasDcOut && <span style={{ color: '#21c0fa', fontSize: '.74rem' }}>DC/OUT</span>}
-                            {eq.hasSolar && <span style={{ color: '#0166ff', fontSize: '.74rem' }}>PV</span>}
+                            {eq.hasSolar && <span style={{ color: '#0166ff', fontSize: '.74rem' }}>{eq.pvCount > 1 ? `PV (${eq.pvCount})` : 'PV'}</span>}
                             {eq.type === 'ETP' && eq.solarRegPercentage && <span style={{ color: '#0166ff', fontSize: '.74rem' }}>{eq.solarRegPercentage}%</span>}
                             {eq.batteryType && eq.batteryType !== 'No aplica' && <span style={{ color: '#21c0fa', fontSize: '.74rem' }}>{eq.batteryType}</span>}
                           </div>
@@ -3427,6 +3580,20 @@ function PendingPage({ onLogout }) {
                         </label>
                       ))}
                     </div>
+                    {eqAction.hasSolar && (
+                      <div style={{ marginTop: 4, maxWidth: 200 }}>
+                        <label className="lbl" style={{ fontSize: '.76rem' }}>Cantidad de Módulos PV</label>
+                        <input
+                          className="fi fm"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={eqAction.pvCount || 1}
+                          onChange={e => setEqA({ ...eqAction, pvCount: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                          placeholder="1"
+                        />
+                      </div>
+                    )}
                   </div>
                 </>}
                 {eqAction.type === 'ETP' && <>
@@ -3436,6 +3603,20 @@ function PendingPage({ onLogout }) {
                       <input type="checkbox" checked={!!eqAction.hasSolar} onChange={e => setEqA({ ...eqAction, hasSolar: e.target.checked })} />
                       Tiene Paneles Solares
                     </label>
+                    {eqAction.hasSolar && (
+                      <div style={{ marginTop: 4, maxWidth: 200 }}>
+                        <label className="lbl" style={{ fontSize: '.76rem' }}>Cantidad de Módulos PV</label>
+                        <input
+                          className="fi fm"
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={eqAction.pvCount || 1}
+                          onChange={e => setEqA({ ...eqAction, pvCount: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                          placeholder="1"
+                        />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="lbl">Efic. Regulación (%) - Opcional</label>
@@ -3674,7 +3855,7 @@ function PendingPage({ onLogout }) {
                       {Object.entries(vals).map(([k, v]) => (
                         <div key={k}>
                           <label style={{ display: 'block', fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 3, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
-                            {FIELD_LABELS[k] || k} <span style={{ color: 'var(--amber)' }}>{FIELD_UNITS[k] || ''}</span>
+                            {getFieldLabel(k)} <span style={{ color: 'var(--amber)' }}>{getFieldUnit(k)}</span>
                           </label>
                           <input className="mi" type="number" step="any" value={measEdit[tag][k] ?? ''}
                             onChange={e => setMeasEdit(prev => { const n = JSON.parse(JSON.stringify(prev)); n[tag][k] = e.target.value; return n; })} />
@@ -3911,7 +4092,7 @@ function PendingPage({ onLogout }) {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 6 }}>
                     {Object.entries(vals).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => (
                       <div key={k} style={{ background: 'var(--bg-deep)', borderRadius: 5, padding: '6px 8px' }}>
-                        <div style={{ fontSize: '.6rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 1, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>{(FIELD_LABELS[k] || k.replace(/_/g, ' '))} <span style={{ color: 'var(--amber)', fontWeight: 600 }}>{FIELD_UNITS[k] || ''}</span></div>
+                        <div style={{ fontSize: '.6rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 1, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>{getFieldLabel(k)} <span style={{ color: 'var(--amber)', fontWeight: 600 }}>{getFieldUnit(k)}</span></div>
                         <div className="fm" style={{ fontSize: '.95rem', color: '#008000', fontWeight: 600 }}>{v}</div>
                       </div>
                     ))}
@@ -4831,6 +5012,7 @@ function PendingPage({ onLogout }) {
         hasAcOut: !!eq.hasAcOut,
         hasDcOut: !!eq.hasDcOut,
         hasSolar: !!eq.hasSolar,
+        pvCount: eq.pvCount || (eq.hasSolar ? 1 : 0),
         solarRegPercentage: eq.solarRegPercentage || '',
         batteryType: eq.batteryType || 'No aplica',
         batCapacity: eq.batCapacity || '',
@@ -4860,6 +5042,7 @@ function PendingPage({ onLogout }) {
           hasAcOut: !!eq.hasAcOut,
           hasDcOut: !!eq.hasDcOut,
           hasSolar: !!eq.hasSolar,
+          pvCount: eq.pvCount || (eq.hasSolar ? 1 : 0),
           solarRegPercentage: eq.solarRegPercentage || '',
           batteryType: eq.batteryType || 'No aplica',
           batCapacity: eq.batCapacity || '',
@@ -4965,17 +5148,33 @@ function PendingPage({ onLogout }) {
 
               {/* Conexiones Reutilizado */}
               {(f.type === 'INV' || f.type === 'ETP') && (
-                <div style={{ gridColumn: '1/-1', display: 'flex', flexWrap: 'wrap', gap: 16, paddingTop: 4 }}>
-                  {[
-                    ['hasAcIn', 'ENTRADA AC'],
-                    ['hasAcOut', 'Salida AC'],
-                    ['hasDcOut', ' Salida DC'],
-                    ['hasSolar', 'PV']
-                  ].filter(([k]) => f.type !== 'INV' || k !== 'hasDcOut').map(([k, lbl]) => (
-                    <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx2)', fontSize: '.84rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={!!f[k]} onChange={e => setF({ ...f, [k]: e.target.checked })} />{lbl}
-                    </label>
-                  ))}
+                <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+                    {[
+                      ['hasAcIn', 'ENTRADA AC'],
+                      ['hasAcOut', 'Salida AC'],
+                      ['hasDcOut', ' Salida DC'],
+                      ['hasSolar', 'PV']
+                    ].filter(([k]) => f.type !== 'INV' || k !== 'hasDcOut').map(([k, lbl]) => (
+                      <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--tx2)', fontSize: '.84rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={!!f[k]} onChange={e => setF({ ...f, [k]: e.target.checked })} />{lbl}
+                      </label>
+                    ))}
+                  </div>
+                  {f.hasSolar && (
+                    <div style={{ maxWidth: 200 }}>
+                      <label className="lbl" style={{ fontSize: '.76rem' }}>Cantidad de Módulos PV</label>
+                      <input
+                        className="fi fm"
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={f.pvCount || 1}
+                        onChange={e => setF({ ...f, pvCount: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                        placeholder="1"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -6642,7 +6841,7 @@ ${f.obsGenerales}`;
                               {eq.hasAcIn && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>AC/IN</span>}
                               {eq.hasAcOut && <span style={{ color: '#008000', fontSize: '.73rem' }}>AC/OUT</span>}
                               {eq.hasDcOut && <span style={{ color: '#21c0fa', fontSize: '.73rem' }}>DC/OUT</span>}
-                              {eq.hasSolar && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>PV</span>}
+                              {eq.hasSolar && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>{eq.pvCount > 1 ? `PV (${eq.pvCount})` : 'PV'}</span>}
                               {eq.type === 'ETP' && eq.solarRegPercentage && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>{eq.solarRegPercentage}%</span>}
                               {eq.batteryType && eq.batteryType !== 'No aplica' && <span style={{ color: '#21c0fa', fontSize: '.73rem' }}>{eq.batteryType}</span>}
                               {eq.batCapacity && <span style={{ color: '#21c0fa', fontSize: '.73rem' }}>{eq.batCapacity}Ah</span>}
@@ -7425,14 +7624,17 @@ ${f.obsGenerales}`;
           const voltage = parts[2] || '220V';
           const batRaw = (parts[3] || '').toUpperCase();
           const batteryType = BAT_TYPES.find(b => b.toUpperCase() === batRaw) || 'No aplica';
-          const hasSolar = ['SI', 'SÍ', 'YES', 'S', '1', 'TRUE'].includes((parts[4] || '').toUpperCase().trim());
+          const p4 = (parts[4] || '').trim();
+          const p4Num = parseInt(p4, 10);
+          const hasSolar = ['SI', 'SÍ', 'YES', 'S', '1', 'TRUE'].includes(p4.toUpperCase()) || (!isNaN(p4Num) && p4Num > 0);
+          const pvCount = hasSolar ? (!isNaN(p4Num) && p4Num > 0 ? p4Num : 1) : 0;
           // notes handled below with bank fields
           const batCapacity = parts[5] || '';
           const batCount = parts[6] || '';
           const batCellRaw = (parts[7] || '').trim();
           const batCellType = ['Prismática', 'Cilíndrica', 'Pouch'].find(c => c.toLowerCase() === batCellRaw.toLowerCase()) || 'No aplica';
           const notes = parts[8] || parts[5] || ''; // fallback for old 6-col format
-          return { tag, type, voltage, batteryType, hasSolar, batCapacity, batCount, batCellType, notes, valid: !!tag, _line: i + 1 };
+          return { tag, type, voltage, batteryType, hasSolar, pvCount, batCapacity, batCount, batCellType, notes, valid: !!tag, _line: i + 1 };
         });
         setBulkParsed(parsed);
       };
@@ -7455,6 +7657,7 @@ ${f.obsGenerales}`;
               voltage: sanitize(data.voltage || ''),
               batteryType: sanitize(data.batteryType || ''),
               hasSolar: !!data.hasSolar,
+              pvCount: data.hasSolar ? (data.pvCount || 1) : 0,
               batCapacity: sanitize(data.batCapacity || ''),
               batCount: sanitize(data.batCount || ''),
               batCellType: sanitize(data.batCellType || 'No aplica'),
@@ -7678,7 +7881,7 @@ ${f.obsGenerales}`;
                           <span className="badge" style={{ background: ti.bg, color: ti.color, flexShrink: 0 }}>{eq.type}</span>
                           <span className="fm" style={{ fontSize: '.85rem', color: 'var(--tx1)', fontWeight: 600 }}>{eq.tag || '(sin tag)'}</span>
                           {eq.voltage && eq.type === 'INV' && <span style={{ color: 'var(--tx3)', fontSize: '.73rem' }}>{eq.voltage}</span>}
-                          {eq.hasSolar && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>PV</span>}
+                          {eq.hasSolar && <span style={{ color: '#0166ff', fontSize: '.73rem' }}>{eq.pvCount > 1 ? `PV (${eq.pvCount})` : 'PV'}</span>}
                           {eq.batteryType && eq.batteryType !== 'No aplica' && <span style={{ color: '#21c0fa', fontSize: '.73rem' }}>{eq.batteryType}</span>}
                           {eq.notes && <span style={{ color: 'var(--tx4)', fontSize: '.73rem', marginLeft: 'auto' }}>{eq.notes}</span>}
                         </div>
