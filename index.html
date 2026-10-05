@@ -19413,7 +19413,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         txt += `Comunidad Tradicional: ${numTrad} tablas | Comunidad Nodo: ${numNodo} tablas | Total: ${totalTablas} tablas\n`;
         txt += '------------------------------------------------------------\n\n';
         resultados.forEach(r => {
-          txt += `${r.nombre}: ${fmt(r.total)} ${r.unidad} (Requerido: ${fmt(r.requerida)} ${r.unidad}/tabla)\n`;
+          txt += `${r.nombre}: ${fmt(r.total)} ${r.unidad}\n`;
         });
         navigator.clipboard.writeText(txt).then(() => {
           alert('¡Listado copiado al portapapeles!');
@@ -19430,9 +19430,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         if (!resultados || !resultados.length) return;
         const rows = resultados.map(r => ({
           'MATERIAL': r.nombre,
-          'UNIDAD REQUERIDA': fmt(r.requerida),
-          'UNIDAD': r.unidad,
-          'MATERIAL TOTAL': fmt(r.total)
+          'MATERIAL TOTAL': `${fmt(r.total)} ${r.unidad}`
         }));
 
         const wb = window.XLSX.utils.book_new();
@@ -19524,42 +19522,37 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* Generación Directa de la Lista (Sin campos de edición, cálculo directo) */}
+          {/* Listado Directo: Solo Material y Material Total */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16, background: 'var(--bg-card)' }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 130px 100px 120px 140px',
+              gridTemplateColumns: '1fr 180px',
               background: 'var(--bg-elevated)',
-              padding: '10px 16px',
-              fontSize: '.7rem',
+              padding: '12px 20px',
+              fontSize: '.72rem',
               color: 'var(--tx3)',
               textTransform: 'uppercase',
               letterSpacing: '.06em',
               fontFamily: "'Outfit', 'Montserrat', sans-serif"
             }}>
               <span>Material</span>
-              <span style={{ textAlign: 'center' }}>Unidad Requerida</span>
-              <span style={{ textAlign: 'center' }}>Unidad</span>
-              <span style={{ textAlign: 'center' }}>Tablas a Construir</span>
               <span style={{ textAlign: 'right' }}>Material Total</span>
             </div>
             {resultados.map((r, i) => (
               <div key={r.id || i} style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 130px 100px 120px 140px',
-                padding: '10px 16px',
+                gridTemplateColumns: '1fr 180px',
+                padding: '12px 20px',
                 background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
                 borderTop: '1px solid var(--border)',
                 alignItems: 'center',
-                gap: 8
+                gap: 12
               }}>
-                <span style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 500 }}>
+                <span style={{ fontSize: '.86rem', color: 'var(--tx1)', fontWeight: 500 }}>
                   {r.nombre}
                 </span>
-                <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
-                  {fmt(r.requerida)}
-                </span>
-                <span style={{ textAlign: 'center' }}>
+                <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--green)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                  {fmt(r.total)}
                   <span style={{
                     fontSize: '.72rem',
                     fontWeight: 700,
@@ -19570,12 +19563,6 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   }}>
                     {r.unidad}
                   </span>
-                </span>
-                <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
-                  {r.tablas}
-                </span>
-                <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--green)', textAlign: 'right' }}>
-                  {fmt(r.total)} <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--tx3)' }}>{r.unidad}</span>
                 </span>
               </div>
             ))}
