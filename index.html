@@ -19173,172 +19173,186 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     // APP ROOT
     // ═══════════════════════════════════════════════════
     
-    const MATERIALES_ACTIVACION = [
-      { id: 1, nombre: "PANEL SOLAR DE 580W A 600W", base: 1, extra: 0 },
-      { id: 2, nombre: "RIEL UNISTRUT LARGO DOS METROS CUARENTA", base: 1, extra: 0 },
-      { id: 3, nombre: "CONECTORES END CLAMP R2", base: 4, extra: 0 },
-      { id: 4, nombre: "TORNILLOS PARA RAMPLUNG NARANJA", base: 10, extra: 2 },
-      { id: 5, nombre: "RAMPLUG NARANJA 3/8\"", base: 10, extra: 2 },
-      { id: 6, nombre: "ARANDELA DE 1/4", base: 10, extra: 2 },
-      { id: 7, nombre: "KIT DE TORNILLO Y TUERCA CON RESORTE PARA PERFIL UNISTRUT DE BANDEJA METALICA", base: 6, extra: 0 },
-      { id: 8, nombre: "TORNILLO CABEZA HEXAGONAL 6MM\"X1 3/4\"", base: 4, extra: 1 },
-      { id: 9, nombre: "KIT DE RESPALDO COMUNIDAD TRADICIONAL", base: 1, extra: 0 },
-      { id: 10, nombre: "BATERIA GREEN POINT / IONES DE LITIO TIPO LFP / 24V / 120 AH", base: 1, extra: 0 }
+        const MATERIALES_ACTIVACION = [
+      { id: 1, nombre: "PANEL SOLAR DE 580W A 600W", base: 1 },
+      { id: 2, nombre: "RIEL UNISTRUT LARGO DOS METROS CUARENTA", base: 1 },
+      { id: 3, nombre: "CONECTORES END CLAMP R2", base: 4 },
+      { id: 4, nombre: "TORNILLOS PARA RAMPLUNG NARANJA", base: 10 },
+      { id: 5, nombre: "RAMPLUG NARANJA 3/8\"", base: 10 },
+      { id: 6, nombre: "ARANDELA DE 1/4", base: 10 },
+      { id: 7, nombre: "KIT DE TORNILLO Y TUERCA CON RESORTE PARA PERFIL UNISTRUT DE BANDEJA METALICA", base: 6 },
+      { id: 8, nombre: "TORNILLO CABEZA HEXAGONAL 6MM\"X1 3/4\"", base: 4 },
+      { id: 9, nombre: "KIT DE RESPALDO COMUNIDAD TRADICIONAL", base: 1 },
+      { id: 10, nombre: "BATERIA GREEN POINT / IONES DE LITIO TIPO LFP / 24V / 120 AH", base: 1 }
     ];
 
     function ComunidadesCalc() {
-      const [respaldos, setRespaldos] = useState(() => localStorage.getItem('energia_act_comunidades_resp') || '1');
-      const [comunidades, setComunidades] = useState(() => localStorage.getItem('energia_act_comunidades_n') || '1');
-      const [f, setF] = useState(() => {
-        try { const s = localStorage.getItem('energia_act_comunidades_f'); return s ? JSON.parse(s) : {}; } catch (e) { return {}; }
-      });
-      const [resultados, setResultados] = useState(null);
+      const [respaldos, setRespaldos] = useState(() => localStorage.getItem('energia_act_comunidades_resp') || '6');
 
       useEffect(() => {
         localStorage.setItem('energia_act_comunidades_resp', respaldos);
-        localStorage.setItem('energia_act_comunidades_n', comunidades);
-        localStorage.setItem('energia_act_comunidades_f', JSON.stringify(f));
-      }, [respaldos, comunidades, f]);
+      }, [respaldos]);
 
-      const getQ = (m) => { const v = parseFloat(f[m.id]); return isNaN(v) ? m.base : v; };
-      const fmt = (n) => Number.isInteger(n) ? n : n.toFixed(2);
+      const numResp = parseFloat(respaldos) || 0;
+      const fmt = (n) => Number.isInteger(n) ? n : parseFloat(n.toFixed(2));
 
-      const calcular = () => {
-        const r = parseFloat(respaldos) || 1;
-        const n = parseFloat(comunidades) || 1;
-        const res = MATERIALES_ACTIVACION.map((m, i) => ({
-          id: i,
+      const resultados = useMemo(() => {
+        const r = numResp > 0 ? numResp : 0;
+        return MATERIALES_ACTIVACION.map(m => ({
+          id: m.id,
           nombre: m.nombre,
-          requerida: getQ(m),
+          requerida: m.base,
           respaldos: r,
-          extra: m.extra,
-          total: ((getQ(m) * r) + m.extra) * n
+          total: m.base * r
         }));
-        setResultados(res);
-      };
+      }, [numResp]);
 
       const copy = () => {
         if (!resultados || !resultados.length) return;
         let txt = 'AIRTEK - MATERIALES ACTIVACION COMUNIDADES (COMUNIDAD TRADICIONAL)\n';
         txt += 'Fecha: ' + new Date().toLocaleString() + '\n';
-        txt += '----------------------------------------\n\n';
+        txt += `Número de Respaldos: ${numResp}\n`;
+        txt += '------------------------------------------------------------\n\n';
         resultados.forEach(r => {
-          txt += r.nombre + ': ' + fmt(r.total) + '\n';
+          txt += `${r.nombre}: ${fmt(r.total)} (Requerido: ${fmt(r.requerida)}/respaldo)\n`;
         });
-        navigator.clipboard.writeText(txt).catch(() => {
+        navigator.clipboard.writeText(txt).then(() => {
+          alert('¡Listado copiado al portapapeles!');
+        }).catch(() => {
           const ta = document.createElement('textarea');
           ta.value = txt; ta.style.cssText = 'position:fixed;opacity:0';
           document.body.appendChild(ta); ta.select();
           document.execCommand('copy'); document.body.removeChild(ta);
+          alert('¡Listado copiado al portapapeles!');
         });
       };
 
       const exportXlsx = () => {
         if (!resultados || !resultados.length) return;
-        const rows = resultados.map(r => ({
+        const rows = resultados.map((r, idx) => ({
           'MATERIAL': r.nombre,
-          'UNIDAD REQUERIDA': Number.isInteger(r.requerida) ? r.requerida : parseFloat(r.requerida.toFixed(2)),
-          'NUMERO DE RESPALDOS': Number.isInteger(r.respaldos) ? r.respaldos : parseFloat(r.respaldos.toFixed(2)),
-          'MATERIAL TOTAL': Number.isInteger(r.total) ? r.total : parseFloat(r.total.toFixed(2)),
+          'UNIDAD REQUERIDA': fmt(r.requerida),
+          'NUMERO DE RESPALDOS': idx === 0 ? numResp : '',
+          'MATERIAL TOTAL': fmt(r.total)
         }));
         const wb = window.XLSX.utils.book_new();
         const ws = window.XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = [{ wch: 60 }, { wch: 16 }, { wch: 20 }, { wch: 15 }];
+        ws['!cols'] = [{ wch: 65 }, { wch: 20 }, { wch: 24 }, { wch: 18 }];
         window.XLSX.utils.book_append_sheet(wb, ws, 'Activacion C.Tradicional');
-        window.XLSX.writeFile(wb, 'materiales_activacion_comunidades_' + Date.now() + '.xlsx');
+        window.XLSX.writeFile(wb, 'Materiales_Activacion_Comunidades_' + Date.now() + '.xlsx');
       };
 
       return (
         <div className="fin">
           <div style={{ marginBottom: 18 }}>
-            <h1 className="fd" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 4 }}>Calculadora Materiales - Activación Comunidades</h1>
-            <p style={{ color: 'var(--tx3)', fontSize: '.85rem' }}>Activación C. Tradicional - listado con respaldos</p>
+            <h1 className="fd" style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--tx1)', marginBottom: 4 }}>
+              Calculadora Materiales - Activación Comunidades
+            </h1>
+            <p style={{ color: 'var(--tx3)', fontSize: '.85rem', margin: 0 }}>
+              Activación C. Tradicional - listado de materiales por número de respaldos
+            </p>
           </div>
 
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '14px 16px' }}>
+          {/* Tarjeta de Entrada: Solo Número de Respaldos (Idéntico a la hoja Excel) */}
+          <div className="card" style={{ marginBottom: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px 18px', alignItems: 'center' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label className="lbl" style={{ marginBottom: 0, fontSize: '.76rem', fontWeight: 600, color: 'var(--tx2)' }}>Numero de respaldos</label>
-                <input className="fi" type="number" value={respaldos} onChange={e => setRespaldos(e.target.value)} placeholder="1" />
+                <label className="lbl" style={{ marginBottom: 0, fontSize: '.76rem', fontWeight: 600, color: 'var(--tx2)' }}>
+                  Número de respaldos
+                </label>
+                <input
+                  className="fi fm"
+                  type="number"
+                  min="0"
+                  value={respaldos}
+                  onChange={e => setRespaldos(e.target.value)}
+                  placeholder="Ej: 6"
+                  style={{ fontSize: '.95rem', fontWeight: 700 }}
+                />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label className="lbl" style={{ marginBottom: 0, fontSize: '.76rem', fontWeight: 600, color: 'var(--tx2)' }}>Numero de comunidades / activaciones</label>
-                <input className="fi" type="number" value={comunidades} onChange={e => setComunidades(e.target.value)} placeholder="1" />
-              </div>
-            </div>
-          </div>
 
-          <div className="card" style={{ marginBottom: 14 }}>
-            <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--amber)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>COMUNIDAD TRADICIONAL</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 140px', padding: '8px 12px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
-              <span>Material</span>
-              <span style={{ textAlign: 'center' }}>Unidad requerida</span>
-              <span style={{ textAlign: 'right' }}>Respaldo fijo</span>
-            </div>
-            {MATERIALES_ACTIVACION.map(m => (
-              <div key={m.id} style={{
-                display: 'grid', gridTemplateColumns: '1fr 110px 140px', padding: '8px 12px',
-                background: (m.id % 2 === 0) ? 'var(--bg-surface)' : 'var(--bg-card)',
-                borderTop: '1px solid var(--border)', alignItems: 'center', gap: 8
+              <div style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '10px 16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }}>
-                <span style={{ fontSize: '.84rem', color: 'var(--tx1)' }}>{m.nombre}</span>
-                <input className="fi" type="number" value={f[m.id] !== undefined ? f[m.id] : m.base}
-                  onChange={e => setF(p => ({ ...p, [m.id]: e.target.value }))} placeholder={String(m.base)} style={{ textAlign: 'center', padding: '7px 8px' }} />
-                <div style={{ textAlign: 'right', fontSize: '.78rem', color: m.extra > 0 ? 'var(--amber)' : 'var(--tx4)' }}>
-                  {m.extra > 0 ? '+' + m.extra + ' uds' : '—'}
+                <div>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', fontWeight: 700 }}>
+                    Respaldos a Construir
+                  </div>
+                  <div style={{ fontSize: '.76rem', color: 'var(--tx2)', marginTop: 2 }}>
+                    C. Tradicional
+                  </div>
                 </div>
+                <div className="fm" style={{ fontSize: '1.45rem', fontWeight: 900, color: 'var(--blue)' }}>
+                  {numResp} <span style={{ fontSize: '.78rem', fontWeight: 600, color: 'var(--tx3)' }}>respaldos</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Lista Generada Directamente */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16, background: 'var(--bg-card)' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 140px 140px 140px',
+              background: 'var(--bg-elevated)',
+              padding: '10px 16px',
+              fontSize: '.7rem',
+              color: 'var(--tx3)',
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              fontFamily: "'Outfit', 'Montserrat', sans-serif"
+            }}>
+              <span>Material</span>
+              <span style={{ textAlign: 'center' }}>Unidad Requerida</span>
+              <span style={{ textAlign: 'center' }}>Número de Respaldos</span>
+              <span style={{ textAlign: 'right' }}>Material Total</span>
+            </div>
+            {resultados.map((r, i) => (
+              <div key={r.id || i} style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 140px 140px 140px',
+                padding: '10px 16px',
+                background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
+                borderTop: '1px solid var(--border)',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 500 }}>
+                  {r.nombre}
+                </span>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
+                  {fmt(r.requerida)}
+                </span>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
+                  {fmt(r.respaldos)}
+                </span>
+                <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--green)', textAlign: 'right' }}>
+                  {fmt(r.total)}
+                </span>
               </div>
             ))}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-            <button className="bp" style={{ fontSize: '.88rem', padding: '10px 28px', minWidth: 220 }} onClick={calcular}>
-              Calcular Materiales Totales
+          {/* Botones de Acción */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button className="bg" style={{ fontSize: '.84rem', padding: '9px 20px', minWidth: 140 }} onClick={copy}>
+              Copiar lista
+            </button>
+            <button className="bs" style={{ fontSize: '.84rem', padding: '9px 20px', minWidth: 140, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={exportXlsx}>
+              <IconExcel size={15} color="#10b981" />
+              Descargar Excel (.xlsx)
             </button>
           </div>
-
-          {resultados === null && (
-            <div className="card" style={{ textAlign: 'center', padding: 32, color: 'var(--tx3)' }}>
-              Complete los valores y presione Calcular
-            </div>
-          )}
-
-          {resultados !== null && (
-            <div>
-              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 110px 110px', background: 'var(--bg-elevated)', padding: '8px 12px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>
-                  <span>Material</span>
-                  <span style={{ textAlign: 'center' }}>Unidad requerida</span>
-                  <span style={{ textAlign: 'center' }}>Respaldos</span>
-                  <span style={{ textAlign: 'center' }}>Material total</span>
-                </div>
-                {resultados.map((r, i) => (
-                  <div key={i} style={{
-                    display: 'grid', gridTemplateColumns: '1fr 110px 110px 110px', padding: '9px 12px',
-                    background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
-                    borderTop: '1px solid var(--border)', alignItems: 'center', gap: 8
-                  }}>
-                    <span style={{ fontSize: '.84rem', color: 'var(--tx1)' }}>{r.nombre}</span>
-                    <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center' }}>{fmt(r.requerida)}</span>
-                    <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center' }}>{fmt(r.respaldos)}</span>
-                    <span className="fm" style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--green)', textAlign: 'center' }}>{fmt(r.total)}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-                <button className="bg" style={{ fontSize: '.84rem', padding: '8px 18px', minWidth: 130 }} onClick={copy}>Copiar lista</button>
-                <button className="bs" style={{ fontSize: '.84rem', padding: '8px 18px', minWidth: 130 }} onClick={exportXlsx}>Exportar Excel</button>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
 
-    // ═══════════════════════════════════════════════════
-    // 🚀 APP ROOT
-    // ═══════════════════════════════════════════════════
-    
     // ═══════════════════════════════════════════════════
     // 🧮 CALCULADORA: ARMADO DE TABLAS DE RESPALDO
     // ═══════════════════════════════════════════════════
@@ -19365,59 +19379,32 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       { id: 19, nombre: 'TORNILLO PARA DRYWALL 1/2"', base: 30, unidad: "und" }
     ];
 
-    function TablasRespaldoCalc() {
+        function TablasRespaldoCalc() {
       const [cantTradicional, setCantTradicional] = useState(() => localStorage.getItem('airtek_tablas_resp_trad') || '5');
       const [cantNodo, setCantNodo] = useState(() => localStorage.getItem('airtek_tablas_resp_nodo') || '');
-      const [f, setF] = useState(() => {
-        try {
-          const s = localStorage.getItem('airtek_tablas_resp_overrides');
-          return s ? JSON.parse(s) : {};
-        } catch (e) { return {}; }
-      });
-
-      const getQ = (m) => {
-        const v = parseFloat(f[m.id]);
-        return isNaN(v) ? m.base : v;
-      };
-
-      const fmt = (n) => Number.isInteger(n) ? n : parseFloat(n.toFixed(2));
 
       const numTrad = parseFloat(cantTradicional) || 0;
       const numNodo = parseFloat(cantNodo) || 0;
       const totalTablas = (numTrad + numNodo) > 0 ? (numTrad + numNodo) : (parseFloat(cantTradicional) || 1);
 
-      const [resultados, setResultados] = useState(() => {
-        const tot = (parseFloat(cantTradicional) || 5) + (parseFloat(cantNodo) || 0);
+      useEffect(() => {
+        localStorage.setItem('airtek_tablas_resp_trad', cantTradicional);
+        localStorage.setItem('airtek_tablas_resp_nodo', cantNodo);
+      }, [cantTradicional, cantNodo]);
+
+      const fmt = (n) => Number.isInteger(n) ? n : parseFloat(n.toFixed(2));
+
+      const resultados = useMemo(() => {
+        const tot = totalTablas;
         return MATERIALES_TABLAS_RESPALDO.map(m => ({
           id: m.id,
           nombre: m.nombre,
           requerida: m.base,
           unidad: m.unidad,
-          tablas: tot > 0 ? tot : 5,
-          total: m.base * (tot > 0 ? tot : 5)
+          tablas: tot,
+          total: m.base * tot
         }));
-      });
-
-      useEffect(() => {
-        localStorage.setItem('airtek_tablas_resp_trad', cantTradicional);
-        localStorage.setItem('airtek_tablas_resp_nodo', cantNodo);
-        localStorage.setItem('airtek_tablas_resp_overrides', JSON.stringify(f));
-      }, [cantTradicional, cantNodo, f]);
-
-      const calcular = () => {
-        const res = MATERIALES_TABLAS_RESPALDO.map(m => {
-          const req = getQ(m);
-          return {
-            id: m.id,
-            nombre: m.nombre,
-            requerida: req,
-            unidad: m.unidad,
-            tablas: totalTablas,
-            total: req * totalTablas
-          };
-        });
-        setResultados(res);
-      };
+      }, [totalTablas]);
 
       const copy = () => {
         if (!resultados || !resultados.length) return;
@@ -19472,7 +19459,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               Calculadora Materiales - Armado de Tablas de Respaldo
             </h1>
             <p style={{ color: 'var(--tx3)', fontSize: '.85rem', margin: 0 }}>
-              Dimensionamiento y cómputo de componentes para construcción de tablas de respaldo fotovoltaicas.
+              Cálculo y cómputo de componentes para construcción de tablas de respaldo fotovoltaicas.
             </p>
           </div>
 
@@ -19537,143 +19524,73 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* Tabla de Parámetros Base */}
-          <div className="card" style={{ marginBottom: 16, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div className="fd" style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--tx1)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                Listado Base de Materiales Requeridos por Tabla
-              </div>
-              <span style={{ fontSize: '.72rem', color: 'var(--tx3)' }}>
-                {MATERIALES_TABLAS_RESPALDO.length} materiales catalogados
-              </span>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 90px', padding: '10px 16px', fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', background: 'var(--bg-elevated)' }}>
+          {/* Generación Directa de la Lista (Sin campos de edición, cálculo directo) */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16, background: 'var(--bg-card)' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 130px 100px 120px 140px',
+              background: 'var(--bg-elevated)',
+              padding: '10px 16px',
+              fontSize: '.7rem',
+              color: 'var(--tx3)',
+              textTransform: 'uppercase',
+              letterSpacing: '.06em',
+              fontFamily: "'Outfit', 'Montserrat', sans-serif"
+            }}>
               <span>Material</span>
-              <span style={{ textAlign: 'center' }}>Unidad Requerida / Tabla</span>
+              <span style={{ textAlign: 'center' }}>Unidad Requerida</span>
               <span style={{ textAlign: 'center' }}>Unidad</span>
+              <span style={{ textAlign: 'center' }}>Tablas a Construir</span>
+              <span style={{ textAlign: 'right' }}>Material Total</span>
             </div>
-
-            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-              {MATERIALES_TABLAS_RESPALDO.map((m, idx) => (
-                <div key={m.id} style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 140px 90px',
-                  padding: '9px 16px',
-                  background: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
-                  borderTop: '1px solid var(--border)',
-                  alignItems: 'center',
-                  gap: 10
-                }}>
-                  <span style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 500 }}>
-                    {m.nombre}
+            {resultados.map((r, i) => (
+              <div key={r.id || i} style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 130px 100px 120px 140px',
+                padding: '10px 16px',
+                background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
+                borderTop: '1px solid var(--border)',
+                alignItems: 'center',
+                gap: 8
+              }}>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 500 }}>
+                  {r.nombre}
+                </span>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
+                  {fmt(r.requerida)}
+                </span>
+                <span style={{ textAlign: 'center' }}>
+                  <span style={{
+                    fontSize: '.72rem',
+                    fontWeight: 700,
+                    padding: '2px 7px',
+                    borderRadius: 6,
+                    background: r.unidad === 'mts' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(1, 102, 255, 0.12)',
+                    color: r.unidad === 'mts' ? '#10b981' : 'var(--blue)'
+                  }}>
+                    {r.unidad}
                   </span>
-                  <input
-                    className="fi fm"
-                    type="number"
-                    step="any"
-                    min="0"
-                    value={f[m.id] !== undefined ? f[m.id] : m.base}
-                    onChange={e => setF(p => ({ ...p, [m.id]: e.target.value }))}
-                    placeholder={String(m.base)}
-                    style={{ textAlign: 'center', padding: '6px 10px', fontSize: '.86rem', fontWeight: 600 }}
-                  />
-                  <div style={{ textAlign: 'center' }}>
-                    <span style={{
-                      fontSize: '.72rem',
-                      fontWeight: 700,
-                      padding: '3px 8px',
-                      borderRadius: 6,
-                      background: m.unidad === 'mts' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(1, 102, 255, 0.12)',
-                      color: m.unidad === 'mts' ? '#10b981' : 'var(--blue)'
-                    }}>
-                      {m.unidad}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                </span>
+                <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
+                  {r.tablas}
+                </span>
+                <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--green)', textAlign: 'right' }}>
+                  {fmt(r.total)} <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--tx3)' }}>{r.unidad}</span>
+                </span>
+              </div>
+            ))}
           </div>
 
-          {/* Botón de Cálculo */}
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
-            <button className="bp" style={{ fontSize: '.88rem', padding: '10px 32px', minWidth: 260, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={calcular}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Calcular Materiales Totales
+          {/* Botones de Acción */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button className="bg" style={{ fontSize: '.84rem', padding: '9px 20px', minWidth: 140 }} onClick={copy}>
+              Copiar lista
+            </button>
+            <button className="bs" style={{ fontSize: '.84rem', padding: '9px 20px', minWidth: 140, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={exportXlsx}>
+              <IconExcel size={15} color="#10b981" />
+              Descargar Excel (.xlsx)
             </button>
           </div>
-
-          {/* Resultados Calculados */}
-          {resultados && resultados.length > 0 && (
-            <div>
-              <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 16, background: 'var(--bg-card)' }}>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 130px 100px 120px 140px',
-                  background: 'var(--bg-elevated)',
-                  padding: '10px 16px',
-                  fontSize: '.7rem',
-                  color: 'var(--tx3)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '.06em',
-                  fontFamily: "'Outfit', 'Montserrat', sans-serif"
-                }}>
-                  <span>Material</span>
-                  <span style={{ textAlign: 'center' }}>Unidad Requerida</span>
-                  <span style={{ textAlign: 'center' }}>Unidad</span>
-                  <span style={{ textAlign: 'center' }}>Tablas a Construir</span>
-                  <span style={{ textAlign: 'right' }}>Material Total</span>
-                </div>
-                {resultados.map((r, i) => (
-                  <div key={r.id || i} style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 130px 100px 120px 140px',
-                    padding: '10px 16px',
-                    background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-card)',
-                    borderTop: '1px solid var(--border)',
-                    alignItems: 'center',
-                    gap: 8
-                  }}>
-                    <span style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 500 }}>
-                      {r.nombre}
-                    </span>
-                    <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
-                      {fmt(r.requerida)}
-                    </span>
-                    <span style={{ textAlign: 'center' }}>
-                      <span style={{
-                        fontSize: '.72rem',
-                        fontWeight: 700,
-                        padding: '2px 7px',
-                        borderRadius: 6,
-                        background: r.unidad === 'mts' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(1, 102, 255, 0.12)',
-                        color: r.unidad === 'mts' ? '#10b981' : 'var(--blue)'
-                      }}>
-                        {r.unidad}
-                      </span>
-                    </span>
-                    <span style={{ fontSize: '.84rem', color: 'var(--tx2)', textAlign: 'center', fontFamily: "'Outfit', monospace" }}>
-                      {r.tablas}
-                    </span>
-                    <span className="fm" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--green)', textAlign: 'right' }}>
-                      {fmt(r.total)} <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--tx3)' }}>{r.unidad}</span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Botones de Acción */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <button className="bg" style={{ fontSize: '.84rem', padding: '9px 20px', minWidth: 140 }} onClick={copy}>
-                  Copiar lista
-                </button>
-                <button className="bs" style={{ fontSize: '.84rem', padding: '9px 20px', minWidth: 140, display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={exportXlsx}>
-                  <IconExcel size={15} color="#10b981" />
-                  Descargar Excel (.xlsx)
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
