@@ -14165,6 +14165,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
       const [showNewRefillModal, setShowNewRefillModal] = useState(false);
       const [selectedPlantForRefill, setSelectedPlantForRefill] = useState(null);
+      const [showAdjustLevelModal, setShowAdjustLevelModal] = useState(false);
+      const [selectedPlantForAdjust, setSelectedPlantForAdjust] = useState(null);
       const [showNewMttoModal, setShowNewMttoModal] = useState(false);
 
       // Guardar cambios en persistencia local
@@ -14360,6 +14362,81 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             console.warn('Error saving surtido record to node energy_records:', recErr);
           }
         }
+      };
+
+      const handleAdjustFuelLevel = async (adjustData) => {
+        const { plant, newSub, newRes, newTotal, diffRes, diffSub, motivo, tecnico, fecha, obs } = adjustData;
+        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const targetNorm = normFn(plant.lugar);
+
+        // 1. Actualizar tanks en memoria
+        setTanks(prev => prev.map(t => {
+          const tNorm = normFn(t.lugar);
+          const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (plant.tag && t.tag === plant.tag);
+          if (matches) {
+            const autTotal = t.consumo_lh > 0 ? Number((newTotal / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+            const diasAut = Number((autTotal / 24).toFixed(2));
+            return {
+              ...t,
+              subtanque_actual: (t.tag === plant.tag || !plant.tag) ? newSub : t.subtanque_actual,
+              reserva_lts: newRes,
+              aut_total_h: autTotal,
+              dias_aut: diasAut
+            };
+          }
+          return t;
+        }));
+
+        // 2. Persistir en Firestore (energy_nodes/{id}/fuel/state y node.fuelState) y LocalStorage
+        await persistNodeFuelUpdate({
+          db,
+          nodeName: plant.lugar,
+          plantTag: plant.tag,
+          resultingSub: newSub,
+          resultingRes: newRes,
+          resultingTotal: newTotal,
+          addedTotalDespacho: 0,
+          resultingLtsP: 0,
+          resultingLtsR: 0,
+          fuelDest: `Calibración (${motivo})`,
+          fuelHoro: plant.horometro_actual || '',
+          userProfile
+        });
+
+        // 3. Registrar auditoría en energy_records del nodo
+        if (db) {
+          try {
+            const nodesSnap = await db.collection('energy_nodes').get();
+            for (const nDoc of nodesSnap.docs) {
+              const nData = nDoc.data();
+              const nNorm = normFn(nData.name || nDoc.id);
+              if (nNorm === targetNorm || (targetNorm && nNorm.includes(targetNorm)) || (nNorm && targetNorm.includes(nNorm))) {
+                await nDoc.ref.collection('energy_records').add({
+                  type: 'ajuste_combustible',
+                  date: TS(),
+                  generatorTag: plant.tag,
+                  fuelTotalLevel: newTotal,
+                  fuelSubLevel: newSub,
+                  fuelReserveLevel: newRes,
+                  diffReserve: diffRes,
+                  diffSub: diffSub,
+                  adjustmentReason: motivo,
+                  technicianName: tecnico,
+                  observations: obs || '',
+                  createdBy: userProfile?.name || 'Técnico',
+                  createdAt: TS()
+                });
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('Error saving fuel adjustment record:', e);
+          }
+        }
+
+        if (toast) toast(`Nivel de reserva en ${plant.lugar} calibrado a ${newRes} Lts exitosamente.`, 'success');
+        setShowAdjustLevelModal(false);
+        setSelectedPlantForAdjust(null);
 
         // Si el surtido incluye horómetro, actualizar maintenances y BD
         if (newRefill.horometro && newRefill.tag) {
@@ -14595,6 +14672,10 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 setSelectedPlantForRefill(plant);
                 setShowNewRefillModal(true);
               }}
+              onOpenAdjustModal={(plant) => {
+                setSelectedPlantForAdjust(plant);
+                setShowAdjustLevelModal(true);
+              }}
               onDeleteRefill={handleDeleteRefill}
               toast={toast}
             />
@@ -14654,12 +14735,26 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               onClose={() => setShowNewMttoModal(false)}
             />
           )}
+
+          {showAdjustLevelModal && (
+            <AdjustFuelLevelModal
+              tanks={tanks}
+              preselectedPlant={selectedPlantForAdjust}
+              userProfile={userProfile}
+              onSave={handleAdjustFuelLevel}
+              onClose={() => {
+                setShowAdjustLevelModal(false);
+                setSelectedPlantForAdjust(null);
+              }}
+              toast={toast}
+            />
+          )}
         </div>
       );
     }
 
     // ── COMPONENTE: LISTA RÁPIDA Y MODULAR DE PLANTAS ELÉCTRICAS ─────────────
-    function PlantasQuickList({ tanks = [], onSelectPlant }) {
+    function PlantasQuickList({ tanks = [], onSelectPlant, onAdjustPlant }) {
       const [filter, setFilter] = useState('');
       const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -14893,8 +14988,20 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </div>
 
                         {(resCap > 0 || resActual > 0) && (
-                          <div>
-                            <div style={{ fontSize: '.64rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Reserva</div>
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onAdjustPlant) onAdjustPlant(plant);
+                            }}
+                            title="Hacer clic para calibrar o cambiar el nivel real de reserva"
+                            style={{ cursor: 'pointer', borderRadius: 6, padding: '2px 4px', transition: 'all 0.15s ease' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(1, 102, 255, 0.08)'; e.currentTarget.style.outline = '1px solid rgba(1, 102, 255, 0.25)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.outline = 'none'; }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ fontSize: '.64rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Reserva</div>
+                              <span style={{ fontSize: '.62rem', color: 'var(--blue)', fontWeight: 700, letterSpacing: '.02em' }}>✎ Calibrar</span>
+                            </div>
                             <div className="fm" style={{ fontSize: '.84rem', fontWeight: 700, color: resActual > 0 ? 'var(--blue)' : '#ef4444' }}>
                               {resActual.toLocaleString()} <span style={{ fontSize: '.68rem', fontWeight: 500, color: 'var(--tx3)' }}>{resCap > 0 ? `/ ${resCap} L` : 'Lts'}</span>
                             </div>
@@ -14903,30 +15010,54 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                       </div>
                     </div>
 
-                    {/* Barra inferior: Horómetro y Botón "+ Surtir" */}
+                    {/* Barra inferior: Horómetro y Acciones de Calibrar y Surtir */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTop: '1px solid var(--border)' }}>
                       <div style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>
                         H: <strong style={{ color: 'var(--tx2)' }}>{plant.horometro_actual || '—'}</strong>
                       </div>
-                      <button
-                        type="button"
-                        className="bp"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectPlant(plant);
-                        }}
-                        style={{
-                          padding: '4px 10px',
-                          fontSize: '.72rem',
-                          borderRadius: 6,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4
-                        }}
-                      >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Surtir
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="bs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onAdjustPlant) onAdjustPlant(plant);
+                          }}
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '.72rem',
+                            borderRadius: 6,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                          title="Calibrar o cambiar nivel real de combustible"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                          </svg>
+                          Ajustar
+                        </button>
+                        <button
+                          type="button"
+                          className="bp"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectPlant(plant);
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '.72rem',
+                            borderRadius: 6,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                          Surtir
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -14938,7 +15069,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ── VISTA 1: CONTROL DE SURTIDOS ─────────────────────────────────────────
-    function SurtidosView({ refills = [], tanks = [], maintenances = [], customHorometers = {}, onUpdatePlantHorometer, onOpenBatchHoroModal, onOpenNewModal, onSelectPlant, onDeleteRefill, toast }) {
+    function SurtidosView({ refills = [], tanks = [], maintenances = [], customHorometers = {}, onUpdatePlantHorometer, onOpenBatchHoroModal, onOpenNewModal, onSelectPlant, onOpenAdjustModal, onDeleteRefill, toast }) {
       const [isDark, setIsDark] = useState(() => (document.documentElement.getAttribute('data-theme') || 'light') === 'dark');
 
       useEffect(() => {
@@ -15436,6 +15567,16 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 className="bs"
+                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 15px', fontSize: '.84rem' }}
+                onClick={() => onOpenAdjustModal && onOpenAdjustModal(null)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                Calibrar Niveles
+              </button>
+              <button
+                className="bs"
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', fontSize: '.84rem' }}
                 onClick={onOpenBatchHoroModal}
               >
@@ -15453,6 +15594,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           <PlantasQuickList
             tanks={tanks}
             onSelectPlant={onSelectPlant || onOpenNewModal}
+            onAdjustPlant={onOpenAdjustModal}
           />
 
           {/* Sub-navegación por Pestañas Internas (Segmented Control Corporativo) */}
@@ -17800,6 +17942,281 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         </div>
       );
     }
+    // ── MODAL: CALIBRACIÓN Y AJUSTE DE NIVEL REAL DE COMBUSTIBLE ─────────────
+    function AdjustFuelLevelModal({ tanks = [], preselectedPlant, userProfile, onSave, onClose, toast }) {
+      const initialTank = useMemo(() => {
+        if (preselectedPlant) {
+          return tanks.find(t => t.id === preselectedPlant.id || (preselectedPlant.tag && t.tag === preselectedPlant.tag)) ||
+                 tanks.find(t => t.lugar === preselectedPlant.lugar) ||
+                 tanks[0];
+        }
+        return tanks[0];
+      }, [preselectedPlant, tanks]);
+
+      const [selectedTankId, setSelectedTankId] = useState(() => initialTank?.id || tanks[0]?.id || '');
+      const selTank = tanks.find(t => t.id === selectedTankId) || tanks[0];
+
+      const curSub = parseFloat(selTank?.subtanque_actual != null ? selTank.subtanque_actual : selTank?.tanque_lts) || 0;
+      const subCap = parseFloat(selTank?.tanque_lts) || 0;
+      const curRes = parseFloat(selTank?.reserva_lts) || 0;
+      const resCap = parseFloat(selTank?.cap_reserva_lts || selTank?.cap_reserva) || 0;
+
+      const [newRes, setNewRes] = useState(() => String(curRes));
+      const [newSub, setNewSub] = useState(() => String(curSub));
+
+      // Actualizar valores al cambiar la planta seleccionada
+      useEffect(() => {
+        if (selTank) {
+          setNewRes(String(parseFloat(selTank.reserva_lts) || 0));
+          setNewSub(String(parseFloat(selTank.subtanque_actual != null ? selTank.subtanque_actual : selTank.tanque_lts) || 0));
+        }
+      }, [selectedTankId]);
+
+      const staffList = useAuthorizedStaff(userProfile);
+      const [tecnico, setTecnico] = useState(() => userProfile?.name || staffList[0] || 'Cuadrilla Grupos Electrógenos');
+      const [isCustomTecnico, setIsCustomTecnico] = useState(false);
+      const [motivo, setMotivo] = useState('Medición física con vara en sitio');
+      const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
+      const [obs, setObs] = useState('');
+
+      const parsedRes = parseFloat(newRes) || 0;
+      const parsedSub = parseFloat(newSub) || 0;
+      const diffRes = parsedRes - curRes;
+      const diffSub = parsedSub - curSub;
+      const newTotal = parsedSub + parsedRes;
+
+      const handleSave = () => {
+        if (parsedRes < 0 || parsedSub < 0) {
+          alert('Los niveles de combustible no pueden ser negativos.');
+          return;
+        }
+
+        onSave({
+          plant: selTank,
+          prevRes: curRes,
+          prevSub: curSub,
+          newRes: parsedRes,
+          newSub: parsedSub,
+          newTotal,
+          diffRes,
+          diffSub,
+          motivo,
+          tecnico: tecnico || 'Cuadrilla Grupos Electrógenos',
+          fecha,
+          obs
+        });
+      };
+
+      return (
+        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onClose}>
+          <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: 540, padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 10,
+                  background: 'rgba(1, 102, 255, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--blue)'
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="fd" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                    Calibrar / Ajustar Nivel Real
+                  </h3>
+                  <p style={{ color: 'var(--tx3)', fontSize: '.76rem', margin: '2px 0 0' }}>
+                    Ajusta directamente el balance actual según la medición física en sitio.
+                  </p>
+                </div>
+              </div>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>✕</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              {/* Selector de Planta */}
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Planta Eléctrica / Sede</label>
+                <select
+                  className="fi"
+                  value={selTank?.id || ''}
+                  onChange={e => setSelectedTankId(e.target.value)}
+                >
+                  {tanks.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.lugar} — {t.tag} ({t.equipo || `${t.kva} kVA`})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Nivel Real Reserva */}
+              <div>
+                <label className="lbl">
+                  Nivel Real de Reserva (Lts)
+                  {resCap > 0 && <span style={{ color: 'var(--tx3)', marginLeft: 4 }}>Cap: {resCap}L</span>}
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="fi fm"
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="Ej: 190"
+                    value={newRes}
+                    onChange={e => setNewRes(e.target.value)}
+                    style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--blue)' }}
+                  />
+                </div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 4 }}>
+                  Actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curRes} L</strong>
+                  {diffRes !== 0 && (
+                    <span style={{ marginLeft: 6, fontWeight: 700, color: diffRes > 0 ? '#10b981' : '#f55b5d' }}>
+                      ({diffRes > 0 ? `+${diffRes}` : diffRes} Lts)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Nivel Real Sub-Tanque */}
+              <div>
+                <label className="lbl">
+                  Nivel Real Sub-Tanque (Lts)
+                  {subCap > 0 && <span style={{ color: 'var(--tx3)', marginLeft: 4 }}>Cap: {subCap}L</span>}
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="fi fm"
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="Ej: 305"
+                    value={newSub}
+                    onChange={e => setNewSub(e.target.value)}
+                    style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tx1)' }}
+                  />
+                </div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 4 }}>
+                  Actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curSub} L</strong>
+                  {diffSub !== 0 && (
+                    <span style={{ marginLeft: 6, fontWeight: 700, color: diffSub > 0 ? '#10b981' : '#f55b5d' }}>
+                      ({diffSub > 0 ? `+${diffSub}` : diffSub} Lts)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Motivo del Ajuste */}
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Motivo de la Calibración / Ajuste</label>
+                <select className="fi" value={motivo} onChange={e => setMotivo(e.target.value)}>
+                  <option value="Medición física con vara en sitio">Medición física con vara en sitio</option>
+                  <option value="Consumo de planta por corte eléctrico no asentado">Consumo de planta por corte eléctrico no asentado</option>
+                  <option value="Calibración inicial de tanque o sensor">Calibración inicial de tanque o sensor</option>
+                  <option value="Corrección de inventario por auditoría">Corrección de inventario por auditoría</option>
+                  <option value="Ajuste por trasiego manual">Ajuste por trasiego manual</option>
+                  <option value="Otro motivo operativo">Otro motivo operativo</option>
+                </select>
+              </div>
+
+              {/* Fecha y Técnico */}
+              <div>
+                <label className="lbl">Fecha de Medición</label>
+                <input className="fi" type="text" value={fecha} onChange={e => setFecha(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="lbl">Técnico que midió en sitio</label>
+                {!isCustomTecnico ? (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select
+                      className="fi"
+                      style={{ flex: 1 }}
+                      value={staffList.includes(tecnico) ? tecnico : (tecnico ? '__custom__' : (staffList[0] || ''))}
+                      onChange={e => {
+                        if (e.target.value === '__custom__') {
+                          setIsCustomTecnico(true);
+                          setTecnico('');
+                        } else {
+                          setTecnico(e.target.value);
+                        }
+                      }}
+                    >
+                      {staffList.map(name => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                      <option value="__custom__">+ Otro (manual)...</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      className="fi"
+                      type="text"
+                      placeholder="Nombre..."
+                      value={tecnico}
+                      onChange={e => setTecnico(e.target.value)}
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      className="bs"
+                      style={{ padding: '6px 10px', fontSize: '.78rem' }}
+                      onClick={() => {
+                        setIsCustomTecnico(false);
+                        setTecnico(staffList[0] || 'Cuadrilla Grupos Electrógenos');
+                      }}
+                    >Lista</button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Observaciones / Detalles de la medición</label>
+                <textarea
+                  className="fi"
+                  rows={2}
+                  placeholder="Detalles de la vara, anomalías en tanque o motivo del ajuste..."
+                  value={obs}
+                  onChange={e => setObs(e.target.value)}
+                />
+              </div>
+
+              {/* Tarjeta de Resumen en Vivo */}
+              <div style={{ gridColumn: '1/-1', padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
+                    Nuevo Stock Total Resultante en el Nodo
+                  </div>
+                  <div style={{ fontSize: '.78rem', color: 'var(--tx2)', marginTop: 2 }}>
+                    Sub-tanque: <strong style={{ color: 'var(--tx1)' }}>{parsedSub} L</strong> | Reserva: <strong style={{ color: 'var(--blue)' }}>{parsedRes} L</strong>
+                    {(diffRes !== 0 || diffSub !== 0) && (
+                      <span style={{ marginLeft: 6, fontWeight: 700, color: (diffRes + diffSub) >= 0 ? '#10b981' : '#f55b5d', fontSize: '.74rem' }}>
+                        (Ajuste neto: {(diffRes + diffSub) >= 0 ? `+${diffRes + diffSub}` : (diffRes + diffSub)} Lts)
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--green)' }}>
+                  {newTotal} <span style={{ fontSize: '.8rem', fontWeight: 600 }}>Lts</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="bs" onClick={onClose}>Cancelar</button>
+              <button className="bp" onClick={handleSave}>Guardar Calibración</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function NewMaintenanceModal({ tanks, userProfile, onSave, onClose }) {
       const [planta, setPlanta] = useState(tanks[0]?.lugar || '');
       const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
