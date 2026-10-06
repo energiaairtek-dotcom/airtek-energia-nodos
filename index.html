@@ -3587,7 +3587,7 @@ function PendingPage({ onLogout }) {
                     />
                     {fuelDest === 'Surtido Planta' && ((nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0) && (parseFloat(fuelLts) || 0) > curRes && (
                       <div style={{ color: '#f55b5d', fontSize: '.72rem', marginTop: 3, fontWeight: 600 }}>
-                        ⚠️ Excede la reserva disponible ({curRes} Lts máx).
+                        Excede la reserva disponible ({curRes} Lts máx).
                       </div>
                     )}
                   </div>
@@ -9470,7 +9470,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ═══════════════════════════════════════════════════
-    // 📊 REPORTE GLOBAL DE AUTONOMÍA DE LA RED POR BANCOS
+    // REPORTE GLOBAL DE AUTONOMÍA DE LA RED POR BANCOS
     // ═══════════════════════════════════════════════════
         // ═══════════════════════════════════════════════════
     // REPORTE GLOBAL DE AUTONOMÍA DE LA RED POR BANCOS
@@ -15032,7 +15032,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                           >
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <div style={{ fontSize: '.64rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Reserva</div>
-                              <span style={{ fontSize: '.62rem', color: 'var(--blue)', fontWeight: 700, letterSpacing: '.02em' }}>✎ Calibrar</span>
+                              <span style={{ fontSize: '.62rem', color: 'var(--blue)', fontWeight: 700, letterSpacing: '.02em' }}>Calibrar</span>
                             </div>
                             <div className="fm" style={{ fontSize: '.84rem', fontWeight: 700, color: resActual > 0 ? 'var(--blue)' : '#ef4444' }}>
                               {resActual.toLocaleString()} <span style={{ fontSize: '.68rem', fontWeight: 500, color: 'var(--tx3)' }}>{resCap > 0 ? `/ ${resCap} L` : 'Lts'}</span>
@@ -17882,7 +17882,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   />
                   {destino === 'Surtido Planta' && ((selTank?.cap_reserva_lts || 0) > 0 || curRes > 0) && (parseFloat(litros) || 0) > curRes && (
                     <div style={{ color: '#f55b5d', fontSize: '.72rem', marginTop: 3, fontWeight: 600 }}>
-                      ⚠️ Excede la reserva disponible ({curRes} Lts máx).
+                      Excede la reserva disponible ({curRes} Lts máx).
                     </div>
                   )}
                 </div>
@@ -19591,7 +19591,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     }
 
     // ═══════════════════════════════════════════════════
-    // 🧮 CALCULADORA: ARMADO DE TABLAS DE RESPALDO
+    // CALCULADORA: ARMADO DE TABLAS DE RESPALDO
     // ═══════════════════════════════════════════════════
 
     const MATERIALES_TABLAS_RESPALDO = [
@@ -20249,14 +20249,14 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   onClick={() => setViewMode('consolidado')}
                   style={{ fontSize: '.78rem', padding: '5px 14px' }}
                 >
-                  📊 Consolidado General (Suma Total)
+                  Consolidado General (Suma Total)
                 </button>
                 <button
                   className={`segmented-btn ${viewMode === 'desglosado' ? 'active' : ''}`}
                   onClick={() => setViewMode('desglosado')}
                   style={{ fontSize: '.78rem', padding: '5px 14px' }}
                 >
-                  📑 Desglosado por Calculadora
+                  Desglosado por Calculadora
                 </button>
               </div>
             </div>
@@ -20317,7 +20317,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     </span>
                     {r.desglose.length > 1 && (
                       <span className="badge" style={{ marginLeft: 8, fontSize: '.66rem', background: 'rgba(1, 102, 255, 0.12)', color: 'var(--blue)', fontWeight: 700 }}>
-                        ⚡ Combina {r.desglose.length} listas
+                        Combina {r.desglose.length} listas
                       </span>
                     )}
                   </div>
