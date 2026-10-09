@@ -10360,15 +10360,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     "tag": "LTUN-PLT-00",
     "equipo": "LTUN-PLT-00 (20 kVA)",
     "kva": 20,
-    "tanque_lts": 800.0,
-    "subtanque_actual": 800.0,
+    "tanque_lts": 100.0,
+    "subtanque_actual": 100.0,
     "reserva_lts": 0.0,
     "cap_reserva": 0,
     "cap_reserva_lts": 0,
     "consumo_lh": 5.0,
-    "aut_tanque_h": 133.33,
-    "aut_total_h": 160.0,
-    "dias_aut": 6.67,
+    "aut_tanque_h": 20.0,
+    "aut_total_h": 20.0,
+    "dias_aut": 0.83,
     "cant_faltante": 0,
     "horometro_actual": "370h 18m",
     "tipo": "nodo"
@@ -10381,15 +10381,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     "tag": "MARI-PLT-00",
     "equipo": "MARI-PLT-00 (25 kVA)",
     "kva": 25,
-    "tanque_lts": 900.0,
-    "subtanque_actual": 900.0,
+    "tanque_lts": 100.0,
+    "subtanque_actual": 100.0,
     "reserva_lts": 0.0,
     "cap_reserva": 0,
     "cap_reserva_lts": 0,
     "consumo_lh": 4.0,
-    "aut_tanque_h": 225.0,
-    "aut_total_h": 225.0,
-    "dias_aut": 9.38,
+    "aut_tanque_h": 25.0,
+    "aut_total_h": 25.0,
+    "dias_aut": 1.04,
     "cant_faltante": 0,
     "horometro_actual": "1339h 00m",
     "tipo": "nodo"
@@ -10402,16 +10402,16 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     "tag": "POMO-PLT-00",
     "equipo": "POMO-PLT-00 (25 kVA)",
     "kva": 25,
-    "tanque_lts": 850.0,
-    "subtanque_actual": 850.0,
+    "tanque_lts": 100.0,
+    "subtanque_actual": 100.0,
     "reserva_lts": 0.0,
-    "cap_reserva": 1000,
-    "cap_reserva_lts": 1000,
+    "cap_reserva": 0,
+    "cap_reserva_lts": 0,
     "consumo_lh": 4.0,
-    "aut_tanque_h": 212.5,
-    "aut_total_h": 212.5,
-    "dias_aut": 8.85,
-    "cant_faltante": 1000,
+    "aut_tanque_h": 25.0,
+    "aut_total_h": 25.0,
+    "dias_aut": 1.04,
+    "cant_faltante": 0,
     "horometro_actual": "1786h 54m",
     "tipo": "nodo"
   },
@@ -10507,15 +10507,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     "tag": "CANA-PLT-00",
     "equipo": "CANA-PLT-00 (30 kVA)",
     "kva": 30,
-    "tanque_lts": 700.0,
-    "subtanque_actual": 700.0,
+    "tanque_lts": 100.0,
+    "subtanque_actual": 100.0,
     "reserva_lts": 0.0,
     "cap_reserva": 0,
     "cap_reserva_lts": 0,
     "consumo_lh": 6.0,
-    "aut_tanque_h": 140.0,
-    "aut_total_h": 116.67,
-    "dias_aut": 4.86,
+    "aut_tanque_h": 16.67,
+    "aut_total_h": 16.67,
+    "dias_aut": 0.69,
     "cant_faltante": 0,
     "horometro_actual": "1011h 00m",
     "tipo": "nodo"
@@ -10654,16 +10654,16 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     "tag": "OJEDA-PLT-00",
     "equipo": "OJEDA-PLT-00 (30 kVA)",
     "kva": 30,
-    "tanque_lts": 1000.0,
-    "subtanque_actual": 1000.0,
-    "reserva_lts": 200.0,
-    "cap_reserva": 1200,
-    "cap_reserva_lts": 1200,
+    "tanque_lts": 100.0,
+    "subtanque_actual": 100.0,
+    "reserva_lts": 0.0,
+    "cap_reserva": 0,
+    "cap_reserva_lts": 0,
     "consumo_lh": 6.0,
-    "aut_tanque_h": 200.0,
-    "aut_total_h": 200.0,
-    "dias_aut": 8.33,
-    "cant_faltante": 1000,
+    "aut_tanque_h": 16.67,
+    "aut_total_h": 16.67,
+    "dias_aut": 0.69,
+    "cant_faltante": 0,
     "horometro_actual": "1387h 36m",
     "tipo": "nodo"
   },
@@ -14034,11 +14034,42 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           return saved ? JSON.parse(saved) : INITIAL_FUEL_REFILLS;
         } catch (e) { return INITIAL_FUEL_REFILLS; }
       });
+      const direct100LTags = ['POMO-PLT-00', 'OJEDA-PLT-00', 'CANA-PLT-00', 'MARI-PLT-00', 'LTUN-PLT-00'];
+      const normalizeTanksList = (rawList) => {
+        return (rawList || []).map(t => {
+          const lNorm = (t.lugar || '').toLowerCase();
+          const isDirect100 = direct100LTags.includes(t.tag) ||
+            lNorm.includes('pomona') ||
+            lNorm.includes('ciudad ojeda') ||
+            lNorm.includes('cañada') ||
+            lNorm.includes('marite') ||
+            lNorm.includes('tunas');
+          if (isDirect100) {
+            const cons = t.consumo_lh || 4.0;
+            const autH = Number((100.0 / cons).toFixed(1));
+            return {
+              ...t,
+              tanque_lts: 100.0,
+              subtanque_actual: Math.min(100.0, parseFloat(t.subtanque_actual != null ? t.subtanque_actual : 100.0) || 100.0),
+              cap_reserva: 0,
+              cap_reserva_lts: 0,
+              reserva_lts: 0.0,
+              cant_faltante: 0,
+              aut_tanque_h: autH,
+              aut_total_h: autH,
+              dias_aut: Number((autH / 24).toFixed(2))
+            };
+          }
+          return t;
+        });
+      };
+
       const [tanks, setTanks] = useState(() => {
         try {
           const saved = localStorage.getItem('airtek_fuel_tanks_v13');
-          return saved ? JSON.parse(saved) : INITIAL_FUEL_TANKS;
-        } catch (e) { return INITIAL_FUEL_TANKS; }
+          const loaded = saved ? JSON.parse(saved) : INITIAL_FUEL_TANKS;
+          return normalizeTanksList(loaded);
+        } catch (e) { return normalizeTanksList(INITIAL_FUEL_TANKS); }
       });
       // Leer filtros/aceite de INITIAL_MAINTENANCE_LOG como catálogo de referencia
       const [maintenances, setMaintenances] = useState(INITIAL_MAINTENANCE_LOG);
@@ -14342,7 +14373,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               subtanque_actual: (t.tag === newRefill.tag || !newRefill.tag) ? newRefill.subtanque_lts : t.subtanque_actual,
               reserva_lts: newRefill.reserva_lts,
               aut_total_h: autTotal,
-              dias_aut: diasAut
+              dias_aut: diasAut,
+              horometro_actual: (newRefill.horometro && newRefill.horometro !== '—') ? newRefill.horometro : t.horometro_actual
             };
           }
           return t;
@@ -14394,96 +14426,19 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             console.warn('Error saving surtido record to node energy_records:', recErr);
           }
         }
-      };
 
-      const handleAdjustFuelLevel = async (adjustData) => {
-        const { plant, newSub, newRes, newTotal, diffRes, diffSub, motivo, tecnico, fecha, obs } = adjustData;
-        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
-        const targetNorm = normFn(plant.lugar);
-
-        // 1. Actualizar tanks en memoria
-        setTanks(prev => prev.map(t => {
-          const tNorm = normFn(t.lugar);
-          const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (plant.tag && t.tag === plant.tag);
-          if (matches) {
-            const autTotal = t.consumo_lh > 0 ? Number((newTotal / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-            const diasAut = Number((autTotal / 24).toFixed(2));
-            return {
-              ...t,
-              subtanque_actual: (t.tag === plant.tag || !plant.tag) ? newSub : t.subtanque_actual,
-              reserva_lts: newRes,
-              aut_total_h: autTotal,
-              dias_aut: diasAut
-            };
-          }
-          return t;
-        }));
-
-        // 2. Persistir en Firestore (energy_nodes/{id}/fuel/state y node.fuelState) y LocalStorage
-        await persistNodeFuelUpdate({
-          db,
-          nodeName: plant.lugar,
-          plantTag: plant.tag,
-          resultingSub: newSub,
-          resultingRes: newRes,
-          resultingTotal: newTotal,
-          addedTotalDespacho: 0,
-          resultingLtsP: 0,
-          resultingLtsR: 0,
-          fuelDest: `Calibración (${motivo})`,
-          fuelHoro: plant.horometro_actual || '',
-          userProfile
-        });
-
-        // 3. Registrar auditoría en energy_records del nodo
-        if (db) {
-          try {
-            const nodesSnap = await db.collection('energy_nodes').get();
-            for (const nDoc of nodesSnap.docs) {
-              const nData = nDoc.data();
-              const nNorm = normFn(nData.name || nDoc.id);
-              if (nNorm === targetNorm || (targetNorm && nNorm.includes(targetNorm)) || (nNorm && targetNorm.includes(nNorm))) {
-                await nDoc.ref.collection('energy_records').add({
-                  type: 'ajuste_combustible',
-                  date: TS(),
-                  generatorTag: plant.tag,
-                  fuelTotalLevel: newTotal,
-                  fuelSubLevel: newSub,
-                  fuelReserveLevel: newRes,
-                  diffReserve: diffRes,
-                  diffSub: diffSub,
-                  adjustmentReason: motivo,
-                  technicianName: tecnico,
-                  observations: obs || '',
-                  createdBy: userProfile?.name || 'Técnico',
-                  createdAt: TS()
-                });
-                break;
-              }
-            }
-          } catch (e) {
-            console.warn('Error saving fuel adjustment record:', e);
-          }
-        }
-
-        if (toast) toast(`Nivel de reserva en ${plant.lugar} calibrado a ${newRes} Lts exitosamente.`, 'success');
-        setShowAdjustLevelModal(false);
-        setSelectedPlantForAdjust(null);
-
-        // Si el surtido incluye horómetro, actualizar maintenances y BD
-        if (newRefill.horometro && newRefill.tag) {
+        // 4. Si el surtido incluye horómetro, sincronizar con maintenances y BD
+        if (newRefill.horometro && newRefill.horometro !== '—' && newRefill.tag) {
           const horoStr = String(newRefill.horometro);
-          // Parsear horómetro (puede venir como "1100h 39m" o como número)
           let parsedHoro = 0;
-          const hMatch = horoStr.match(/(\d+)h\s*(\d+)?m?/);
+          const hMatch = horoStr.match(/(\d+(?:\.\d+)?)\s*h(?:\s*(\d+)\s*m)?/i);
           if (hMatch) {
-            parsedHoro = parseInt(hMatch[1]) + (parseInt(hMatch[2] || 0) / 60);
+            parsedHoro = parseFloat(hMatch[1]) + (parseInt(hMatch[2] || 0) / 60);
           } else {
-            parsedHoro = parseFloat(horoStr) || 0;
+            parsedHoro = parseFloat(horoStr.replace(/[^0-9.]/g, '')) || 0;
           }
 
           if (parsedHoro > 0) {
-            // Actualizar maintenances en tiempo real
             setMaintenances(prev => prev.map(m => {
               if (m.tag === newRefill.tag) {
                 const horasTrab = parseFloat((parsedHoro - m.horometro_mtto).toFixed(1));
@@ -14496,7 +14451,6 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               return m;
             }));
 
-            // Sincronizar con Firestore
             if (db) {
               try {
                 const nodesSnap = await db.collection('energy_nodes').get();
@@ -14519,6 +14473,176 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
         if (toast) toast('Surtido registrado exitosamente.', 'success');
         setShowNewRefillModal(false);
+      };
+
+      const handleAdjustFuelLevel = async (adjustData) => {
+        const {
+          plant,
+          newSub,
+          newRes,
+          newCapSub,
+          newCapRes,
+          newTotal,
+          newConsumoLh,
+          newDiasAut,
+          newHorometro,
+          diffRes,
+          diffSub,
+          motivo,
+          tecnico,
+          fecha,
+          obs
+        } = adjustData;
+
+        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const targetNorm = normFn(plant.lugar);
+
+        // 1. Parsear horómetro si se proporcionó
+        let parsedHoroFloat = null;
+        if (newHorometro && newHorometro !== '—') {
+          const hMatch = String(newHorometro).match(/(\d+(?:\.\d+)?)\s*h(?:\s*(\d+)\s*m)?/i);
+          if (hMatch) {
+            parsedHoroFloat = parseFloat(hMatch[1]) + (parseInt(hMatch[2] || 0) / 60);
+          } else {
+            const rawFloat = parseFloat(String(newHorometro).replace(/[^0-9.]/g, ''));
+            if (!isNaN(rawFloat)) parsedHoroFloat = rawFloat;
+          }
+        }
+
+        // 2. Actualizar tanks en memoria (capacidades, autonomía, niveles y horómetro)
+        setTanks(prev => prev.map(t => {
+          const tNorm = normFn(t.lugar);
+          const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (plant.tag && t.tag === plant.tag);
+          if (matches) {
+            const consLh = newConsumoLh != null && !isNaN(newConsumoLh) && newConsumoLh > 0 ? Number(newConsumoLh) : (t.consumo_lh || 1);
+            const capSubVal = newCapSub != null && !isNaN(newCapSub) && newCapSub > 0 ? Number(newCapSub) : t.tanque_lts;
+            const capResVal = newCapRes != null && !isNaN(newCapRes) ? Number(newCapRes) : (t.cap_reserva_lts || 0);
+            const autTotal = Number((newTotal / consLh).toFixed(1));
+            const diasAut = newDiasAut != null && !isNaN(newDiasAut) && newDiasAut > 0 ? Number(newDiasAut) : Number((autTotal / 24).toFixed(2));
+            const horoStr = newHorometro ? newHorometro : t.horometro_actual;
+
+            return {
+              ...t,
+              tanque_lts: capSubVal,
+              cap_reserva: capResVal,
+              cap_reserva_lts: capResVal,
+              subtanque_actual: (t.tag === plant.tag || !plant.tag) ? newSub : t.subtanque_actual,
+              reserva_lts: newRes,
+              consumo_lh: consLh,
+              aut_tanque_h: Number((newSub / consLh).toFixed(1)),
+              aut_total_h: autTotal,
+              dias_aut: diasAut,
+              horometro_actual: horoStr
+            };
+          }
+          return t;
+        }));
+
+        // 3. Sincronizar Horómetro con Control de Mantenimiento en tiempo real
+        if (parsedHoroFloat != null && !isNaN(parsedHoroFloat) && parsedHoroFloat > 0) {
+          const plantTag = plant.tag;
+          setMaintenances(prev => prev.map(m => {
+            const mNorm = normFn(m.planta);
+            if ((plantTag && m.tag === plantTag) || mNorm === targetNorm) {
+              const horasTrab = parseFloat((parsedHoroFloat - m.horometro_mtto).toFixed(1));
+              const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
+              let status = 'optimo';
+              if (horasRest <= 0 || horasRest <= 20) status = 'critico';
+              else if (horasRest <= 50) status = 'alerta';
+              return {
+                ...m,
+                horometro_actual: parsedHoroFloat,
+                horas_trabajadas: horasTrab,
+                horas_restantes: horasRest,
+                status
+              };
+            }
+            return m;
+          }));
+
+          // Actualizar customHorometers para persistencia local
+          setCustomHorometers(prev => ({
+            ...prev,
+            [plantTag || plant.lugar]: {
+              horometro_actual: parsedHoroFloat,
+              rawInput: newHorometro,
+              updatedAt: new Date().toISOString()
+            }
+          }));
+
+          // Sincronizar con Firestore equipment GEN
+          if (db) {
+            try {
+              const nodesSnap = await db.collection('energy_nodes').get();
+              for (const nDoc of nodesSnap.docs) {
+                const eqSnap = await nDoc.ref.collection('energy_equipment')
+                  .where('type', '==', 'GEN')
+                  .where('tag', '==', plantTag)
+                  .get();
+                if (!eqSnap.empty) {
+                  await eqSnap.docs[0].ref.update({ horometer: parsedHoroFloat });
+                  break;
+                }
+              }
+            } catch (eqErr) {
+              console.warn('Error sincronizando horómetro con equipment:', eqErr);
+            }
+          }
+        }
+
+        // 4. Persistir en Firestore (energy_nodes/{id}/fuel/state y node.fuelState) y LocalStorage
+        await persistNodeFuelUpdate({
+          db,
+          nodeName: plant.lugar,
+          plantTag: plant.tag,
+          resultingSub: newSub,
+          resultingRes: newRes,
+          resultingTotal: newTotal,
+          addedTotalDespacho: 0,
+          resultingLtsP: 0,
+          resultingLtsR: 0,
+          fuelDest: `Calibración (${motivo})`,
+          fuelHoro: newHorometro || plant.horometro_actual || '',
+          userProfile
+        });
+
+        // 5. Registrar auditoría en subcolección energy_records del nodo
+        if (db) {
+          try {
+            const nodesSnap = await db.collection('energy_nodes').get();
+            for (const nDoc of nodesSnap.docs) {
+              const nData = nDoc.data();
+              const nNorm = normFn(nData.name || nDoc.id);
+              if (nNorm === targetNorm || (targetNorm && nNorm.includes(targetNorm)) || (nNorm && targetNorm.includes(nNorm))) {
+                await nDoc.ref.collection('energy_records').add({
+                  type: 'ajuste_combustible',
+                  date: TS(),
+                  generatorTag: plant.tag,
+                  fuelTotalLevel: newTotal,
+                  fuelSubLevel: newSub,
+                  fuelReserveLevel: newRes,
+                  fuelCapacitySub: newCapSub != null ? newCapSub : (plant.tanque_lts || 0),
+                  fuelCapacityRes: newCapRes != null ? newCapRes : (plant.cap_reserva_lts || 0),
+                  fuelHorometer: newHorometro || plant.horometro_actual || '',
+                  diffReserve: diffRes,
+                  diffSub: diffSub,
+                  adjustmentReason: motivo,
+                  technicianName: tecnico,
+                  observations: obs || '',
+                  createdBy: userProfile?.name || 'Técnico',
+                  createdAt: TS()
+                });
+                break;
+              }
+            }
+          } catch (e) {
+            console.warn('Error saving fuel adjustment record:', e);
+          }
+        }
+
+        if (toast) toast(`Planta ${plant.lugar} (${plant.tag}) calibrada y configurada exitosamente.`, 'success');
+        setShowAdjustLevelModal(false);
+        setSelectedPlantForAdjust(null);
       };
 
       const handleDeleteRefill = async (refillToDelete) => {
@@ -14789,6 +14913,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     function PlantasQuickList({ tanks = [], onSelectPlant, onAdjustPlant }) {
       const [filter, setFilter] = useState('');
       const [isCollapsed, setIsCollapsed] = useState(false);
+      const [viewMode, setViewMode] = useState('list'); // 'list' (línea por línea) | 'grid' (cuadros)
 
       const filteredPlants = useMemo(() => {
         if (!filter.trim()) return tanks;
@@ -14814,9 +14939,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: isCollapsed ? 0 : 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{
-                width: 34,
-                height: 34,
-                borderRadius: 8,
+                width: 36,
+                height: 36,
+                borderRadius: 10,
                 background: 'rgba(1, 102, 255, 0.12)',
                 display: 'flex',
                 alignItems: 'center',
@@ -14846,15 +14971,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   </span>
                 </div>
                 <p style={{ color: 'var(--tx3)', fontSize: '.76rem', margin: '2px 0 0' }}>
-                  Haz clic en el nombre o tarjeta de cualquier planta para abrir directamente el formulario de surtido.
+                  Haz clic en cualquier planta o en los botones de acción para surtir, calibrar niveles o configurar capacidades y horómetro.
                 </p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {/* Buscador rápido */}
               {!isCollapsed && (
-                <div style={{ position: 'relative', width: 220 }}>
+                <div style={{ position: 'relative', width: 200 }}>
                   <svg style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx3)', pointerEvents: 'none' }} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                   </svg>
@@ -14862,7 +14987,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     className="fi"
                     style={{ paddingLeft: 28, height: 32, fontSize: '.78rem', borderRadius: 8 }}
                     type="text"
-                    placeholder="Filtrar por sede o tag..."
+                    placeholder="Filtrar sede o tag..."
                     value={filter}
                     onChange={e => setFilter(e.target.value)}
                   />
@@ -14876,12 +15001,68 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </div>
               )}
 
+              {/* Selector de Vista: Lista línea por línea vs Cuadros */}
+              {!isCollapsed && (
+                <div style={{ display: 'inline-flex', background: 'var(--bg-elevated)', borderRadius: 8, padding: 2, border: '1px solid var(--border)' }}>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '.74rem',
+                      fontWeight: 700,
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      background: viewMode === 'list' ? 'var(--blue)' : 'transparent',
+                      color: viewMode === 'list' ? '#fff' : 'var(--tx3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Vista de lista línea por línea (Alta densidad y fácil lectura)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                      <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                    </svg>
+                    Lista
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: '.74rem',
+                      fontWeight: 700,
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      background: viewMode === 'grid' ? 'var(--blue)' : 'transparent',
+                      color: viewMode === 'grid' ? '#fff' : 'var(--tx3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      transition: 'all 0.15s ease'
+                    }}
+                    title="Vista en cuadros / cuadrícula"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                      <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                    Cuadros
+                  </button>
+                </div>
+              )}
+
               {/* Botón colapsar / expandir */}
               <button
                 type="button"
                 className="bs"
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                style={{ padding: '6px 12px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 5, borderRadius: 8 }}
+                style={{ padding: '5px 11px', fontSize: '.76rem', display: 'flex', alignItems: 'center', gap: 5, borderRadius: 8 }}
               >
                 <span>{isCollapsed ? 'Mostrar Plantas' : 'Minimizar'}</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
@@ -14891,8 +15072,248 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             </div>
           </div>
 
-          {/* Grid de Plantas */}
-          {!isCollapsed && (
+          {/* CONTENIDO SEGÚN MODO DE VISTA */}
+          {!isCollapsed && viewMode === 'list' && (
+            <div style={{
+              maxHeight: 460,
+              overflowY: 'auto',
+              overflowX: 'auto',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              background: 'var(--bg-elevated)'
+            }}>
+              <table style={{ width: '100%', minWidth: 920, borderCollapse: 'collapse', fontSize: '.8rem' }}>
+                <thead>
+                  <tr style={{
+                    background: 'var(--bg-deep)',
+                    borderBottom: '1px solid var(--border)',
+                    textAlign: 'left',
+                    color: 'var(--tx3)',
+                    fontSize: '.68rem',
+                    fontWeight: 800,
+                    letterSpacing: '.05em',
+                    textTransform: 'uppercase'
+                  }}>
+                    <th style={{ padding: '10px 14px' }}>Planta / Sede</th>
+                    <th style={{ padding: '10px 12px' }}>Tag / Potencia</th>
+                    <th style={{ padding: '10px 12px' }}>Horómetro</th>
+                    <th style={{ padding: '10px 12px' }}>Tanque Planta</th>
+                    <th style={{ padding: '10px 12px' }}>Reserva</th>
+                    <th style={{ padding: '10px 12px' }}>Stock & Autonomía</th>
+                    <th style={{ padding: '10px 14px', textAlign: 'right' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPlants.map((plant, idx) => {
+                    const subActual = parseFloat(plant.subtanque_actual != null ? plant.subtanque_actual : plant.tanque_lts) || 0;
+                    const subCap = parseFloat(plant.tanque_lts) || 0;
+                    const resActual = parseFloat(plant.reserva_lts) || 0;
+                    const resCap = parseFloat(plant.cap_reserva_lts != null ? plant.cap_reserva_lts : plant.cap_reserva) || 0;
+                    const totalActual = subActual + resActual;
+                    const diasAut = parseFloat(plant.dias_aut) || 0;
+                    const hasReserve = resCap > 0;
+
+                    let autColor = '#10b981';
+                    let autBg = 'rgba(16, 185, 129, 0.12)';
+                    if (diasAut < 1.5) {
+                      autColor = '#ef4444';
+                      autBg = 'rgba(239, 68, 68, 0.12)';
+                    } else if (diasAut < 3) {
+                      autColor = '#f59e0b';
+                      autBg = 'rgba(245, 158, 11, 0.12)';
+                    }
+
+                    const pctSub = subCap > 0 ? Math.min(100, Math.round((subActual / subCap) * 100)) : 100;
+                    const pctRes = resCap > 0 ? Math.min(100, Math.round((resActual / resCap) * 100)) : 0;
+
+                    return (
+                      <tr
+                        key={plant.id || plant.tag || idx}
+                        onClick={() => onSelectPlant(plant)}
+                        style={{
+                          borderBottom: '1px solid var(--border)',
+                          cursor: 'pointer',
+                          transition: 'background 0.15s ease',
+                          background: idx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(1, 102, 255, 0.05)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.015)'; }}
+                        title={`Hacer clic para surtir en ${plant.lugar}`}
+                      >
+                        {/* Planta / Sede */}
+                        <td style={{ padding: '10px 14px' }}>
+                          <div style={{ fontWeight: 800, color: 'var(--tx1)', fontSize: '.86rem' }}>
+                            {plant.lugar}
+                          </div>
+                          <div style={{ color: 'var(--tx3)', fontSize: '.71rem', marginTop: 1 }}>
+                            {plant.equipo && plant.equipo !== plant.lugar ? plant.equipo : (plant.zona || 'Sede Airtek')}
+                          </div>
+                        </td>
+
+                        {/* Tag / Potencia */}
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{
+                              fontSize: '.72rem',
+                              fontWeight: 800,
+                              padding: '2px 7px',
+                              borderRadius: 6,
+                              background: 'rgba(1, 102, 255, 0.1)',
+                              color: 'var(--blue)',
+                              letterSpacing: '.02em'
+                            }}>
+                              {plant.tag || 'PLT'}
+                            </span>
+                            {plant.kva && (
+                              <span style={{ fontSize: '.72rem', fontWeight: 600, color: 'var(--tx2)' }}>
+                                {plant.kva} kVA
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Horómetro */}
+                        <td style={{ padding: '10px 12px' }}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            fontSize: '.76rem',
+                            fontWeight: 700,
+                            color: 'var(--tx1)',
+                            background: 'var(--bg-deep)',
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            border: '1px solid var(--border)'
+                          }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ color: 'var(--blue)' }}>
+                              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                            {plant.horometro_actual || '—'}
+                          </span>
+                        </td>
+
+                        {/* Tanque Planta */}
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div>
+                              <div className="fm" style={{ fontWeight: 800, color: 'var(--tx1)', fontSize: '.84rem' }}>
+                                {subActual.toLocaleString()} <span style={{ fontSize: '.7rem', fontWeight: 500, color: 'var(--tx3)' }}>/ {subCap} L</span>
+                              </div>
+                              <div style={{ width: 80, height: 4, background: 'var(--border)', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${pctSub}%`, height: '100%', background: pctSub < 25 ? '#ef4444' : 'var(--blue)', borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Reserva */}
+                        <td style={{ padding: '10px 12px' }}>
+                          {hasReserve ? (
+                            <div>
+                              <div className="fm" style={{ fontWeight: 800, color: resActual > 0 ? 'var(--blue)' : '#ef4444', fontSize: '.84rem' }}>
+                                {resActual.toLocaleString()} <span style={{ fontSize: '.7rem', fontWeight: 500, color: 'var(--tx3)' }}>/ {resCap} L</span>
+                              </div>
+                              <div style={{ width: 80, height: 4, background: 'var(--border)', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+                                <div style={{ width: `${pctRes}%`, height: '100%', background: pctRes < 20 ? '#ef4444' : '#10b981', borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{
+                              fontSize: '.68rem',
+                              fontWeight: 700,
+                              color: 'var(--tx3)',
+                              background: 'var(--bg-deep)',
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              border: '1px dashed var(--border)'
+                            }}>
+                              Directo a Planta
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Stock & Autonomía */}
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="fm" style={{ fontWeight: 800, color: 'var(--tx1)', fontSize: '.84rem' }}>
+                              {totalActual.toLocaleString()} L
+                            </span>
+                            <span style={{
+                              fontSize: '.68rem',
+                              fontWeight: 700,
+                              padding: '2px 7px',
+                              borderRadius: 10,
+                              background: autBg,
+                              color: autColor,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}>
+                              <span style={{ width: 5, height: 5, borderRadius: '50%', background: autColor }} />
+                              {diasAut > 0 ? `${diasAut} d` : `${plant.aut_total_h || 0} h`}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Acciones */}
+                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <button
+                              type="button"
+                              className="bs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onAdjustPlant) onAdjustPlant(plant);
+                              }}
+                              style={{
+                                padding: '4px 9px',
+                                fontSize: '.72rem',
+                                borderRadius: 6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4
+                              }}
+                              title="Configurar capacidades, horómetro, niveles o autonomía"
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                              </svg>
+                              Ajustar
+                            </button>
+                            <button
+                              type="button"
+                              className="bp"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectPlant(plant);
+                              }}
+                              style={{
+                                padding: '4px 11px',
+                                fontSize: '.72rem',
+                                borderRadius: 6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 4
+                              }}
+                            >
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                              Surtir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* VISTA CUADROS (GRID) */}
+          {!isCollapsed && viewMode === 'grid' && (
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))',
@@ -14905,7 +15326,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 const subActual = parseFloat(plant.subtanque_actual != null ? plant.subtanque_actual : plant.tanque_lts) || 0;
                 const subCap = parseFloat(plant.tanque_lts) || 0;
                 const resActual = parseFloat(plant.reserva_lts) || 0;
-                const resCap = parseFloat(plant.cap_reserva_lts || plant.cap_reserva) || 0;
+                const resCap = parseFloat(plant.cap_reserva_lts != null ? plant.cap_reserva_lts : plant.cap_reserva) || 0;
                 const totalActual = subActual + resActual;
                 const diasAut = parseFloat(plant.dias_aut) || 0;
 
@@ -14986,7 +15407,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                         </span>
                       </div>
 
-                      {/* Nombre del Nodo / Planta (Clickable) */}
+                      {/* Nombre del Nodo / Planta */}
                       <div style={{ marginBottom: 10 }}>
                         <div style={{
                           fontSize: '.88rem',
@@ -15019,7 +15440,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                           </div>
                         </div>
 
-                        {(resCap > 0 || resActual > 0) && (
+                        {(resCap > 0 || resActual > 0) ? (
                           <div
                             onClick={(e) => {
                               e.stopPropagation();
@@ -15038,14 +15459,21 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                               {resActual.toLocaleString()} <span style={{ fontSize: '.68rem', fontWeight: 500, color: 'var(--tx3)' }}>{resCap > 0 ? `/ ${resCap} L` : 'Lts'}</span>
                             </div>
                           </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', fontSize: '.68rem', color: 'var(--tx3)' }}>
+                            Directo a Planta
+                          </div>
                         )}
                       </div>
                     </div>
 
-                    {/* Barra inferior: Horómetro y Acciones de Calibrar y Surtir */}
+                    {/* Barra inferior: Horómetro y Acciones */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTop: '1px solid var(--border)' }}>
-                      <div style={{ fontSize: '.7rem', color: 'var(--tx3)' }}>
-                        H: <strong style={{ color: 'var(--tx2)' }}>{plant.horometro_actual || '—'}</strong>
+                      <div style={{ fontSize: '.7rem', color: 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{ color: 'var(--blue)' }}>
+                          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        <strong style={{ color: 'var(--tx2)' }}>{plant.horometro_actual || '—'}</strong>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <button
@@ -15063,7 +15491,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                             alignItems: 'center',
                             gap: 4
                           }}
-                          title="Calibrar o cambiar nivel real de combustible"
+                          title="Ajustar capacidades, horómetro y niveles"
                         >
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
@@ -15099,7 +15527,6 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         </div>
       );
     }
-
     // ── VISTA 1: CONTROL DE SURTIDOS ─────────────────────────────────────────
     function SurtidosView({ refills = [], tanks = [], maintenances = [], customHorometers = {}, onUpdatePlantHorometer, onOpenBatchHoroModal, onOpenNewModal, onSelectPlant, onOpenAdjustModal, onDeleteRefill, toast }) {
       const [isDark, setIsDark] = useState(() => (document.documentElement.getAttribute('data-theme') || 'light') === 'dark');
@@ -17667,7 +18094,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [lugar, setLugar] = useState(() => initialTank?.lugar || tanks[0]?.lugar || '');
       const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
       const [semana, setSemana] = useState('Semana Actual');
-      const [destino, setDestino] = useState('Surtido Reserva');
+      const isInitialDirect = (parseFloat(initialTank?.cap_reserva_lts || initialTank?.cap_reserva) || 0) === 0;
+      const [destino, setDestino] = useState(() => isInitialDirect ? 'Surtido Planta' : 'Surtido Reserva');
       const [litros, setLitros] = useState('');
       const [litrosPlanta, setLitrosPlanta] = useState('');
       const [litrosReserva, setLitrosReserva] = useState('');
@@ -17833,6 +18261,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     if (chosen) {
                       setSelectedTankId(chosen.id);
                       setLugar(chosen.lugar);
+                      const noRes = (parseFloat(chosen.cap_reserva_lts || chosen.cap_reserva) || 0) === 0;
+                      if (noRes) setDestino('Surtido Planta');
                     }
                   }}
                 >
@@ -17847,9 +18277,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               <div>
                 <label className="lbl">Destino del Combustible</label>
                 <select className="fi" value={destino} onChange={e => setDestino(e.target.value)}>
-                  <option value="Surtido Reserva">Surtido Reserva</option>
-                  <option value="Surtido Planta">Surtido Planta</option>
-                  <option value="Surtido Planta y Reserva">Surtido Planta y Reserva</option>
+                  {(parseFloat(selTank?.cap_reserva_lts || selTank?.cap_reserva) || 0) === 0 ? (
+                    <option value="Surtido Planta">Surtido Directo a Planta ({selTank?.tanque_lts || 100} L máx)</option>
+                  ) : (
+                    <>
+                      <option value="Surtido Reserva">Surtido Reserva</option>
+                      <option value="Surtido Planta">Surtido Planta (Trasiego)</option>
+                      <option value="Surtido Planta y Reserva">Surtido Planta y Reserva</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -18009,16 +18445,37 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const curSub = parseFloat(selTank?.subtanque_actual != null ? selTank.subtanque_actual : selTank?.tanque_lts) || 0;
       const subCap = parseFloat(selTank?.tanque_lts) || 0;
       const curRes = parseFloat(selTank?.reserva_lts) || 0;
-      const resCap = parseFloat(selTank?.cap_reserva_lts || selTank?.cap_reserva) || 0;
+      const resCap = parseFloat(selTank?.cap_reserva_lts != null ? selTank.cap_reserva_lts : selTank?.cap_reserva) || 0;
+      const curConsumo = parseFloat(selTank?.consumo_lh) || 0;
+      const curDiasAut = parseFloat(selTank?.dias_aut) || 0;
+      const curHoro = selTank?.horometro_actual || '';
 
       const [newRes, setNewRes] = useState(() => String(curRes));
       const [newSub, setNewSub] = useState(() => String(curSub));
+      const [newCapSub, setNewCapSub] = useState(() => String(subCap));
+      const [newCapRes, setNewCapRes] = useState(() => String(resCap));
+      const [horometro, setHorometro] = useState(() => curHoro);
+      const [consumoLh, setConsumoLh] = useState(() => String(curConsumo));
+      const [diasAut, setDiasAut] = useState(() => String(curDiasAut));
 
       // Actualizar valores al cambiar la planta seleccionada
       useEffect(() => {
         if (selTank) {
-          setNewRes(String(parseFloat(selTank.reserva_lts) || 0));
-          setNewSub(String(parseFloat(selTank.subtanque_actual != null ? selTank.subtanque_actual : selTank.tanque_lts) || 0));
+          const sSub = parseFloat(selTank.subtanque_actual != null ? selTank.subtanque_actual : selTank.tanque_lts) || 0;
+          const sCapSub = parseFloat(selTank.tanque_lts) || 0;
+          const sRes = parseFloat(selTank.reserva_lts) || 0;
+          const sCapRes = parseFloat(selTank.cap_reserva_lts != null ? selTank.cap_reserva_lts : selTank.cap_reserva) || 0;
+          const sCons = parseFloat(selTank.consumo_lh) || 0;
+          const sDias = parseFloat(selTank.dias_aut) || 0;
+          const sHoro = selTank.horometro_actual || '';
+
+          setNewSub(String(sSub));
+          setNewCapSub(String(sCapSub));
+          setNewRes(String(sRes));
+          setNewCapRes(String(sCapRes));
+          setConsumoLh(String(sCons));
+          setDiasAut(String(sDias));
+          setHorometro(sHoro);
         }
       }, [selectedTankId]);
 
@@ -18031,13 +18488,39 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
       const parsedRes = parseFloat(newRes) || 0;
       const parsedSub = parseFloat(newSub) || 0;
-      const diffRes = parsedRes - curRes;
+      const parsedCapSub = parseFloat(newCapSub) || 0;
+      const parsedCapRes = parseFloat(newCapRes) || 0;
+      const parsedConsumo = parseFloat(consumoLh) || 0;
+      const effectiveRes = parsedCapRes === 0 ? 0 : parsedRes;
+      const diffRes = effectiveRes - curRes;
       const diffSub = parsedSub - curSub;
-      const newTotal = parsedSub + parsedRes;
+      const newTotal = parsedSub + effectiveRes;
+
+      const handleConsumoChange = (val) => {
+        setConsumoLh(val);
+        const c = parseFloat(val) || 0;
+        if (c > 0 && newTotal > 0) {
+          const calculatedDias = Number(((newTotal / c) / 24).toFixed(2));
+          setDiasAut(String(calculatedDias));
+        }
+      };
+
+      const handleDiasAutChange = (val) => {
+        setDiasAut(val);
+        const d = parseFloat(val) || 0;
+        if (d > 0 && newTotal > 0) {
+          const calculatedConsumo = Number((newTotal / (d * 24)).toFixed(2));
+          setConsumoLh(String(calculatedConsumo));
+        }
+      };
 
       const handleSave = () => {
-        if (parsedRes < 0 || parsedSub < 0) {
+        if (parsedSub < 0 || (parsedCapRes > 0 && parsedRes < 0)) {
           alert('Los niveles de combustible no pueden ser negativos.');
+          return;
+        }
+        if (parsedCapSub <= 0) {
+          alert('La capacidad nominal del tanque de la planta debe ser mayor a 0 litros.');
           return;
         }
 
@@ -18045,8 +18528,13 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           plant: selTank,
           prevRes: curRes,
           prevSub: curSub,
-          newRes: parsedRes,
+          newRes: effectiveRes,
           newSub: parsedSub,
+          newCapSub: parsedCapSub,
+          newCapRes: parsedCapRes,
+          newConsumoLh: parsedConsumo,
+          newDiasAut: parseFloat(diasAut) || 0,
+          newHorometro: horometro.trim(),
           newTotal,
           diffRes,
           diffSub,
@@ -18058,8 +18546,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       };
 
       return (
-        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onClose}>
-          <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: 540, padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+        <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+          <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '94%', maxWidth: 620, maxHeight: '92vh', overflowY: 'auto', padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+            {/* Header del Modal */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{
@@ -18078,10 +18567,10 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </div>
                 <div>
                   <h3 className="fd" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
-                    Calibrar / Ajustar Nivel Real
+                    Calibrar & Configurar Planta Eléctrica
                   </h3>
                   <p style={{ color: 'var(--tx3)', fontSize: '.76rem', margin: '2px 0 0' }}>
-                    Ajusta directamente el balance actual según la medición física en sitio.
+                    Modifica capacidades de tanques, autonomía, horómetro para mantenimiento real y niveles físicos.
                   </p>
                 </div>
               </div>
@@ -18105,52 +18594,75 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </select>
               </div>
 
-              {/* Nivel Real Reserva */}
-              <div>
-                <label className="lbl">
-                  Nivel Real de Reserva (Lts)
-                  {resCap > 0 && <span style={{ color: 'var(--tx3)', marginLeft: 4 }}>Cap: {resCap}L</span>}
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    className="fi fm"
-                    type="number"
-                    step="any"
-                    min="0"
-                    placeholder="Ej: 190"
-                    value={newRes}
-                    onChange={e => setNewRes(e.target.value)}
-                    style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--blue)' }}
-                  />
+              {/* SECCIÓN 1: CAPACIDADES NOMINALES */}
+              <div style={{ gridColumn: '1/-1', marginTop: 4, padding: '8px 12px', background: 'var(--bg-deep)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '.72rem', fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  1. Configuración de Capacidades de Tanques
                 </div>
-                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 4 }}>
-                  Actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curRes} L</strong>
-                  {diffRes !== 0 && (
-                    <span style={{ marginLeft: 6, fontWeight: 700, color: diffRes > 0 ? '#10b981' : '#f55b5d' }}>
-                      ({diffRes > 0 ? `+${diffRes}` : diffRes} Lts)
-                    </span>
-                  )}
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 2 }}>
+                  Si el nodo no posee reserva y se surte directo a la planta, ingresa 0 en Capacidad Reserva.
                 </div>
               </div>
 
-              {/* Nivel Real Sub-Tanque */}
+              <div>
+                <label className="lbl">Capacidad Tanque Planta (Lts)</label>
+                <input
+                  className="fi fm"
+                  type="number"
+                  step="any"
+                  min="1"
+                  placeholder="Ej: 100"
+                  value={newCapSub}
+                  onChange={e => setNewCapSub(e.target.value)}
+                  style={{ fontWeight: 700 }}
+                />
+                <div style={{ fontSize: '.68rem', color: 'var(--tx3)', marginTop: 3 }}>
+                  Capacidad nominal registrada de la planta.
+                </div>
+              </div>
+
+              <div>
+                <label className="lbl">Capacidad Reserva (Lts)</label>
+                <input
+                  className="fi fm"
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0 si es directo a planta"
+                  value={newCapRes}
+                  onChange={e => {
+                    setNewCapRes(e.target.value);
+                    if (parseFloat(e.target.value) === 0) setNewRes('0');
+                  }}
+                  style={{ fontWeight: 700, color: parsedCapRes === 0 ? 'var(--tx3)' : 'var(--blue)' }}
+                />
+                <div style={{ fontSize: '.68rem', color: 'var(--tx3)', marginTop: 3 }}>
+                  {parsedCapRes === 0 ? 'Sin reserva (Surtido Directo a Planta)' : `Tanque externo de reserva (${parsedCapRes} L)`}
+                </div>
+              </div>
+
+              {/* SECCIÓN 2: NIVELES FÍSICOS ACTUALES */}
+              <div style={{ gridColumn: '1/-1', marginTop: 6, padding: '8px 12px', background: 'var(--bg-deep)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '.72rem', fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  2. Niveles Físicos de Combustible en Sitio
+                </div>
+              </div>
+
               <div>
                 <label className="lbl">
-                  Nivel Real Sub-Tanque (Lts)
-                  {subCap > 0 && <span style={{ color: 'var(--tx3)', marginLeft: 4 }}>Cap: {subCap}L</span>}
+                  Nivel Real Tanque Planta (Lts)
+                  {parsedCapSub > 0 && <span style={{ color: 'var(--tx3)', marginLeft: 4 }}>Máx: {parsedCapSub}L</span>}
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    className="fi fm"
-                    type="number"
-                    step="any"
-                    min="0"
-                    placeholder="Ej: 305"
-                    value={newSub}
-                    onChange={e => setNewSub(e.target.value)}
-                    style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tx1)' }}
-                  />
-                </div>
+                <input
+                  className="fi fm"
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="Ej: 100"
+                  value={newSub}
+                  onChange={e => setNewSub(e.target.value)}
+                  style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--tx1)' }}
+                />
                 <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 4 }}>
                   Actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curSub} L</strong>
                   {diffSub !== 0 && (
@@ -18161,11 +18673,119 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </div>
               </div>
 
-              {/* Motivo del Ajuste */}
+              <div>
+                <label className="lbl">
+                  Nivel Real de Reserva (Lts)
+                  {parsedCapRes > 0 && <span style={{ color: 'var(--tx3)', marginLeft: 4 }}>Máx: {parsedCapRes}L</span>}
+                </label>
+                {parsedCapRes === 0 ? (
+                  <div style={{
+                    padding: '9px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-deep)',
+                    border: '1px dashed var(--border)',
+                    fontSize: '.8rem',
+                    color: 'var(--tx3)',
+                    fontWeight: 600
+                  }}>
+                    Sin reserva (0 Lts)
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      className="fi fm"
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="Ej: 200"
+                      value={newRes}
+                      onChange={e => setNewRes(e.target.value)}
+                      style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--blue)' }}
+                    />
+                    <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 4 }}>
+                      Actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curRes} L</strong>
+                      {diffRes !== 0 && (
+                        <span style={{ marginLeft: 6, fontWeight: 700, color: diffRes > 0 ? '#10b981' : '#f55b5d' }}>
+                          ({diffRes > 0 ? `+${diffRes}` : diffRes} Lts)
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* SECCIÓN 3: HORÓMETRO Y MANTENIMIENTO */}
+              <div style={{ gridColumn: '1/-1', marginTop: 6, padding: '8px 12px', background: 'var(--bg-deep)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '.72rem', fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  3. Horómetro Operativo & Mantenimiento Real
+                </div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 2 }}>
+                  Sincroniza el horómetro real de la planta para tener control exacto de horas trabajadas y servicios preventivos.
+                </div>
+              </div>
+
+              <div style={{ gridColumn: '1/-1' }}>
+                <label className="lbl">Horómetro Actual de la Planta</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="fi fm"
+                    type="text"
+                    placeholder="Ej: 1339h 00m o 1339.5"
+                    value={horometro}
+                    onChange={e => setHorometro(e.target.value)}
+                    style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--tx1)' }}
+                  />
+                </div>
+                <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 4 }}>
+                  Valor previo: <strong style={{ color: 'var(--tx2)' }}>{curHoro || '—'}</strong>. Al guardar, se actualizan las horas restantes de mantenimiento y estado del generador.
+                </div>
+              </div>
+
+              {/* SECCIÓN 4: CONSUMO Y AUTONOMÍA */}
+              <div style={{ gridColumn: '1/-1', marginTop: 6, padding: '8px 12px', background: 'var(--bg-deep)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: '.72rem', fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                  4. Autonomía y Consumo de Combustible
+                </div>
+              </div>
+
+              <div>
+                <label className="lbl">Consumo Promedio (Lts/h)</label>
+                <input
+                  className="fi fm"
+                  type="number"
+                  step="any"
+                  min="0.1"
+                  placeholder="Ej: 4.0"
+                  value={consumoLh}
+                  onChange={e => handleConsumoChange(e.target.value)}
+                  style={{ fontWeight: 700 }}
+                />
+              </div>
+
+              <div>
+                <label className="lbl">Autonomía Estimada (Días)</label>
+                <input
+                  className="fi fm"
+                  type="number"
+                  step="any"
+                  min="0.1"
+                  placeholder="Ej: 1.04"
+                  value={diasAut}
+                  onChange={e => handleDiasAutChange(e.target.value)}
+                  style={{ fontWeight: 700, color: '#10b981' }}
+                />
+                <div style={{ fontSize: '.68rem', color: 'var(--tx3)', marginTop: 3 }}>
+                  Equivale a ~{Math.round((parseFloat(diasAut) || 0) * 24)} horas de operación continua.
+                </div>
+              </div>
+
+              {/* SECCIÓN 5: BITÁCORA Y MOTIVO */}
               <div style={{ gridColumn: '1/-1' }}>
                 <label className="lbl">Motivo de la Calibración / Ajuste</label>
                 <select className="fi" value={motivo} onChange={e => setMotivo(e.target.value)}>
                   <option value="Medición física con vara en sitio">Medición física con vara en sitio</option>
+                  <option value="Actualización de horómetro y mantenimiento">Actualización de horómetro y mantenimiento</option>
+                  <option value="Ajuste de capacidad de tanque o autonomía">Ajuste de capacidad de tanque o autonomía</option>
                   <option value="Consumo de planta por corte eléctrico no asentado">Consumo de planta por corte eléctrico no asentado</option>
                   <option value="Calibración inicial de tanque o sensor">Calibración inicial de tanque o sensor</option>
                   <option value="Corrección de inventario por auditoría">Corrección de inventario por auditoría</option>
@@ -18174,7 +18794,6 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </select>
               </div>
 
-              {/* Fecha y Técnico */}
               <div>
                 <label className="lbl">Fecha de Medición</label>
                 <input className="fi" type="text" value={fecha} onChange={e => setFecha(e.target.value)} />
@@ -18183,26 +18802,23 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               <div>
                 <label className="lbl">Técnico que midió en sitio</label>
                 {!isCustomTecnico ? (
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <select
-                      className="fi"
-                      style={{ flex: 1 }}
-                      value={staffList.includes(tecnico) ? tecnico : (tecnico ? '__custom__' : (staffList[0] || ''))}
-                      onChange={e => {
-                        if (e.target.value === '__custom__') {
-                          setIsCustomTecnico(true);
-                          setTecnico('');
-                        } else {
-                          setTecnico(e.target.value);
-                        }
-                      }}
-                    >
-                      {staffList.map(name => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                      <option value="__custom__">+ Otro (manual)...</option>
-                    </select>
-                  </div>
+                  <select
+                    className="fi"
+                    value={staffList.includes(tecnico) ? tecnico : (tecnico ? '__custom__' : (staffList[0] || ''))}
+                    onChange={e => {
+                      if (e.target.value === '__custom__') {
+                        setIsCustomTecnico(true);
+                        setTecnico('');
+                      } else {
+                        setTecnico(e.target.value);
+                      }
+                    }}
+                  >
+                    {staffList.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                    <option value="__custom__">+ Otro (manual)...</option>
+                  </select>
                 ) : (
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input
@@ -18227,11 +18843,11 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               </div>
 
               <div style={{ gridColumn: '1/-1' }}>
-                <label className="lbl">Observaciones / Detalles de la medición</label>
+                <label className="lbl">Observaciones / Detalles</label>
                 <textarea
                   className="fi"
                   rows={2}
-                  placeholder="Detalles de la vara, anomalías en tanque o motivo del ajuste..."
+                  placeholder="Detalles adicionales de la medición física, vara, horómetro o anomalías..."
                   value={obs}
                   onChange={e => setObs(e.target.value)}
                 />
@@ -18241,32 +18857,32 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               <div style={{ gridColumn: '1/-1', padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
                 <div>
                   <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
-                    Nuevo Stock Total Resultante en el Nodo
+                    Resumen Configuración Resultante
                   </div>
                   <div style={{ fontSize: '.78rem', color: 'var(--tx2)', marginTop: 2 }}>
-                    Sub-tanque: <strong style={{ color: 'var(--tx1)' }}>{parsedSub} L</strong> | Reserva: <strong style={{ color: 'var(--blue)' }}>{parsedRes} L</strong>
-                    {(diffRes !== 0 || diffSub !== 0) && (
-                      <span style={{ marginLeft: 6, fontWeight: 700, color: (diffRes + diffSub) >= 0 ? '#10b981' : '#f55b5d', fontSize: '.74rem' }}>
-                        (Ajuste neto: {(diffRes + diffSub) >= 0 ? `+${diffRes + diffSub}` : (diffRes + diffSub)} Lts)
-                      </span>
-                    )}
+                    Planta: <strong style={{ color: 'var(--tx1)' }}>{parsedSub} / {parsedCapSub} L</strong> | Reserva: <strong style={{ color: parsedCapRes === 0 ? 'var(--tx3)' : 'var(--blue)' }}>{parsedCapRes === 0 ? 'Sin reserva' : `${effectiveRes} / ${parsedCapRes} L`}</strong>
+                  </div>
+                  <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginTop: 2 }}>
+                    Autonomía: <strong style={{ color: '#10b981' }}>{diasAut} d</strong> | Horómetro: <strong style={{ color: 'var(--tx1)' }}>{horometro || '—'}</strong>
                   </div>
                 </div>
-                <div className="fm" style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--green)' }}>
-                  {newTotal} <span style={{ fontSize: '.8rem', fontWeight: 600 }}>Lts</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', fontWeight: 700 }}>Total Combustible</div>
+                  <div className="fm" style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--green)' }}>
+                    {newTotal} <span style={{ fontSize: '.8rem', fontWeight: 600 }}>Lts</span>
+                  </div>
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button className="bs" onClick={onClose}>Cancelar</button>
-              <button className="bp" onClick={handleSave}>Guardar Calibración</button>
+              <button className="bp" onClick={handleSave}>Guardar Configuración & Calibración</button>
             </div>
           </div>
         </div>
       );
     }
-
     function NewMaintenanceModal({ tanks, userProfile, onSave, onClose }) {
       const [planta, setPlanta] = useState(tanks[0]?.lugar || '');
       const [fecha, setFecha] = useState(() => new Date().toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }));
