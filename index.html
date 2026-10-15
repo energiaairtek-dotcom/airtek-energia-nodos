@@ -2790,11 +2790,16 @@ function PendingPage({ onLogout }) {
           const tNorm = normFn(t.lugar);
           const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (plantTag && t.tag === plantTag);
           if (matches) {
-            const autTotal = t.consumo_lh > 0 ? Number((resultingTotal / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+            const subCap = parseFloat(t.tanque_lts) || 0;
+            const resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+            const clampedSub = subCap > 0 ? Math.min(subCap, Math.max(0, Number(resultingSub) || 0)) : (Number(resultingSub) || 0);
+            const clampedRes = resCap > 0 ? Math.min(resCap, Math.max(0, Number(resultingRes) || 0)) : (resCap === 0 ? 0 : (Number(resultingRes) || 0));
+            const newTot = clampedSub + clampedRes;
+            const autTotal = t.consumo_lh > 0 ? Number((newTot / t.consumo_lh).toFixed(1)) : t.aut_total_h;
             return {
               ...t,
-              subtanque_actual: (t.tag === plantTag || !plantTag) ? Number(resultingSub) : t.subtanque_actual,
-              reserva_lts: Number(resultingRes),
+              subtanque_actual: (t.tag === plantTag || !plantTag) ? clampedSub : t.subtanque_actual,
+              reserva_lts: clampedRes,
               aut_total_h: autTotal,
               dias_aut: Number((autTotal / 24).toFixed(2))
             };
@@ -2867,7 +2872,10 @@ function PendingPage({ onLogout }) {
       let lines = [];
       lines.push(`${cleanNode} ${fechaStr}`);
 
-      if (isDual) {
+      const isTrasiego = record?.fuelDestination === 'Trasiego Interno' || record?.destino === 'Trasiego Interno';
+      if (isTrasiego) {
+        lines.push(`Trasiego interno a planta: ${ltsPlantaTotal} litros`);
+      } else if (isDual) {
         lines.push(`Surtido a la planta: ${ltsPlantaTotal} litros`);
         lines.push(`Surtido a la reserva: ${ltsReserva} litros`);
       } else if (isReserva) {
@@ -3026,26 +3034,32 @@ function PendingPage({ onLogout }) {
         let ltsP = 0;
         let ltsR = 0;
 
+        const subCap = parseFloat(nodeTankInfo?.tanque_lts) || 300;
+        const resCap = parseFloat(nodeTankInfo?.cap_reserva_lts) || 0;
+
         if (fuelDest === 'Surtido Reserva') {
           const lts = parseFloat(fuelLts) || 0;
-          newRes = curRes + lts;
+          newRes = resCap > 0 ? Math.min(resCap, curRes + lts) : (curRes + lts);
           addedTotalDespacho = lts;
           ltsR = lts;
         } else if (fuelDest === 'Surtido Planta') {
           const lts = parseFloat(fuelLts) || 0;
           addedTotalDespacho = lts;
           ltsP = lts;
-          if (curRes > 0) {
-            newRes = Math.max(0, curRes - lts);
-            newSub = curSub + lts;
-          } else {
-            newSub = curSub + lts;
-          }
+          // Cisterna directa a planta: llena el sub-tanque hasta el límite nominal y NO modifica la reserva externa
+          newSub = subCap > 0 ? Math.min(subCap, curSub + lts) : (curSub + lts);
+          newRes = curRes;
+        } else if (fuelDest === 'Trasiego Interno') {
+          const lts = parseFloat(fuelLts) || 0;
+          ltsP = lts;
+          addedTotalDespacho = 0;
+          newRes = Math.max(0, curRes - lts);
+          newSub = subCap > 0 ? Math.min(subCap, curSub + lts) : (curSub + lts);
         } else if (fuelDest === 'Surtido Planta y Reserva') {
           ltsP = parseFloat(fuelLtsPlanta) || 0;
           ltsR = parseFloat(fuelLtsReserva) || 0;
-          newSub = curSub + ltsP;
-          newRes = curRes + ltsR;
+          newSub = subCap > 0 ? Math.min(subCap, curSub + ltsP) : (curSub + ltsP);
+          newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
           addedTotalDespacho = ltsP + ltsR;
         }
 
@@ -3154,18 +3168,21 @@ function PendingPage({ onLogout }) {
 
           if (fuelDest === 'Surtido Planta') {
             if (inputLts <= 0) {
+              toast('Ingresa la cantidad de litros suministrados a la planta.', 'error');
+              return;
+            }
+          } else if (fuelDest === 'Trasiego Interno') {
+            if (inputLts <= 0) {
               toast('Ingresa la cantidad de litros a trasegar a la planta.', 'error');
               return;
             }
-            if (hasReserveTank) {
-              if (curRes <= 0) {
-                toast('No se puede trasegar a la planta: la reserva externa del nodo está en 0 Lts.', 'error');
-                return;
-              }
-              if (inputLts > curRes) {
-                toast(`Stock insuficiente: La reserva dispone de ${curRes} Lts. No puedes trasegar ${inputLts} Lts.`, 'error');
-                return;
-              }
+            if (curRes <= 0) {
+              toast('No se puede trasegar a la planta: la reserva externa del nodo está en 0 Lts.', 'error');
+              return;
+            }
+            if (inputLts > curRes) {
+              toast(`Stock insuficiente: La reserva dispone de ${curRes} Lts. No puedes trasegar ${inputLts} Lts.`, 'error');
+              return;
             }
           } else if (fuelDest === 'Surtido Reserva') {
             if (inputLts <= 0) {
@@ -3557,19 +3574,31 @@ function PendingPage({ onLogout }) {
                 <div>
                   <label className="lbl">Destino del Combustible</label>
                   <select className="fi" value={fuelDest} onChange={e => setFuelDest(e.target.value)}>
-                    <option value="Surtido Reserva">Surtido Reserva</option>
-                    <option value="Surtido Planta">Surtido Planta</option>
-                    <option value="Surtido Planta y Reserva">Surtido Planta y Reserva</option>
+                    <option value="Surtido Planta">Surtido Planta (Cisterna a Planta - {nodeTankInfo?.tanque_lts || 300} L máx)</option>
+                    {(nodeTankInfo?.cap_reserva_lts || 0) > 0 && (
+                      <option value="Surtido Reserva">Surtido Reserva (Cisterna a Tanque - {nodeTankInfo?.cap_reserva_lts} L máx)</option>
+                    )}
+                    {(nodeTankInfo?.cap_reserva_lts || 0) > 0 && (
+                      <option value="Surtido Planta y Reserva">Surtido Planta y Reserva (Cisterna a Ambos)</option>
+                    )}
+                    {curRes > 0 && (
+                      <option value="Trasiego Interno">Trasiego Interno (Tanque Reserva a Planta)</option>
+                    )}
                   </select>
                 </div>
 
                 {fuelDest !== 'Surtido Planta y Reserva' ? (
                   <div>
                     <label className="lbl">
-                      {fuelDest === 'Surtido Reserva' ? 'Litros a Reserva (Lts)' : 'Litros a Planta (Lts)'}
-                      {fuelDest === 'Surtido Planta' && ((nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0) && (
+                      {fuelDest === 'Surtido Reserva' ? 'Litros a Reserva (Lts)' : (fuelDest === 'Trasiego Interno' ? 'Litros a Trasegar a Planta (Lts)' : 'Litros a Planta (Lts)')}
+                      {fuelDest === 'Surtido Planta' && (
+                        <span style={{ marginLeft: 6, color: 'var(--blue)', fontSize: '.7rem' }}>
+                          (Límite tanque: {nodeTankInfo?.tanque_lts || 300} Lts | Actual: {curSub} Lts)
+                        </span>
+                      )}
+                      {fuelDest === 'Trasiego Interno' && (
                         <span style={{ marginLeft: 6, color: curRes > 0 ? 'var(--blue)' : '#f55b5d', fontSize: '.7rem' }}>
-                          (Disp. en Reserva: {curRes}L)
+                          (Disp. en Reserva: {curRes} Lts)
                         </span>
                       )}
                     </label>
@@ -3577,15 +3606,12 @@ function PendingPage({ onLogout }) {
                       className="fi fm"
                       type="number"
                       step="any"
-                      placeholder="Ej: 150"
+                      placeholder="Ej: 100"
                       value={fuelLts}
-                      max={fuelDest === 'Surtido Planta' && ((nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0) ? curRes : undefined}
+                      max={fuelDest === 'Trasiego Interno' ? curRes : undefined}
                       onChange={e => setFuelLts(e.target.value)}
-                      style={{
-                        borderColor: (fuelDest === 'Surtido Planta' && ((nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0) && (parseFloat(fuelLts) || 0) > curRes) ? '#f55b5d' : undefined
-                      }}
                     />
-                    {fuelDest === 'Surtido Planta' && ((nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0) && (parseFloat(fuelLts) || 0) > curRes && (
+                    {fuelDest === 'Trasiego Interno' && (parseFloat(fuelLts) || 0) > curRes && (
                       <div style={{ color: '#f55b5d', fontSize: '.72rem', marginTop: 3, fontWeight: 600 }}>
                         Excede la reserva disponible ({curRes} Lts máx).
                       </div>
@@ -3626,8 +3652,8 @@ function PendingPage({ onLogout }) {
                         Sub-tanque: <strong style={{ color: 'var(--tx1)' }}>{resultingSub} Lts</strong> | Reserva: <strong style={{ color: 'var(--tx1)' }}>{resultingRes} Lts</strong>
                       </span>
                     )}
-                    {fuelDest === 'Surtido Planta' && curRes > 0 && (
-                      <span style={{ marginLeft: 8, color: '#21c0fa', fontSize: '.74rem', fontWeight: 600 }}>(Trasiego: -{parseFloat(fuelLts)||0}L de reserva)</span>
+                    {fuelDest === 'Trasiego Interno' && (
+                      <span style={{ marginLeft: 8, color: '#21c0fa', fontSize: '.74rem', fontWeight: 600 }}>(Trasiego: -{parseFloat(fuelLts)||0}L de reserva a planta)</span>
                     )}
                     {fuelDest === 'Surtido Planta y Reserva' && (
                       <span style={{ marginLeft: 8, color: '#8b5cf6', fontSize: '.74rem', fontWeight: 600 }}>(Total despachado: +{addedTotalDespacho}L)</span>
@@ -4290,9 +4316,11 @@ function PendingPage({ onLogout }) {
                                 } else if (d === 'Surtido Planta' || d === 'Sub-tanque') {
                                   const lts = parseFloat(record.fuelLiters) || 0;
                                   newSub = Math.max(0, newSub - lts);
-                                  if (t.cap_reserva_lts > 0 || t.reserva_lts > 0) {
-                                    newRes = newRes + lts;
-                                  }
+                                  // Surtido directo de cisterna a planta no modificó reserva externa
+                                } else if (d === 'Trasiego Interno') {
+                                  const lts = parseFloat(record.fuelLiters) || 0;
+                                  newSub = Math.max(0, newSub - lts);
+                                  newRes = (t.cap_reserva_lts || 0) > 0 ? Math.min(t.cap_reserva_lts, newRes + lts) : (newRes + lts);
                                 } else if (d === 'Surtido Planta y Reserva' || d === 'Ambos' || d === 'Distribuido') {
                                   const ltsP = parseFloat(record.fuelLitersPlanta) || (parseFloat(record.fuelLiters) / 2);
                                   const ltsR = parseFloat(record.fuelLitersReserva) || (parseFloat(record.fuelLiters) / 2);
@@ -14044,23 +14072,38 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
             lNorm.includes('cañada') ||
             lNorm.includes('marite') ||
             lNorm.includes('tunas');
+
+          let subCap = parseFloat(t.tanque_lts) || 0;
+          let resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+          let subAct = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+          let resAct = parseFloat(t.reserva_lts) || 0;
+
           if (isDirect100) {
-            const cons = t.consumo_lh || 4.0;
-            const autH = Number((100.0 / cons).toFixed(1));
-            return {
-              ...t,
-              tanque_lts: 100.0,
-              subtanque_actual: Math.min(100.0, parseFloat(t.subtanque_actual != null ? t.subtanque_actual : 100.0) || 100.0),
-              cap_reserva: 0,
-              cap_reserva_lts: 0,
-              reserva_lts: 0.0,
-              cant_faltante: 0,
-              aut_tanque_h: autH,
-              aut_total_h: autH,
-              dias_aut: Number((autH / 24).toFixed(2))
-            };
+            subCap = 100.0;
+            resCap = 0;
+            resAct = 0.0;
           }
-          return t;
+
+          // LÍMITES FÍSICOS ESTRICTOS: El nivel de un tanque NUNCA puede superar su capacidad nominal
+          const clampedSub = subCap > 0 ? Math.min(subCap, Math.max(0, subAct)) : Math.max(0, subAct);
+          const clampedRes = resCap > 0 ? Math.min(resCap, Math.max(0, resAct)) : 0;
+          const cons = t.consumo_lh || 4.0;
+          const autH = Number((clampedSub / cons).toFixed(1));
+          const totNodo = clampedSub + clampedRes;
+          const autTotH = Number((totNodo / cons).toFixed(1));
+
+          return {
+            ...t,
+            tanque_lts: subCap,
+            subtanque_actual: clampedSub,
+            cap_reserva: resCap,
+            cap_reserva_lts: resCap,
+            reserva_lts: clampedRes,
+            cant_faltante: Math.max(0, subCap - clampedSub),
+            aut_tanque_h: autH,
+            aut_total_h: autTotH,
+            dias_aut: Number((autTotH / 24).toFixed(2))
+          };
         });
       };
 
@@ -14361,17 +14404,22 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
         const targetNorm = normFn(newRefill.lugar);
 
-        // 1. Actualizar niveles del tanque correspondiente con exactitud según la Tabla de la Verdad
+        // 1. Actualizar niveles del tanque correspondiente con exactitud y respeto estricto a las capacidades físicas
         setTanks(prev => prev.map(t => {
           const tNorm = normFn(t.lugar);
           const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (newRefill.tag && t.tag === newRefill.tag);
           if (matches) {
-            const autTotal = t.consumo_lh > 0 ? Number((newRefill.total_nodo / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+            const subCap = parseFloat(t.tanque_lts) || 0;
+            const resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+            const clampedSub = subCap > 0 ? Math.min(subCap, Math.max(0, Number(newRefill.subtanque_lts) || 0)) : (Number(newRefill.subtanque_lts) || 0);
+            const clampedRes = resCap > 0 ? Math.min(resCap, Math.max(0, Number(newRefill.reserva_lts) || 0)) : (resCap === 0 ? 0 : (Number(newRefill.reserva_lts) || 0));
+            const newTot = clampedSub + clampedRes;
+            const autTotal = t.consumo_lh > 0 ? Number((newTot / t.consumo_lh).toFixed(1)) : t.aut_total_h;
             const diasAut = Number((autTotal / 24).toFixed(2));
             return {
               ...t,
-              subtanque_actual: (t.tag === newRefill.tag || !newRefill.tag) ? newRefill.subtanque_lts : t.subtanque_actual,
-              reserva_lts: newRefill.reserva_lts,
+              subtanque_actual: (t.tag === newRefill.tag || !newRefill.tag) ? clampedSub : t.subtanque_actual,
+              reserva_lts: clampedRes,
               aut_total_h: autTotal,
               dias_aut: diasAut,
               horometro_actual: (newRefill.horometro && newRefill.horometro !== '—') ? newRefill.horometro : t.horometro_actual
@@ -14654,19 +14702,22 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         setTanks(prev => prev.map(t => {
           if (t.lugar.toLowerCase() === (refillToDelete.lugar || '').toLowerCase()) {
             const d = refillToDelete.destino || 'Surtido Reserva';
-            let newSub = t.subtanque_actual || t.tanque_lts;
-            let newRes = t.reserva_lts || 0;
+            const subCap = parseFloat(t.tanque_lts) || 0;
+            const resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+            let newSub = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+            let newRes = parseFloat(t.reserva_lts) || 0;
 
             if (d === 'Surtido Reserva' || d === 'Reserva') {
               const removedLts = parseFloat(refillToDelete.litros) || 0;
               newRes = Math.max(0, newRes - removedLts);
             } else if (d === 'Surtido Planta' || d === 'Sub-tanque') {
-              const lts = parseFloat(refillToDelete.litros) || 0;
+              const lts = parseFloat(refillToDelete.litros_planta || refillToDelete.litros) || 0;
               newSub = Math.max(0, newSub - lts);
-              if (t.cap_reserva_lts > 0 || t.reserva_lts > 0) {
-                // Devolver a reserva el combustible trasegado
-                newRes = newRes + lts;
-              }
+              // Surtido directo de cisterna a planta no modificó reserva externa
+            } else if (d === 'Trasiego Interno') {
+              const lts = parseFloat(refillToDelete.litros_planta || refillToDelete.litros) || 0;
+              newSub = Math.max(0, newSub - lts);
+              newRes = resCap > 0 ? Math.min(resCap, newRes + lts) : (newRes + lts);
             } else if (d === 'Surtido Planta y Reserva' || d === 'Ambos' || d === 'Distribuido') {
               const ltsP = parseFloat(refillToDelete.litros_planta) || (parseFloat(refillToDelete.litros) / 2);
               const ltsR = parseFloat(refillToDelete.litros_reserva) || (parseFloat(refillToDelete.litros) / 2);
@@ -15105,10 +15156,12 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 </thead>
                 <tbody>
                   {filteredPlants.map((plant, idx) => {
-                    const subActual = parseFloat(plant.subtanque_actual != null ? plant.subtanque_actual : plant.tanque_lts) || 0;
                     const subCap = parseFloat(plant.tanque_lts) || 0;
-                    const resActual = parseFloat(plant.reserva_lts) || 0;
                     const resCap = parseFloat(plant.cap_reserva_lts != null ? plant.cap_reserva_lts : plant.cap_reserva) || 0;
+                    const rawSub = parseFloat(plant.subtanque_actual != null ? plant.subtanque_actual : plant.tanque_lts) || 0;
+                    const subActual = subCap > 0 ? Math.min(subCap, rawSub) : rawSub;
+                    const rawRes = parseFloat(plant.reserva_lts) || 0;
+                    const resActual = resCap > 0 ? Math.min(resCap, rawRes) : 0;
                     const totalActual = subActual + resActual;
                     const diasAut = parseFloat(plant.dias_aut) || 0;
                     const hasReserve = resCap > 0;
@@ -15323,10 +15376,12 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               paddingRight: 4
             }}>
               {filteredPlants.map(plant => {
-                const subActual = parseFloat(plant.subtanque_actual != null ? plant.subtanque_actual : plant.tanque_lts) || 0;
                 const subCap = parseFloat(plant.tanque_lts) || 0;
-                const resActual = parseFloat(plant.reserva_lts) || 0;
                 const resCap = parseFloat(plant.cap_reserva_lts != null ? plant.cap_reserva_lts : plant.cap_reserva) || 0;
+                const rawSub = parseFloat(plant.subtanque_actual != null ? plant.subtanque_actual : plant.tanque_lts) || 0;
+                const subActual = subCap > 0 ? Math.min(subCap, rawSub) : rawSub;
+                const rawRes = parseFloat(plant.reserva_lts) || 0;
+                const resActual = resCap > 0 ? Math.min(resCap, rawRes) : 0;
                 const totalActual = subActual + resActual;
                 const diasAut = parseFloat(plant.dias_aut) || 0;
 
@@ -18109,10 +18164,14 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [savedReport, setSavedReport] = useState(null);
 
       const selTank = tanks.find(t => t.id === selectedTankId) || tanks.find(t => t.lugar === lugar) || tanks[0];
-      const curSub = parseFloat(selTank?.subtanque_actual || selTank?.tanque_lts) || 0;
-      const curRes = parseFloat(selTank?.reserva_lts) || 0;
+      const subCap = parseFloat(selTank?.tanque_lts) || 0;
+      const resCap = parseFloat(selTank?.cap_reserva_lts != null ? selTank.cap_reserva_lts : selTank?.cap_reserva) || 0;
+      const rawSub = parseFloat(selTank?.subtanque_actual != null ? selTank.subtanque_actual : selTank?.tanque_lts) || 0;
+      const curSub = subCap > 0 ? Math.min(subCap, rawSub) : rawSub;
+      const rawRes = parseFloat(selTank?.reserva_lts) || 0;
+      const curRes = resCap > 0 ? Math.min(resCap, rawRes) : 0;
 
-      // Calcular en tiempo real según la Tabla de la Verdad
+      // Calcular en tiempo real según la Tabla de la Verdad y límites físicos estrictos
       const calcResultingLevels = () => {
         let newSub = curSub;
         let newRes = curRes;
@@ -18122,24 +18181,28 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
         if (destino === 'Surtido Reserva') {
           const l = parseFloat(litros) || 0;
-          newRes = curRes + l;
+          newRes = resCap > 0 ? Math.min(resCap, curRes + l) : (curRes + l);
           addedTotal = l;
           ltsR = l;
         } else if (destino === 'Surtido Planta') {
           const l = parseFloat(litros) || 0;
           addedTotal = l;
           ltsP = l;
-          if (curRes > 0) {
-            newRes = Math.max(0, curRes - l);
-            newSub = curSub + l;
-          } else {
-            newSub = curSub + l;
-          }
+          // Suministro directo desde cisterna a la planta: el nivel llena el sub-tanque hasta el límite nominal de capacidad
+          // y NO altera la reserva externa del nodo
+          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
+          newRes = curRes;
+        } else if (destino === 'Trasiego Interno') {
+          const l = parseFloat(litros) || 0;
+          ltsP = l;
+          addedTotal = 0; // Trasiego interno no añade combustible externo al nodo
+          newRes = Math.max(0, curRes - l);
+          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
         } else if (destino === 'Surtido Planta y Reserva') {
           ltsP = parseFloat(litrosPlanta) || 0;
           ltsR = parseFloat(litrosReserva) || 0;
-          newSub = curSub + ltsP;
-          newRes = curRes + ltsR;
+          newSub = subCap > 0 ? Math.min(subCap, curSub + ltsP) : (curSub + ltsP);
+          newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
           addedTotal = ltsP + ltsR;
         }
 
@@ -18149,19 +18212,22 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const { newSub, newRes, newTotal, addedTotal, ltsP, ltsR } = calcResultingLevels();
 
       const handleSave = () => {
-        if (addedTotal <= 0) {
+        if (destino !== 'Trasiego Interno' && addedTotal <= 0) {
           alert('Ingresa una cantidad válida de litros suministrados.');
           return;
         }
-        const hasReserveTank = (selTank?.cap_reserva_lts || 0) > 0 || curRes > 0;
-        const inputLts = parseFloat(litros) || 0;
-        if (destino === 'Surtido Planta' && hasReserveTank) {
+        if (destino === 'Trasiego Interno') {
+          const inputLts = parseFloat(litros) || 0;
+          if (inputLts <= 0) {
+            alert('Ingresa los litros a trasegar de la reserva a la planta.');
+            return;
+          }
           if (curRes <= 0) {
-            alert('No se puede realizar Surtido Planta por trasiego: la reserva del nodo está en 0 Lts.');
+            alert('No se puede realizar trasiego: la reserva externa del nodo está en 0 Lts.');
             return;
           }
           if (inputLts > curRes) {
-            alert(`No puedes surtir ${inputLts}L a la planta porque la reserva solo dispone de ${curRes}L para trasegar.`);
+            alert(`No puedes trasegar ${inputLts}L porque la reserva solo dispone de ${curRes}L.`);
             return;
           }
         }
@@ -18277,13 +18343,16 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               <div>
                 <label className="lbl">Destino del Combustible</label>
                 <select className="fi" value={destino} onChange={e => setDestino(e.target.value)}>
-                  {(parseFloat(selTank?.cap_reserva_lts || selTank?.cap_reserva) || 0) === 0 ? (
-                    <option value="Surtido Planta">Surtido Directo a Planta ({selTank?.tanque_lts || 100} L máx)</option>
+                  {resCap === 0 ? (
+                    <option value="Surtido Planta">Surtido Directo a Planta ({subCap} L máx)</option>
                   ) : (
                     <>
-                      <option value="Surtido Reserva">Surtido Reserva</option>
-                      <option value="Surtido Planta">Surtido Planta (Trasiego)</option>
-                      <option value="Surtido Planta y Reserva">Surtido Planta y Reserva</option>
+                      <option value="Surtido Planta">Surtido a Planta (Cisterna a Planta - {subCap} L máx)</option>
+                      <option value="Surtido Reserva">Surtido a Reserva (Cisterna a Tanque - {resCap} L máx)</option>
+                      <option value="Surtido Planta y Reserva">Surtido Planta y Reserva (Cisterna a Ambos)</option>
+                      {curRes > 0 && (
+                        <option value="Trasiego Interno">Trasiego Interno (Tanque Reserva a Planta)</option>
+                      )}
                     </>
                   )}
                 </select>
@@ -18297,10 +18366,20 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
               {destino !== 'Surtido Planta y Reserva' ? (
                 <div style={{ gridColumn: '1/-1' }}>
                   <label className="lbl">
-                    {destino === 'Surtido Reserva' ? 'Litros a Reserva (Lts)' : 'Litros a Planta (Lts)'}
-                    {destino === 'Surtido Planta' && ((selTank?.cap_reserva_lts || 0) > 0 || curRes > 0) && (
-                      <span style={{ marginLeft: 6, color: curRes > 0 ? 'var(--blue)' : '#f55b5d', fontSize: '.7rem' }}>
-                        (Disp. en Reserva: {curRes}L)
+                    {destino === 'Surtido Reserva' ? 'Litros a Reserva (Lts)' : (destino === 'Trasiego Interno' ? 'Litros a Trasegar a Planta (Lts)' : 'Litros a Planta (Lts)')}
+                    {destino === 'Surtido Planta' && (
+                      <span style={{ marginLeft: 6, color: 'var(--blue)', fontSize: '.72rem', fontWeight: 600 }}>
+                        (Límite tanque planta: {subCap} Lts | Nivel actual: {curSub} Lts)
+                      </span>
+                    )}
+                    {destino === 'Surtido Reserva' && (
+                      <span style={{ marginLeft: 6, color: 'var(--blue)', fontSize: '.72rem', fontWeight: 600 }}>
+                        (Capacidad reserva: {resCap} Lts | Nivel actual: {curRes} Lts)
+                      </span>
+                    )}
+                    {destino === 'Trasiego Interno' && (
+                      <span style={{ marginLeft: 6, color: curRes > 0 ? 'var(--blue)' : '#f55b5d', fontSize: '.72rem', fontWeight: 600 }}>
+                        (Disp. en Reserva: {curRes} Lts | Límite Planta: {subCap} Lts)
                       </span>
                     )}
                   </label>
@@ -18308,28 +18387,30 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     className="fi fm"
                     type="number"
                     step="any"
-                    placeholder="Ej: 150"
+                    placeholder="Ej: 100"
                     value={litros}
-                    max={destino === 'Surtido Planta' && ((selTank?.cap_reserva_lts || 0) > 0 || curRes > 0) ? curRes : undefined}
+                    max={destino === 'Trasiego Interno' ? curRes : undefined}
                     onChange={e => setLitros(e.target.value)}
-                    style={{
-                      borderColor: (destino === 'Surtido Planta' && ((selTank?.cap_reserva_lts || 0) > 0 || curRes > 0) && (parseFloat(litros) || 0) > curRes) ? '#f55b5d' : undefined
-                    }}
                   />
-                  {destino === 'Surtido Planta' && ((selTank?.cap_reserva_lts || 0) > 0 || curRes > 0) && (parseFloat(litros) || 0) > curRes && (
-                    <div style={{ color: '#f55b5d', fontSize: '.72rem', marginTop: 3, fontWeight: 600 }}>
-                      Excede la reserva disponible ({curRes} Lts máx).
+                  {destino === 'Surtido Planta' && subCap > 0 && ((parseFloat(litros) || 0) + curSub > subCap) && (
+                    <div style={{ color: 'var(--blue)', fontSize: '.72rem', marginTop: 3, fontWeight: 600 }}>
+                      Nota: El tanque quedará lleno en su capacidad física máxima de {subCap} Lts (tope nominal establecido).
+                    </div>
+                  )}
+                  {destino === 'Surtido Reserva' && resCap > 0 && ((parseFloat(litros) || 0) + curRes > resCap) && (
+                    <div style={{ color: 'var(--blue)', fontSize: '.72rem', marginTop: 3, fontWeight: 600 }}>
+                      Nota: La reserva quedará llena en su capacidad máxima de {resCap} Lts.
                     </div>
                   )}
                 </div>
               ) : (
                 <>
                   <div>
-                    <label className="lbl">Litros a Planta (Lts)</label>
+                    <label className="lbl">Litros a Planta ({subCap} L máx)</label>
                     <input className="fi fm" type="number" step="any" placeholder="Ej: 80" value={litrosPlanta} onChange={e => setLitrosPlanta(e.target.value)} />
                   </div>
                   <div>
-                    <label className="lbl">Litros a Reserva (Lts)</label>
+                    <label className="lbl">Litros a Reserva ({resCap} L máx)</label>
                     <input className="fi fm" type="number" step="any" placeholder="Ej: 200" value={litrosReserva} onChange={e => setLitrosReserva(e.target.value)} />
                   </div>
                 </>
@@ -18405,9 +18486,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     Litros Totales de Combustible en el Nodo
                   </div>
                   <div style={{ fontSize: '.78rem', color: 'var(--tx2)', marginTop: 2 }}>
-                    Sub-tanque: <strong style={{ color: 'var(--tx1)' }}>{newSub} Lts</strong> | Reserva: <strong style={{ color: 'var(--tx1)' }}>{newRes} Lts</strong>
-                    {destino === 'Surtido Planta' && curRes > 0 && (
-                      <span style={{ marginLeft: 6, color: '#21c0fa', fontSize: '.72rem', fontWeight: 600 }}>(Trasiego: -{parseFloat(litros)||0}L)</span>
+                    Sub-tanque: <strong style={{ color: 'var(--tx1)' }}>{newSub} / {subCap} Lts</strong> | Reserva: <strong style={{ color: 'var(--tx1)' }}>{newRes} {resCap > 0 ? `/ ${resCap}` : ''} Lts</strong>
+                    {destino === 'Trasiego Interno' && (
+                      <span style={{ marginLeft: 6, color: '#21c0fa', fontSize: '.72rem', fontWeight: 600 }}>(Trasiego: -{parseFloat(litros)||0}L de reserva a planta)</span>
                     )}
                     {destino === 'Surtido Planta y Reserva' && (
                       <span style={{ marginLeft: 6, color: '#8b5cf6', fontSize: '.72rem', fontWeight: 600 }}>(Total despachado: +{addedTotal}L)</span>
