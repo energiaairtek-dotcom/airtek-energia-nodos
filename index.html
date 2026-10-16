@@ -2786,25 +2786,30 @@ function PendingPage({ onLogout }) {
       // 2. Persistir en LocalStorage (airtek_fuel_tanks_v13) con coincidencia normalizada
       try {
         const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
-        const updatedTanks = (curTanks.length > 0 ? curTanks : INITIAL_FUEL_TANKS).map(t => {
+        const baseTanks = curTanks.length > 0 ? curTanks : INITIAL_FUEL_TANKS;
+        const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
+        const srcT = plantTag ? baseTanks.find(x => x.tag === plantTag) : null;
+        const srcHasRes = srcT ? capResOf(srcT) > 0 : true;
+        const updatedTanks = baseTanks.map(t => {
           const tNorm = normFn(t.lugar);
-          const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (plantTag && t.tag === plantTag);
-          if (matches) {
-            const subCap = parseFloat(t.tanque_lts) || 0;
-            const resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
-            const clampedSub = subCap > 0 ? Math.min(subCap, Math.max(0, Number(resultingSub) || 0)) : (Number(resultingSub) || 0);
-            const clampedRes = resCap > 0 ? Math.min(resCap, Math.max(0, Number(resultingRes) || 0)) : (resCap === 0 ? 0 : (Number(resultingRes) || 0));
-            const newTot = clampedSub + clampedRes;
-            const autTotal = t.consumo_lh > 0 ? Number((newTot / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-            return {
-              ...t,
-              subtanque_actual: (t.tag === plantTag || !plantTag) ? clampedSub : t.subtanque_actual,
-              reserva_lts: clampedRes,
-              aut_total_h: autTotal,
-              dias_aut: Number((autTotal / 24).toFixed(2))
-            };
-          }
-          return t;
+          const exactNode = tNorm === targetNorm;
+          const isPlant = plantTag ? t.tag === plantTag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
+          const subCap = parseFloat(t.tanque_lts) || 0;
+          const resCap = capResOf(t);
+          const shareRes = exactNode && resCap > 0 && srcHasRes;
+          if (!isPlant && !shareRes) return t;
+          const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+          const curR = parseFloat(t.reserva_lts) || 0;
+          const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(resultingSub) || 0)) : (Number(resultingSub) || 0)) : curS;
+          const newR = ((isPlant && resCap > 0) || shareRes) ? Math.min(resCap, Math.max(0, Number(resultingRes) || 0)) : curR;
+          const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+          return {
+            ...t,
+            subtanque_actual: newS,
+            reserva_lts: newR,
+            aut_total_h: autTotal,
+            dias_aut: Number((autTotal / 24).toFixed(2))
+          };
         });
         localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(updatedTanks));
       } catch (lsErr) {
@@ -2824,6 +2829,53 @@ function PendingPage({ onLogout }) {
           }
         }));
       } catch (e) {}
+    }
+
+    // Revierte el efecto de un surtido sobre los tanques: sub-tanque SOLO de la planta (por tag)
+    // y reserva compartida SOLO en las plantas del mismo nodo que realmente tienen reserva.
+    function revertFuelTanks(tanksList, r) {
+      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const target = normFn(r.lugar);
+      const capRes = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
+      const src = r.tag ? tanksList.find(x => x.tag === r.tag) : null;
+      const srcHasRes = src ? capRes(src) > 0 : true;
+      return tanksList.map(t => {
+        const exactNode = normFn(t.lugar) === target;
+        const isPlant = r.tag ? t.tag === r.tag : exactNode;
+        const resCap = capRes(t);
+        const subCap = parseFloat(t.tanque_lts) || 0;
+        const shareRes = exactNode && resCap > 0 && srcHasRes;
+        if (!isPlant && !shareRes) return t;
+
+        let dSub = 0, dRes = 0;
+        const hasPrev = r.prevSub != null && r.resSub != null && !isNaN(parseFloat(r.prevSub)) && !isNaN(parseFloat(r.resSub));
+        if (hasPrev) {
+          dSub = parseFloat(r.resSub) - parseFloat(r.prevSub);
+          dRes = (r.prevRes != null && r.resRes != null) ? (parseFloat(r.resRes) - parseFloat(r.prevRes)) : 0;
+        } else {
+          const d = r.destino || 'Surtido Reserva';
+          const l = parseFloat(r.litros) || 0;
+          const lP = parseFloat(r.litrosPlanta) || 0;
+          const lR = parseFloat(r.litrosReserva) || 0;
+          if (d === 'Surtido Reserva' || d === 'Reserva') { dRes = l; }
+          else if (d === 'Surtido Planta' || d === 'Sub-tanque' || d === 'Trasiego Interno') { dSub = lP || l; dRes = srcHasRes ? -(lP || l) : 0; }
+          else { dSub = lP || (l / 2); dRes = lR || (l / 2); }
+        }
+
+        let sub = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+        let res = parseFloat(t.reserva_lts) || 0;
+        if (isPlant) sub = Math.max(0, sub - dSub);
+        if (subCap > 0) sub = Math.min(subCap, sub);
+        if (shareRes) {
+          res = Math.max(0, res - dRes);
+          res = Math.min(resCap, res);
+        }
+        const total = sub + res;
+        const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+        const out = { ...t, subtanque_actual: sub, reserva_lts: res, aut_total_h: autTotal, dias_aut: Number((autTotal / 24).toFixed(2)) };
+        if (isPlant && r.prevHoro) out.horometro_actual = r.prevHoro;
+        return out;
+      });
     }
 
     // Generador de Formato de Texto de Surtido para WhatsApp / Reportes
@@ -3046,9 +3098,9 @@ function PendingPage({ onLogout }) {
           const lts = parseFloat(fuelLts) || 0;
           addedTotalDespacho = lts;
           ltsP = lts;
-          // Cisterna directa a planta: llena el sub-tanque hasta el límite nominal y NO modifica la reserva externa
+          // Surtido a planta: llena el sub-tanque hasta su límite nominal y, si el nodo tiene reserva, descuenta de ella lo transferido
           newSub = subCap > 0 ? Math.min(subCap, curSub + lts) : (curSub + lts);
-          newRes = curRes;
+          newRes = resCap > 0 ? Math.max(0, curRes - (newSub - curSub)) : curRes;
         } else if (fuelDest === 'Trasiego Interno') {
           const lts = parseFloat(fuelLts) || 0;
           ltsP = lts;
@@ -3215,6 +3267,8 @@ function PendingPage({ onLogout }) {
               fuelLitersPlanta: resultingLtsP,
               fuelLitersReserva: resultingLtsR,
               fuelSubtankLevel: resultingSub,
+              fuelPrevSub: curSub,
+              fuelPrevRes: curRes,
               fuelReserveLevel: resultingRes,
               fuelTotalLevel: resultingTotal,
               fuelHorometer: fuelHoro,
@@ -3324,6 +3378,8 @@ function PendingPage({ onLogout }) {
               destino: fuelDest,
               subtanque_lts: resultingSub,
               reserva_lts: resultingRes,
+              prev_subtanque_lts: curSub,
+              prev_reserva_lts: curRes,
               total_nodo: resultingTotal,
               horometro: fuelHoro ? (String(fuelHoro).includes('h') ? fuelHoro : `${fuelHoro} h`) : (parsedHoro > 0 ? `${parsedHoro} h` : ''),
               horas_trabajo: '',
@@ -3574,15 +3630,12 @@ function PendingPage({ onLogout }) {
                 <div>
                   <label className="lbl">Destino del Combustible</label>
                   <select className="fi" value={fuelDest} onChange={e => setFuelDest(e.target.value)}>
-                    <option value="Surtido Planta">Surtido Planta (Cisterna a Planta - {nodeTankInfo?.tanque_lts || 300} L máx)</option>
+                    <option value="Surtido Planta">Surtido Planta ({nodeTankInfo?.tanque_lts || 300} L máx{(nodeTankInfo?.cap_reserva_lts || 0) > 0 ? ', descuenta de la reserva' : ''})</option>
                     {(nodeTankInfo?.cap_reserva_lts || 0) > 0 && (
                       <option value="Surtido Reserva">Surtido Reserva (Cisterna a Tanque - {nodeTankInfo?.cap_reserva_lts} L máx)</option>
                     )}
                     {(nodeTankInfo?.cap_reserva_lts || 0) > 0 && (
                       <option value="Surtido Planta y Reserva">Surtido Planta y Reserva (Cisterna a Ambos)</option>
-                    )}
-                    {curRes > 0 && (
-                      <option value="Trasiego Interno">Trasiego Interno (Tanque Reserva a Planta)</option>
                     )}
                   </select>
                 </div>
@@ -4264,7 +4317,7 @@ function PendingPage({ onLogout }) {
                             .map(d => d.data())
                             .filter(r => (r.generatorTag === plantTag || r.equipmentTag === plantTag || r.equipmentAction?.tag === plantTag));
 
-                          let prevHoro = 0;
+                          var prevHoro = 0;
                           for (const r of otherRecords) {
                             const hVal = parseFloat(r.fuelHorometer || r.measurements?.horometer || r.equipmentAction?.horometer) || 0;
                             if (hVal > 0) {
@@ -4295,7 +4348,8 @@ function PendingPage({ onLogout }) {
                             const updatedRefills = curRefills.filter(r => {
                               if (r.id === 'r_rec_' + record.id || r.id === 'db_' + record.id) return false;
                               const matchFecha = r.fecha === new Date(record.date?.toDate ? record.date.toDate() : record.date).toLocaleDateString('es-VE');
-                              const matchLugar = r.lugar === nodeName;
+                              const nfd = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+                              const matchLugar = nfd(r.lugar) === nfd(nodeName) && (!record.generatorTag || !r.tag || r.tag === record.generatorTag);
                               const matchLitros = parseFloat(r.litros) === parseFloat(record.fuelLiters);
                               if (matchFecha && matchLugar && matchLitros) return false;
                               return true;
@@ -4304,35 +4358,18 @@ function PendingPage({ onLogout }) {
 
                             // Revertir litros en tanques según la Tabla de la Verdad
                             const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
-                            const updatedTanks = curTanks.map(t => {
-                              if (t.lugar.toLowerCase() === nodeName.toLowerCase()) {
-                                const d = record.fuelDestination || 'Surtido Reserva';
-                                let newSub = t.subtanque_actual || t.tanque_lts;
-                                let newRes = t.reserva_lts || 0;
-
-                                if (d === 'Surtido Reserva' || d === 'Reserva') {
-                                  const removed = parseFloat(record.fuelLiters) || 0;
-                                  newRes = Math.max(0, newRes - removed);
-                                } else if (d === 'Surtido Planta' || d === 'Sub-tanque') {
-                                  const lts = parseFloat(record.fuelLiters) || 0;
-                                  newSub = Math.max(0, newSub - lts);
-                                  // Surtido directo de cisterna a planta no modificó reserva externa
-                                } else if (d === 'Trasiego Interno') {
-                                  const lts = parseFloat(record.fuelLiters) || 0;
-                                  newSub = Math.max(0, newSub - lts);
-                                  newRes = (t.cap_reserva_lts || 0) > 0 ? Math.min(t.cap_reserva_lts, newRes + lts) : (newRes + lts);
-                                } else if (d === 'Surtido Planta y Reserva' || d === 'Ambos' || d === 'Distribuido') {
-                                  const ltsP = parseFloat(record.fuelLitersPlanta) || (parseFloat(record.fuelLiters) / 2);
-                                  const ltsR = parseFloat(record.fuelLitersReserva) || (parseFloat(record.fuelLiters) / 2);
-                                  newSub = Math.max(0, newSub - ltsP);
-                                  newRes = Math.max(0, newRes - ltsR);
-                                }
-
-                                const total = newSub + newRes;
-                                const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-                                return { ...t, subtanque_actual: newSub, reserva_lts: newRes, aut_total_h: autTotal, dias_aut: Number((autTotal / 24).toFixed(2)) };
-                              }
-                              return t;
+                            const updatedTanks = revertFuelTanks(curTanks, {
+                              lugar: nodeName,
+                              tag: record.generatorTag,
+                              destino: record.fuelDestination,
+                              litros: record.fuelLiters,
+                              litrosPlanta: record.fuelLitersPlanta,
+                              litrosReserva: record.fuelLitersReserva,
+                              prevSub: record.fuelPrevSub,
+                              prevRes: record.fuelPrevRes,
+                              resSub: record.fuelSubtankLevel != null ? record.fuelSubtankLevel : record.fuelSubLevel,
+                              resRes: record.fuelReserveLevel,
+                              prevHoro: (typeof prevHoro !== 'undefined' && prevHoro > 0) ? formatCleanHoro(prevHoro) : null
                             });
                             localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(updatedTanks));
                           } catch(e) {}
@@ -14334,7 +14371,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         if (finalHAct !== null && !isNaN(finalHAct) && finalHAct > 0) {
           const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
           setMaintenances(prev => prev.map(m => {
-            if (m.tag === plantKey || normFn(m.planta) === normFn(plantKey)) {
+            if (m.tag ? m.tag === plantKey : normFn(m.planta) === normFn(plantKey)) {
               const horasTrab = parseFloat((finalHAct - m.horometro_mtto).toFixed(1));
               const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
               let status = 'optimo';
@@ -14378,7 +14415,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
         const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
         setMaintenances(prev => prev.map(m => {
-          const entry = updatedEntries[m.tag] || Object.entries(updatedEntries).find(([k]) => normFn(k) === normFn(m.planta))?.[1];
+          const entry = m.tag ? updatedEntries[m.tag] : Object.entries(updatedEntries).find(([k]) => normFn(k) === normFn(m.planta))?.[1];
           if (entry && entry.horometro_actual != null) {
             const hAct = parseFloat(entry.horometro_actual);
             if (!isNaN(hAct) && hAct > 0) {
@@ -14405,27 +14442,30 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         const targetNorm = normFn(newRefill.lugar);
 
         // 1. Actualizar niveles del tanque correspondiente con exactitud y respeto estricto a las capacidades físicas
+        const capResOfR = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
+        const srcTankR = newRefill.tag ? tanks.find(x => x.tag === newRefill.tag) : null;
+        const srcHasResR = srcTankR ? capResOfR(srcTankR) > 0 : true;
         setTanks(prev => prev.map(t => {
           const tNorm = normFn(t.lugar);
-          const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (newRefill.tag && t.tag === newRefill.tag);
-          if (matches) {
-            const subCap = parseFloat(t.tanque_lts) || 0;
-            const resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
-            const clampedSub = subCap > 0 ? Math.min(subCap, Math.max(0, Number(newRefill.subtanque_lts) || 0)) : (Number(newRefill.subtanque_lts) || 0);
-            const clampedRes = resCap > 0 ? Math.min(resCap, Math.max(0, Number(newRefill.reserva_lts) || 0)) : (resCap === 0 ? 0 : (Number(newRefill.reserva_lts) || 0));
-            const newTot = clampedSub + clampedRes;
-            const autTotal = t.consumo_lh > 0 ? Number((newTot / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-            const diasAut = Number((autTotal / 24).toFixed(2));
-            return {
-              ...t,
-              subtanque_actual: (t.tag === newRefill.tag || !newRefill.tag) ? clampedSub : t.subtanque_actual,
-              reserva_lts: clampedRes,
-              aut_total_h: autTotal,
-              dias_aut: diasAut,
-              horometro_actual: (newRefill.horometro && newRefill.horometro !== '—') ? newRefill.horometro : t.horometro_actual
-            };
-          }
-          return t;
+          const exactNode = tNorm === targetNorm;
+          const isPlant = newRefill.tag ? t.tag === newRefill.tag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
+          const subCap = parseFloat(t.tanque_lts) || 0;
+          const resCap = capResOfR(t);
+          const shareRes = exactNode && resCap > 0 && srcHasResR;
+          if (!isPlant && !shareRes) return t;
+          const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+          const curR = parseFloat(t.reserva_lts) || 0;
+          const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(newRefill.subtanque_lts) || 0)) : (Number(newRefill.subtanque_lts) || 0)) : curS;
+          const newR = ((isPlant && resCap > 0) || shareRes) ? Math.min(resCap, Math.max(0, Number(newRefill.reserva_lts) || 0)) : curR;
+          const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+          return {
+            ...t,
+            subtanque_actual: newS,
+            reserva_lts: newR,
+            aut_total_h: autTotal,
+            dias_aut: Number((autTotal / 24).toFixed(2)),
+            horometro_actual: (isPlant && newRefill.horometro && newRefill.horometro !== '—') ? newRefill.horometro : t.horometro_actual
+          };
         }));
 
         // 2. Persistir en Firestore (energy_nodes/{id}/fuel/state y node.fuelState) y LocalStorage centralizado
@@ -14460,6 +14500,11 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                   fuelDestination: newRefill.destino,
                   fuelTotalLevel: newRefill.total_nodo,
                   fuelSubLevel: newRefill.subtanque_lts,
+                  fuelSubtankLevel: newRefill.subtanque_lts,
+                  fuelLitersPlanta: newRefill.litros_planta || 0,
+                  fuelLitersReserva: newRefill.litros_reserva || 0,
+                  fuelPrevSub: newRefill.prev_subtanque_lts ?? null,
+                  fuelPrevRes: newRefill.prev_reserva_lts ?? null,
                   fuelReserveLevel: newRefill.reserva_lts,
                   fuelHorometer: newRefill.horometro,
                   technicianName: newRefill.tecnico,
@@ -14557,30 +14602,47 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           }
         }
 
-        // 2. Actualizar tanks en memoria (capacidades, autonomía, niveles y horómetro)
+        // 2. Actualizar tanks en memoria: datos propios de la planta (tanque, consumo, horómetro) SOLO para su tag;
+        //    la reserva (nivel y capacidad) se comparte únicamente con plantas del mismo nodo que tienen reserva
+        const capResSel = (newCapRes != null && !isNaN(newCapRes)) ? Number(newCapRes) : (parseFloat(plant.cap_reserva_lts) || 0);
         setTanks(prev => prev.map(t => {
           const tNorm = normFn(t.lugar);
-          const matches = tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)) || (plant.tag && t.tag === plant.tag);
-          if (matches) {
+          const exactNode = tNorm === targetNorm;
+          const isPlant = plant.tag ? t.tag === plant.tag : exactNode;
+          const tResCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+          const shareRes = !isPlant && exactNode && tResCap > 0 && capResSel > 0;
+          if (isPlant) {
             const consLh = newConsumoLh != null && !isNaN(newConsumoLh) && newConsumoLh > 0 ? Number(newConsumoLh) : (t.consumo_lh || 1);
             const capSubVal = newCapSub != null && !isNaN(newCapSub) && newCapSub > 0 ? Number(newCapSub) : t.tanque_lts;
-            const capResVal = newCapRes != null && !isNaN(newCapRes) ? Number(newCapRes) : (t.cap_reserva_lts || 0);
+            const capResVal = capResSel;
             const autTotal = Number((newTotal / consLh).toFixed(1));
             const diasAut = newDiasAut != null && !isNaN(newDiasAut) && newDiasAut > 0 ? Number(newDiasAut) : Number((autTotal / 24).toFixed(2));
             const horoStr = newHorometro ? newHorometro : t.horometro_actual;
-
             return {
               ...t,
               tanque_lts: capSubVal,
               cap_reserva: capResVal,
               cap_reserva_lts: capResVal,
-              subtanque_actual: (t.tag === plant.tag || !plant.tag) ? newSub : t.subtanque_actual,
+              subtanque_actual: newSub,
               reserva_lts: newRes,
               consumo_lh: consLh,
               aut_tanque_h: Number((newSub / consLh).toFixed(1)),
               aut_total_h: autTotal,
               dias_aut: diasAut,
               horometro_actual: horoStr
+            };
+          }
+          if (shareRes) {
+            const sSub = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+            const consT = t.consumo_lh > 0 ? t.consumo_lh : 1;
+            const autT = Number(((sSub + newRes) / consT).toFixed(1));
+            return {
+              ...t,
+              cap_reserva: capResSel,
+              cap_reserva_lts: capResSel,
+              reserva_lts: newRes,
+              aut_total_h: autT,
+              dias_aut: Number((autT / 24).toFixed(2))
             };
           }
           return t;
@@ -14591,7 +14653,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           const plantTag = plant.tag;
           setMaintenances(prev => prev.map(m => {
             const mNorm = normFn(m.planta);
-            if ((plantTag && m.tag === plantTag) || mNorm === targetNorm) {
+            if (plantTag ? m.tag === plantTag : mNorm === targetNorm) {
               const horasTrab = parseFloat((parsedHoroFloat - m.horometro_mtto).toFixed(1));
               const horasRest = parseFloat((m.intervalo - horasTrab).toFixed(1));
               let status = 'optimo';
@@ -14698,39 +14760,18 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         const updatedRefills = refills.filter(r => r.id !== refillToDelete.id);
         setRefills(updatedRefills);
 
-        // 2. Revertir litros en el tanque correspondiente según la Tabla de la Verdad
-        setTanks(prev => prev.map(t => {
-          if (t.lugar.toLowerCase() === (refillToDelete.lugar || '').toLowerCase()) {
-            const d = refillToDelete.destino || 'Surtido Reserva';
-            const subCap = parseFloat(t.tanque_lts) || 0;
-            const resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
-            let newSub = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
-            let newRes = parseFloat(t.reserva_lts) || 0;
-
-            if (d === 'Surtido Reserva' || d === 'Reserva') {
-              const removedLts = parseFloat(refillToDelete.litros) || 0;
-              newRes = Math.max(0, newRes - removedLts);
-            } else if (d === 'Surtido Planta' || d === 'Sub-tanque') {
-              const lts = parseFloat(refillToDelete.litros_planta || refillToDelete.litros) || 0;
-              newSub = Math.max(0, newSub - lts);
-              // Surtido directo de cisterna a planta no modificó reserva externa
-            } else if (d === 'Trasiego Interno') {
-              const lts = parseFloat(refillToDelete.litros_planta || refillToDelete.litros) || 0;
-              newSub = Math.max(0, newSub - lts);
-              newRes = resCap > 0 ? Math.min(resCap, newRes + lts) : (newRes + lts);
-            } else if (d === 'Surtido Planta y Reserva' || d === 'Ambos' || d === 'Distribuido') {
-              const ltsP = parseFloat(refillToDelete.litros_planta) || (parseFloat(refillToDelete.litros) / 2);
-              const ltsR = parseFloat(refillToDelete.litros_reserva) || (parseFloat(refillToDelete.litros) / 2);
-              newSub = Math.max(0, newSub - ltsP);
-              newRes = Math.max(0, newRes - ltsR);
-            }
-
-            const total = newSub + newRes;
-            const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-            const diasAut = Number((autTotal / 24).toFixed(2));
-            return { ...t, subtanque_actual: newSub, reserva_lts: newRes, aut_total_h: autTotal, dias_aut: diasAut };
-          }
-          return t;
+        // 2. Revertir niveles: sub-tanque solo de la planta del surtido, reserva solo en plantas del nodo con reserva
+        setTanks(prev => revertFuelTanks(prev, {
+          lugar: refillToDelete.lugar,
+          tag: refillToDelete.tag,
+          destino: refillToDelete.destino,
+          litros: refillToDelete.litros,
+          litrosPlanta: refillToDelete.litros_planta,
+          litrosReserva: refillToDelete.litros_reserva,
+          prevSub: refillToDelete.prev_subtanque_lts,
+          prevRes: refillToDelete.prev_reserva_lts,
+          resSub: refillToDelete.subtanque_lts,
+          resRes: refillToDelete.reserva_lts
         }));
 
         // 3. Revertir horómetro de la planta al anterior
@@ -14751,6 +14792,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           }
 
           if (prevHorometer > 0) {
+            setTanks(prev => prev.map(t => t.tag === refillToDelete.tag ? { ...t, horometro_actual: formatCleanHoro(prevHorometer) } : t));
             setMaintenances(prev => prev.map(m => {
               if (m.tag === refillToDelete.tag) {
                 const horasTrab = parseFloat((prevHorometer - m.horometro_mtto).toFixed(1));
@@ -15753,7 +15795,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           const totNodo = sumSub + sharedRes;
 
           // Buscar último surtido para esta planta específica por tag o por sitio
-          const plantRefills = refills.filter(r => (r.tag && t.tag && r.tag === t.tag) || normFn(r.lugar) === sn);
+          const plantRefills = refills.filter(r => r.tag ? r.tag === t.tag : normFn(r.lugar) === sn);
           const lastRefill = plantRefills.length > 0 ? plantRefills[0] : null;
 
           // Horómetro del último surtido
@@ -15778,7 +15820,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           }
 
           if (hAct === null) {
-            const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+            const mMtto = maintenances.find(m => m.tag ? (t.tag && m.tag === t.tag) : normFn(m.planta).includes(sn));
             if (mMtto && mMtto.horometro_actual != null) {
               hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
             }
@@ -17020,7 +17062,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         const totNodo = sumSubtanques + sharedReserva;
 
         // Buscar último surtido por tag o sitio
-        const plantRefills = refills.filter(r => (r.tag && t.tag && r.tag === t.tag) || normFn(r.lugar) === sn);
+        const plantRefills = refills.filter(r => r.tag ? r.tag === t.tag : normFn(r.lugar) === sn);
         const lastRefill = plantRefills.length > 0 ? plantRefills[0] : null;
 
         const hSur = lastRefill?.horometro ? parseHorometerToHours(lastRefill.horometro) : null;
@@ -17044,7 +17086,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         }
 
         if (hAct === null) {
-          const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+          const mMtto = maintenances.find(m => m.tag ? (t.tag && m.tag === t.tag) : normFn(m.planta).includes(sn));
           if (mMtto && mMtto.horometro_actual != null) {
             hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
           }
@@ -18188,10 +18230,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           const l = parseFloat(litros) || 0;
           addedTotal = l;
           ltsP = l;
-          // Suministro directo desde cisterna a la planta: el nivel llena el sub-tanque hasta el límite nominal de capacidad
-          // y NO altera la reserva externa del nodo
+          // Surtido a planta: llena el sub-tanque hasta su límite nominal y, si el nodo tiene reserva, descuenta de ella lo transferido
           newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
-          newRes = curRes;
+          newRes = resCap > 0 ? Math.max(0, curRes - (newSub - curSub)) : curRes;
         } else if (destino === 'Trasiego Interno') {
           const l = parseFloat(litros) || 0;
           ltsP = l;
@@ -18244,6 +18285,8 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           destino,
           subtanque_lts: newSub,
           reserva_lts: newRes,
+          prev_subtanque_lts: curSub,
+          prev_reserva_lts: curRes,
           total_nodo: newTotal,
           horometro: horometro ? (String(horometro).includes('h') || String(horometro).includes(':') ? horometro : `${horometro}h`) : '—',
           horas_trabajo: horasTrabajo ? (String(horasTrabajo).includes('h') ? horasTrabajo : `${horasTrabajo}h`) : '—',
@@ -18347,12 +18390,9 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                     <option value="Surtido Planta">Surtido Directo a Planta ({subCap} L máx)</option>
                   ) : (
                     <>
-                      <option value="Surtido Planta">Surtido a Planta (Cisterna a Planta - {subCap} L máx)</option>
+                      <option value="Surtido Planta">Surtido a Planta (descuenta de la reserva - {subCap} L máx)</option>
                       <option value="Surtido Reserva">Surtido a Reserva (Cisterna a Tanque - {resCap} L máx)</option>
                       <option value="Surtido Planta y Reserva">Surtido Planta y Reserva (Cisterna a Ambos)</option>
-                      {curRes > 0 && (
-                        <option value="Trasiego Interno">Trasiego Interno (Tanque Reserva a Planta)</option>
-                      )}
                     </>
                   )}
                 </select>
@@ -19097,7 +19137,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         tanks.forEach(t => {
           const sn = normFn(t.lugar);
           const plantKey = t.tag || sn;
-          const plantRefills = refills.filter(r => (r.tag && t.tag && r.tag === t.tag) || normFn(r.lugar) === sn);
+          const plantRefills = refills.filter(r => r.tag ? r.tag === t.tag : normFn(r.lugar) === sn);
           const lastRefill = plantRefills.length > 0 ? plantRefills[0] : null;
 
           const hSur = lastRefill?.horometro ? parseHorometerToHours(lastRefill.horometro) : null;
@@ -19118,7 +19158,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           }
 
           if (hAct === null) {
-            const mMtto = maintenances.find(m => (m.tag && t.tag && m.tag === t.tag) || normFn(m.planta).includes(sn));
+            const mMtto = maintenances.find(m => m.tag ? (t.tag && m.tag === t.tag) : normFn(m.planta).includes(sn));
             if (mMtto && mMtto.horometro_actual != null) {
               hAct = typeof mMtto.horometro_actual === 'number' ? mMtto.horometro_actual : parseHorometerToHours(mMtto.horometro_actual);
             }
