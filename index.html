@@ -1134,11 +1134,18 @@
     };
 
     const parseHours = (val) => {
-      if (!val) return 0;
+      if (!val && val !== 0) return 0;
+      if (typeof val === 'number') return val;
       const s = String(val).trim();
       if (s.toLowerCase() === 'analoga' || s.toLowerCase() === 'n/a') return 0;
-      const parts = s.split(':');
-      if (parts.length >= 1) {
+      const hmMatch = s.match(/^(\d+(?:\.\d+)?)\s*h(?:oras?)?(?:\s*(\d+(?:\.\d+)?)\s*m(?:in)?)?/i);
+      if (hmMatch) {
+        const h = parseFloat(hmMatch[1]) || 0;
+        const m = parseFloat(hmMatch[2] || 0) || 0;
+        return h + (m / 60);
+      }
+      if (s.includes(':')) {
+        const parts = s.split(':');
         const hrs = parseFloat(parts[0]) || 0;
         const mins = parts.length > 1 ? (parseFloat(parts[1]) || 0) : 0;
         const secs = parts.length > 2 ? (parseFloat(parts[2]) || 0) : 0;
@@ -5419,6 +5426,7 @@ function PendingPage({ onLogout }) {
         serial: eq.serial || '',
         notes: eq.notes || '',
         active: eq.active !== false,
+        horometer: eq.horometer ? formatHHMMSS(parseFloat(eq.horometer)) : '',
         lastMaintenanceHorometer: eq.lastMaintenanceHorometer ? formatHHMMSS(parseFloat(eq.lastMaintenanceHorometer)) : '00:00:00',
         maintenanceInterval: eq.maintenanceInterval || 250,
         capacity: eq.capacity || '',
@@ -5449,6 +5457,7 @@ function PendingPage({ onLogout }) {
           serial: eq.serial || '',
           notes: eq.notes || '',
           active: eq.active !== false,
+          horometer: eq.horometer ? formatHHMMSS(parseFloat(eq.horometer)) : '',
           lastMaintenanceHorometer: eq.lastMaintenanceHorometer ? formatHHMMSS(parseFloat(eq.lastMaintenanceHorometer)) : '00:00:00',
           maintenanceInterval: eq.maintenanceInterval || 250,
           capacity: eq.capacity || '',
@@ -5474,7 +5483,9 @@ function PendingPage({ onLogout }) {
         const isDC = f.type === 'BAT' || f.type === 'ETP';
         const saveData = { ...f, tag: f.tag.trim().toUpperCase(), voltage: isDC ? '' : f.voltage };
         if (f.type === 'GEN') {
+          saveData.horometer = parseHours(f.horometer);
           saveData.lastMaintenanceHorometer = parseHours(f.lastMaintenanceHorometer);
+          saveData.maintenanceInterval = parseFloat(f.maintenanceInterval) || 250;
         }
         await onSave(saveData);
         setSaving(false);
@@ -5690,6 +5701,10 @@ function PendingPage({ onLogout }) {
                     <option value="Monofásica">Monofásica</option>
                     <option value="Trifásica">Trifásica</option>
                   </select>
+                </div>
+                <div>
+                  <label className="lbl">Horómetro Actual (HH:MM:SS)</label>
+                  <input className="fi fm" type="text" value={f.horometer || ''} onChange={e => setF({ ...f, horometer: e.target.value })} placeholder="Ej: 546:28:00 o 358" />
                 </div>
                 <div>
                   <label className="lbl">Horómetro del último mantenimiento (HH:MM:SS)</label>
@@ -6483,8 +6498,273 @@ ${f.obsGenerales}`;
       );
     }
 
+    function CalibrateHoroModal({ plantEq, nodeId, nodeName, userProfile, toast, onClose, onSaved }) {
+      const catalogSeed = INITIAL_MAINTENANCE_LOG.find(m => m.tag === plantEq.tag);
+      const seedLastMaint = catalogSeed ? (parseFloat(catalogSeed.horometro_mtto) || 0) : 0;
+      const seedCurrentH = catalogSeed ? (parseFloat(catalogSeed.horometro_actual) || 0) : 0;
+      const eqLastMaint = parseFloat(plantEq.lastMaintenanceHorometer) || 0;
+      const eqHoro = parseFloat(plantEq.horometer) || 0;
+
+      let customH = 0;
+      let customMtto = 0;
+      try {
+        const ch = JSON.parse(localStorage.getItem('airtek_plant_horometers_v1') || '{}');
+        if (ch[plantEq.tag]) {
+          if (ch[plantEq.tag].horometro_actual !== undefined) customH = parseFloat(ch[plantEq.tag].horometro_actual) || 0;
+          if (ch[plantEq.tag].horometro_mtto !== undefined) customMtto = parseFloat(ch[plantEq.tag].horometro_mtto) || 0;
+        }
+      } catch(e) {}
+
+      let tankH = 0;
+      try {
+        const tk = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+        const mTank = tk.find(t => t.tag === plantEq.tag);
+        if (mTank && mTank.horometro_actual !== undefined) {
+          tankH = typeof mTank.horometro_actual === 'number' ? mTank.horometro_actual : (parseHours(mTank.horometro_actual) || 0);
+        }
+      } catch(e) {}
+
+      const initialLastM = Math.max(seedLastMaint, eqLastMaint, customMtto);
+      const explicitH = Math.max(eqHoro, customH, tankH);
+      const initialCurrH = explicitH > 0 ? Math.max(explicitH, initialLastM) : (initialLastM > 0 ? initialLastM : seedCurrentH);
+      const initialInterval = parseFloat(plantEq.maintenanceInterval) || (catalogSeed ? catalogSeed.intervalo : 250);
+
+      const [f, setF] = useState({
+        horometer: formatHHMMSS(initialCurrH),
+        lastMaintenanceHorometer: formatHHMMSS(initialLastM),
+        maintenanceInterval: initialInterval,
+        obs: ''
+      });
+      const [saving, setSaving] = useState(false);
+
+      // Cálculos en tiempo real dentro del modal
+      const curH = parseHours(f.horometer);
+      const curM = parseHours(f.lastMaintenanceHorometer);
+      const curInt = parseFloat(f.maintenanceInterval) || 250;
+      const elapsed = Math.max(0, parseFloat((curH - curM).toFixed(1)));
+      const remaining = parseFloat((curInt - elapsed).toFixed(1));
+      const percentage = Math.min(100, Math.max(0, (elapsed / curInt) * 100));
+
+      let barColor = '#10b981';
+      let statusBadge = 'ÓPTIMO';
+      if (remaining <= 0) {
+        barColor = '#ef4444';
+        statusBadge = 'MANTENIMIENTO VENCIDO';
+      } else if (remaining <= 20) {
+        barColor = '#f59e0b';
+        statusBadge = 'MANTENIMIENTO PRÓXIMO';
+      }
+
+      const isHoroLowerThanMaint = curH < curM && curH > 0 && curM > 0;
+
+      const handleSave = async () => {
+        if (!f.horometer || !f.horometer.trim()) {
+          toast('Por favor ingresa el horómetro actual.', 'error');
+          return;
+        }
+        setSaving(true);
+        try {
+          const finalH = parseHours(f.horometer);
+          const finalM = parseHours(f.lastMaintenanceHorometer);
+          const finalI = parseFloat(f.maintenanceInterval) || 250;
+
+          // 1. Actualizar energy_equipment en Firestore
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(plantEq.id).update({
+            horometer: finalH,
+            lastMaintenanceHorometer: finalM,
+            maintenanceInterval: finalI
+          });
+
+          // 2. Registrar auditoría en energy_records
+          await db.collection('energy_nodes').doc(nodeId).collection('energy_records').add({
+            date: firebase.firestore.FieldValue.serverTimestamp(),
+            type: 'ajuste_horometro',
+            generatorTag: plantEq.tag,
+            equipmentTag: plantEq.tag,
+            technicianName: userProfile?.name || 'Técnico',
+            technicianId: userProfile?.uid || '',
+            details: {
+              oldHorometer: initialCurrH,
+              newHorometer: finalH,
+              oldLastMaint: initialLastM,
+              newLastMaint: finalM,
+              maintenanceInterval: finalI,
+              obs: f.obs || 'Ajuste manual de horómetro desde tarjeta de planta'
+            }
+          });
+
+          // 3. Sincronizar en localStorage: airtek_plant_horometers_v1
+          try {
+            const ch = JSON.parse(localStorage.getItem('airtek_plant_horometers_v1') || '{}');
+            ch[plantEq.tag] = {
+              ...(ch[plantEq.tag] || {}),
+              horometro_actual: finalH,
+              horometro_mtto: finalM,
+              updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('airtek_plant_horometers_v1', JSON.stringify(ch));
+          } catch(e) {}
+
+          // 4. Sincronizar en localStorage: airtek_fuel_tanks_v13
+          try {
+            const tk = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+            const idx = tk.findIndex(t => t.tag === plantEq.tag);
+            if (idx !== -1) {
+              tk[idx].horometro_actual = finalH;
+              localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(tk));
+            }
+          } catch(e) {}
+
+          // 5. Emitir evento global para actualizar todas las vistas reactivas
+          window.dispatchEvent(new CustomEvent('airtek_horo_updated', {
+            detail: { plantTag: plantEq.tag, horometer: finalH, lastMaint: finalM }
+          }));
+
+          toast(`Horómetro de ${plantEq.tag} actualizado a ${formatHHMMSS(finalH)}`, 'success');
+          if (onSaved) onSaved();
+          onClose();
+        } catch(e) {
+          toast('Error al actualizar horómetro: ' + (e.message || String(e)), 'error');
+        } finally {
+          setSaving(false);
+        }
+      };
+
+      return (
+        <div className="overlay" onClick={onClose} style={{ zIndex: 9999 }}>
+          <div className="card fin" style={{ maxWidth: 540, width: '92%', borderRadius: 16, padding: '24px 28px', boxSizing: 'border-box' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(1, 102, 255, 0.12)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div>
+                  <h3 className="fd" style={{ fontWeight: 800, fontSize: '1.05rem', margin: 0, color: 'var(--tx1)' }}>Ajustar Horómetro</h3>
+                  <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginTop: 2 }}>{plantEq.tag} · {nodeName}</div>
+                </div>
+              </div>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 22, padding: 4 }}>✕</button>
+            </div>
+
+            {/* Micro spec info */}
+            <div style={{ background: 'var(--bg-elevated)', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '.75rem', color: 'var(--tx2)' }}>Capacidad: <b>{plantEq.capacity || '—'} KVA</b></span>
+              <span style={{ fontSize: '.75rem', color: 'var(--tx2)' }}>Fases: <b>{plantEq.phases || '—'}</b></span>
+              <span style={{ fontSize: '.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 12, background: `${barColor}18`, color: barColor, border: `1px solid ${barColor}40` }}>
+                {statusBadge}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label className="lbl" style={{ fontWeight: 700, color: 'var(--blue)' }}>Horómetro Actual (HH:MM:SS)</label>
+                <input 
+                  className="fi fm" 
+                  type="text" 
+                  value={f.horometer} 
+                  onChange={e => setF({ ...f, horometer: e.target.value })} 
+                  placeholder="Ej: 546:28:00 o 550" 
+                  style={{ fontSize: '1rem', fontWeight: 700, borderColor: 'var(--blue)' }}
+                  autoFocus
+                />
+                <div style={{ fontSize: '.68rem', color: 'var(--tx4)', marginTop: 4 }}>Lectura física actual del marcador</div>
+              </div>
+
+              <div>
+                <label className="lbl">Último Mantenimiento (HH:MM:SS)</label>
+                <input 
+                  className="fi fm" 
+                  type="text" 
+                  value={f.lastMaintenanceHorometer} 
+                  onChange={e => setF({ ...f, lastMaintenanceHorometer: e.target.value })} 
+                  placeholder="Ej: 546:28:00 o 300" 
+                  style={{ fontSize: '1rem' }}
+                />
+                <div style={{ fontSize: '.68rem', color: 'var(--tx4)', marginTop: 4 }}>Horómetro al que se realizó el mtto.</div>
+              </div>
+
+              <div style={{ gridColumn: '1/-1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label className="lbl">Intervalo de Mantenimiento (H)</label>
+                  <input 
+                    className="fi" 
+                    type="number" 
+                    value={f.maintenanceInterval} 
+                    onChange={e => setF({ ...f, maintenanceInterval: e.target.value })} 
+                    placeholder="250" 
+                  />
+                </div>
+                <div>
+                  <label className="lbl">Observación / Motivo (opcional)</label>
+                  <input 
+                    className="fi" 
+                    type="text" 
+                    value={f.obs} 
+                    onChange={e => setF({ ...f, obs: e.target.value })} 
+                    placeholder="Ej: Corrección de horómetro en sitio" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Warning if currentH < lastM */}
+            {isHoroLowerThanMaint && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: '.75rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span><b>Atención:</b> El horómetro actual ({formatHHMMSS(curH)}) es menor al del último mantenimiento ({formatHHMMSS(curM)}). Verifica las lecturas.</span>
+              </div>
+            )}
+
+            {/* Realtime calculation summary box */}
+            <div style={{ background: 'var(--bg-deep)', padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 20 }}>
+              <div style={{ fontSize: '.7rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700, marginBottom: 8 }}>
+                Cálculo en Tiempo Real
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, textAlign: 'center', marginBottom: 10 }}>
+                <div style={{ background: 'var(--bg-surface)', padding: '8px 6px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.64rem', color: 'var(--tx3)', textTransform: 'uppercase' }}>Transcurridas</div>
+                  <div style={{ fontSize: '.88rem', fontWeight: 800, color: 'var(--tx1)', fontFamily: "'Outfit', monospace" }}>{formatHHMMSS(elapsed)}</div>
+                  <div style={{ fontSize: '.62rem', color: 'var(--tx4)' }}>{percentage.toFixed(0)}% de uso</div>
+                </div>
+                <div style={{ background: 'var(--bg-surface)', padding: '8px 6px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.64rem', color: 'var(--tx3)', textTransform: 'uppercase' }}>Restantes</div>
+                  <div style={{ fontSize: '.88rem', fontWeight: 800, color: barColor, fontFamily: "'Outfit', monospace" }}>{formatHHMMSS(remaining)}</div>
+                  <div style={{ fontSize: '.62rem', color: 'var(--tx4)' }}>{remaining <= 0 ? 'Vencido' : 'Disponibles'}</div>
+                </div>
+                <div style={{ background: 'var(--bg-surface)', padding: '8px 6px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '.64rem', color: 'var(--tx3)', textTransform: 'uppercase' }}>Próx. Límite</div>
+                  <div style={{ fontSize: '.88rem', fontWeight: 800, color: 'var(--tx1)', fontFamily: "'Outfit', monospace" }}>{formatHHMMSS(curM + curInt)}</div>
+                  <div style={{ fontSize: '.62rem', color: 'var(--tx4)' }}>Horómetro meta</div>
+                </div>
+              </div>
+              <div style={{ width: '100%', height: 6, background: 'var(--bg-surface)', borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                <div style={{ width: `${percentage}%`, height: '100%', background: barColor, borderRadius: 4, transition: 'width 0.3s ease' }} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button className="bs" onClick={onClose} disabled={saving} style={{ padding: '8px 18px', borderRadius: 8 }}>
+                Cancelar
+              </button>
+              <button className="bp" onClick={handleSave} disabled={saving} style={{ padding: '8px 22px', borderRadius: 8, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {saving ? 'Guardando...' : 'Guardar Horómetro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     function NodePlantas({ nodeId, nodeName, nodeType, equipment, records, userProfile, toast, onSubViewChange, setSelRecord }) {
       const genEqs = sortEquipment(equipment.filter(e => e.type === 'GEN' && e.active !== false));
+      const [calibrateModalPlant, setCalibrateModalPlant] = useState(null);
+      const [horoRefreshTrigger, setHoroRefreshTrigger] = useState(0);
+
+      useEffect(() => {
+        const onHoroUpdate = () => setHoroRefreshTrigger(k => k + 1);
+        window.addEventListener('airtek_horo_updated', onHoroUpdate);
+        return () => window.removeEventListener('airtek_horo_updated', onHoroUpdate);
+      }, []);
       
       // Estado en tiempo real de la reserva y combustible del nodo
       const [nodeFuelState, setNodeFuelState] = useState(() => {
@@ -6583,7 +6863,28 @@ ${f.obsGenerales}`;
                 const interval = parseFloat(eq.maintenanceInterval) || (catalogSeed ? catalogSeed.intervalo : 250);
                 const seedLastMaint = catalogSeed ? (parseFloat(catalogSeed.horometro_mtto) || 0) : 0;
                 const eqLastMaint = parseFloat(eq.lastMaintenanceHorometer) || 0;
-                const lastMaint = Math.max(seedLastMaint, eqLastMaint);
+
+                // Revisar customHorometers y tanks en localStorage
+                let customH = 0;
+                let customMtto = 0;
+                try {
+                  const ch = JSON.parse(localStorage.getItem('airtek_plant_horometers_v1') || '{}');
+                  if (ch[eq.tag]) {
+                    if (ch[eq.tag].horometro_actual !== undefined) customH = parseFloat(ch[eq.tag].horometro_actual) || 0;
+                    if (ch[eq.tag].horometro_mtto !== undefined) customMtto = parseFloat(ch[eq.tag].horometro_mtto) || 0;
+                  }
+                } catch(e) {}
+
+                let tankH = 0;
+                try {
+                  const tk = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+                  const mTank = tk.find(t => t.tag === eq.tag);
+                  if (mTank && mTank.horometro_actual !== undefined) {
+                    tankH = typeof mTank.horometro_actual === 'number' ? mTank.horometro_actual : (parseHours(mTank.horometro_actual) || 0);
+                  }
+                } catch(e) {}
+
+                const lastMaint = Math.max(seedLastMaint, eqLastMaint, customMtto);
 
                 const seedCurrentH = catalogSeed ? (parseFloat(catalogSeed.horometro_actual) || 0) : 0;
                 const eqCurrentH = parseFloat(eq.horometer) || 0;
@@ -6601,12 +6902,19 @@ ${f.obsGenerales}`;
                 for (const r of allPlantRecords) {
                   let hVal = 0;
                   if (r.fuelHorometer) {
-                    const m = String(r.fuelHorometer).match(/(\d+)h\s*(\d+)?m?/);
-                    hVal = m ? (parseInt(m[1]) + (parseInt(m[2] || 0) / 60)) : (parseFloat(r.fuelHorometer) || 0);
+                    hVal = parseHours(r.fuelHorometer);
+                  } else if (r.measurements?.[eq.tag]?.horometer) {
+                    hVal = parseHours(r.measurements[eq.tag].horometer);
                   } else if (r.measurements?.horometer) {
-                    hVal = parseFloat(r.measurements.horometer) || 0;
+                    hVal = parseHours(r.measurements.horometer);
                   } else if (r.equipmentAction?.horometer) {
-                    hVal = parseFloat(r.equipmentAction.horometer) || 0;
+                    hVal = parseHours(r.equipmentAction.horometer);
+                  } else if (r.details?.horometer) {
+                    hVal = parseHours(r.details.horometer);
+                  } else if (r.details?.newHorometer) {
+                    hVal = parseHours(r.details.newHorometer);
+                  } else if (r.horometer) {
+                    hVal = parseHours(r.horometer);
                   }
                   if (hVal > 0) {
                     latestHoroFromRecords = hVal;
@@ -6614,10 +6922,13 @@ ${f.obsGenerales}`;
                   }
                 }
 
-                // Si se eliminó el registro de prueba, el horómetro se reconcilia automáticamente al valor base
-                const currentH = latestHoroFromRecords > 0 
-                  ? Math.max(seedCurrentH, latestHoroFromRecords)
-                  : seedCurrentH;
+                // Obtener el valor explícito más reciente o actualizado
+                const explicitCurrentH = Math.max(eqCurrentH, customH, tankH, latestHoroFromRecords);
+
+                // El horómetro actual nunca puede ser inferior al último mantenimiento registrado
+                const currentH = explicitCurrentH > 0 
+                  ? Math.max(explicitCurrentH, lastMaint) 
+                  : (lastMaint > 0 ? lastMaint : seedCurrentH);
 
                 const elapsed = Math.max(0, parseFloat((currentH - lastMaint).toFixed(1)));
                 const remaining = parseFloat((interval - elapsed).toFixed(1));
@@ -6709,9 +7020,26 @@ ${f.obsGenerales}`;
                             </div>
                           )}
                           {currentH > 0 && (
-                            <div style={{ background: 'var(--bg-elevated)', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
-                              <div style={{ fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Horómetro</div>
-                              <div style={{ fontSize: '.82rem', fontWeight: 600, color: 'var(--tx1)', fontFamily: "'Outfit', sans-serif" }}>{formatHHMMSS(currentH)}</div>
+                            <div 
+                              onClick={() => setCalibrateModalPlant(eq)}
+                              title="Haz clic para ajustar o calibrar el horómetro"
+                              style={{ 
+                                background: 'var(--bg-elevated)', 
+                                padding: '6px 10px', 
+                                borderRadius: 8, 
+                                border: '1px solid var(--border)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                position: 'relative'
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--blue)'; e.currentTarget.style.background = 'rgba(1, 102, 255, 0.08)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                                <span style={{ fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Horómetro</span>
+                                <span style={{ fontSize: '.62rem', color: 'var(--blue)', fontWeight: 700 }}>✏️ Modificar</span>
+                              </div>
+                              <div style={{ fontSize: '.84rem', fontWeight: 700, color: 'var(--tx1)', fontFamily: "'Outfit', 'Montserrat', monospace" }}>{formatHHMMSS(currentH)}</div>
                             </div>
                           )}
                           {/* Reserva de Combustible del Nodo (Carga Directa) */}
@@ -6754,6 +7082,15 @@ ${f.obsGenerales}`;
                                 {isExpanded ? 'Ocultar Hist.' : `Historial (${plantRecords.length})`}
                               </button>
                             )}
+                            <button 
+                              className="bs" 
+                              style={{ padding: '7px 14px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }} 
+                              onClick={() => setCalibrateModalPlant(eq)}
+                              title="Ajustar horómetro actual y último mantenimiento"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                              Ajustar Horómetro
+                            </button>
                             <button className="bp" style={{ padding: '7px 14px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600, background: '#0284c7', display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => {
                               // Navegar a Nuevo Registro con tipo surtido y planta preseleccionada
                               localStorage.setItem('airtek_presurtido', JSON.stringify({ plantTag: eq.tag, plantCapacity: eq.capacity }));
@@ -6779,7 +7116,15 @@ ${f.obsGenerales}`;
                       border: '1px solid var(--border)' 
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '.72rem', color: 'var(--tx2)', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
-                        <span><b style={{ color: 'var(--tx3)' }}>Último Mant.:</b> {formatHHMMSS(lastMaint)}</span>
+                        <span 
+                          onClick={() => setCalibrateModalPlant(eq)} 
+                          style={{ cursor: 'pointer', transition: 'color 0.2s' }}
+                          title="Haz clic para modificar el horómetro del último mantenimiento"
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--blue)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--tx2)'}
+                        >
+                          <b style={{ color: 'var(--tx3)' }}>Último Mant.:</b> {formatHHMMSS(lastMaint)} <span style={{ fontSize: '.62rem', color: 'var(--blue)' }}>✏️</span>
+                        </span>
                         <span style={{ fontWeight: 700, color: barColor, background: bgColor, padding: '2px 8px', borderRadius: 4, border: `1px solid ${barColor}30` }}>
                           {formatHHMMSS(elapsed)} transcurridas ({percentage.toFixed(0)}%)
                         </span>
@@ -6893,6 +7238,17 @@ ${f.obsGenerales}`;
                 );
               })}
             </div>
+          )}
+          {calibrateModalPlant && (
+            <CalibrateHoroModal 
+              plantEq={calibrateModalPlant} 
+              nodeId={nodeId} 
+              nodeName={nodeName} 
+              userProfile={userProfile} 
+              toast={toast} 
+              onClose={() => setCalibrateModalPlant(null)} 
+              onSaved={() => setHoroRefreshTrigger(k => k + 1)} 
+            />
           )}
         </div>
       );
@@ -7217,10 +7573,33 @@ ${f.obsGenerales}`;
           if (!updateData.batCount || String(updateData.batCount).trim() === '') {
             updateData.batCount = firebase.firestore.FieldValue.delete();
           }
-          // For GEN: preserve capacity and phases
+          // For GEN: preserve capacity and phases, sync horometer & mtto
           if (editEq.type === 'GEN') {
             if (!updateData.capacity || String(updateData.capacity).trim() === '') updateData.capacity = firebase.firestore.FieldValue.delete();
             if (!updateData.phases || String(updateData.phases).trim() === '') updateData.phases = firebase.firestore.FieldValue.delete();
+            if (updateData.horometer !== undefined) {
+              try {
+                const ch = JSON.parse(localStorage.getItem('airtek_plant_horometers_v1') || '{}');
+                ch[editEq.tag] = {
+                  ...(ch[editEq.tag] || {}),
+                  horometro_actual: updateData.horometer,
+                  horometro_mtto: updateData.lastMaintenanceHorometer,
+                  updatedAt: new Date().toISOString()
+                };
+                localStorage.setItem('airtek_plant_horometers_v1', JSON.stringify(ch));
+              } catch(e) {}
+              try {
+                const tk = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+                const idx = tk.findIndex(t => t.tag === editEq.tag);
+                if (idx !== -1) {
+                  tk[idx].horometro_actual = updateData.horometer;
+                  localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(tk));
+                }
+              } catch(e) {}
+              window.dispatchEvent(new CustomEvent('airtek_horo_updated', {
+                detail: { plantTag: editEq.tag, horometer: updateData.horometer, lastMaint: updateData.lastMaintenanceHorometer }
+              }));
+            }
           }
           await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(editEq.id).update(updateData);
           toast('Equipo actualizado.', 'success');
@@ -14199,8 +14578,21 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 const dbLastM = parseFloat(d.lastMaintenanceHorometer) || 0;
                 const dbCurrH = parseFloat(d.horometer) || 0;
 
-                const finalLastM = Math.max(seedLastM, dbLastM);
-                const finalCurrH = Math.max(seedCurrH, dbCurrH);
+                let customH = 0;
+                let customMtto = 0;
+                try {
+                  const ch = JSON.parse(localStorage.getItem('airtek_plant_horometers_v1') || '{}');
+                  if (ch[d.tag]) {
+                    if (ch[d.tag].horometro_actual !== undefined) customH = parseFloat(ch[d.tag].horometro_actual) || 0;
+                    if (ch[d.tag].horometro_mtto !== undefined) customMtto = parseFloat(ch[d.tag].horometro_mtto) || 0;
+                  }
+                } catch(e) {}
+
+                const finalLastM = Math.max(seedLastM, dbLastM, customMtto);
+                const resolvedExplicitH = Math.max(dbCurrH, customH);
+                const finalCurrH = resolvedExplicitH > 0 
+                  ? Math.max(resolvedExplicitH, finalLastM) 
+                  : (finalLastM > 0 ? finalLastM : seedCurrH);
                 const finalInterval = parseFloat(d.maintenanceInterval) || (seedMatch ? seedMatch.intervalo : 250);
 
                 // Auto-sync Firestore con los valores reales si estaban desactualizados
@@ -14239,7 +14631,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
                 const merged = prev.map(m => {
                   const match = updates.find(u => u.tag === m.tag);
                   if (match) {
-                    const horasTrabajadas = parseFloat((match.horometer - match.lastMaintenanceHorometer).toFixed(1));
+                    const horasTrabajadas = Math.max(0, parseFloat((match.horometer - match.lastMaintenanceHorometer).toFixed(1)));
                     const horasRestantes = parseFloat((match.maintenanceInterval - horasTrabajadas).toFixed(1));
                     const proxCambio = (match.lastMaintenanceHorometer + match.maintenanceInterval).toFixed(1) + ' h';
                     let status = 'optimo';
