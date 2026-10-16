@@ -1310,6 +1310,7 @@
       inspeccion: { label: 'Inspección', color: '#008000', icon: '' },
       actualizacion_carga: { label: 'Actualización de Carga', color: '#21c0fa', icon: '' },
       surtido: { label: 'Surtido de Combustible', color: '#38bdf8', icon: '' },
+      ajuste_combustible: { label: 'Ajuste / Calibración de Niveles', color: '#8b5cf6', icon: '' },
       inspeccion_gen: { label: 'Chequeo de Grupo Electrógeno', color: '#eab308', icon: '' },
       instalacion: { label: 'Instalación', color: '#0166ff', icon: '' },
       reemplazo: { label: 'Reemplazo / Retiro', color: '#0166ff', icon: '' },
@@ -3034,6 +3035,9 @@ function PendingPage({ onLogout }) {
       const [fuelLtsPlanta, setFuelLtsPlanta] = useState(() => initialDraft?.fuelLtsPlanta || '');
       const [fuelLtsReserva, setFuelLtsReserva] = useState(() => initialDraft?.fuelLtsReserva || '');
       const [fuelHoro, setFuelHoro] = useState(() => initialDraft?.fuelHoro || '');
+      const [adjustSub, setAdjustSub] = useState(() => initialDraft?.adjustSub || '');
+      const [adjustRes, setAdjustRes] = useState(() => initialDraft?.adjustRes || '');
+      const [adjustMotivo, setAdjustMotivo] = useState(() => initialDraft?.adjustMotivo || 'Medición física con vara en sitio');
 
       // Obtener los niveles actuales del nodo para la Tabla de la Verdad con agregación inteligente de reserva
       const nodeTankInfo = useMemo(() => {
@@ -3080,6 +3084,13 @@ function PendingPage({ onLogout }) {
 
       const curSub = parseFloat(nodeTankInfo.subtanque_actual || nodeTankInfo.tanque_lts) || 0;
       const curRes = parseFloat(nodeTankInfo.reserva_lts) || 0;
+
+      useEffect(() => {
+        if (type === 'ajuste_combustible') {
+          if (!adjustSub && curSub != null) setAdjustSub(String(curSub));
+          if (!adjustRes && curRes != null) setAdjustRes(String(curRes));
+        }
+      }, [type, curSub, curRes]);
 
       // Calcular en tiempo real según la Tabla de la Verdad
       const calcResultingLevels = () => {
@@ -3222,6 +3233,12 @@ function PendingPage({ onLogout }) {
           const inputLtsR = parseFloat(fuelLtsReserva) || 0;
           const hasReserveTank = (nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0;
 
+          if (type === 'ajuste_combustible') {
+            const pSub = parseFloat(adjustSub);
+            const pRes = parseFloat(adjustRes);
+            if (isNaN(pSub) || pSub < 0) { toast('Ingresa un nivel válido para el sub-tanque.', 'error'); return; }
+            if (isNaN(pRes) || pRes < 0) { toast('Ingresa un nivel válido para la reserva.', 'error'); return; }
+          }
           if (fuelDest === 'Surtido Planta') {
             if (inputLts <= 0) {
               toast('Ingresa la cantidad de litros suministrados a la planta.', 'error');
@@ -3276,6 +3293,16 @@ function PendingPage({ onLogout }) {
               fuelReserveLevel: resultingRes,
               fuelTotalLevel: resultingTotal,
               fuelHorometer: fuelHoro,
+            } : {}),
+            ...(type === 'ajuste_combustible' ? {
+              generatorTag: selPlantTag || (equipment.find(e => e.type === 'GEN')?.tag || ''),
+              fuelSubLevel: parseFloat(adjustSub) || 0,
+              fuelReserveLevel: parseFloat(adjustRes) || 0,
+              fuelTotalLevel: (parseFloat(adjustSub) || 0) + (parseFloat(adjustRes) || 0),
+              diffSub: (parseFloat(adjustSub) || 0) - curSub,
+              diffReserve: (parseFloat(adjustRes) || 0) - curRes,
+              fuelHorometer: fuelHoro,
+              adjustmentReason: adjustMotivo,
             } : {}),
             measurements: (type === 'inspeccion' || type === 'actualizacion_carga') ? cleanMeas : {},
             equipmentAction: (type !== 'inspeccion' && type !== 'actualizacion_carga' && type !== 'surtido') && eqAction ? {
@@ -3410,6 +3437,25 @@ function PendingPage({ onLogout }) {
               resultingLtsR,
               fuelDest,
               fuelHoro,
+              userProfile
+            });
+          } else if (type === 'ajuste_combustible') {
+            const pSub = parseFloat(adjustSub) || 0;
+            const pRes = parseFloat(adjustRes) || 0;
+            const pTotal = pSub + pRes;
+            await persistNodeFuelUpdate({
+              db,
+              nodeId,
+              nodeName,
+              plantTag: selPlantTag || (equipment.find(e => e.type === 'GEN')?.tag || ''),
+              resultingSub: pSub,
+              resultingRes: pRes,
+              resultingTotal: pTotal,
+              addedTotalDespacho: 0,
+              resultingLtsP: 0,
+              resultingLtsR: 0,
+              fuelDest: `Calibración (${adjustMotivo})`,
+              fuelHoro: fuelHoro || '',
               userProfile
             });
           }
@@ -3612,10 +3658,21 @@ function PendingPage({ onLogout }) {
             <div className="card" style={{ marginBottom: 14 }}>
               <div style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 700, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="badge" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 800 }}>SURTIDO</span>
-                Registro de Despacho de Combustible
+                Registro de Despacho Real de Combustible
               </div>
-              <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginBottom: 14 }}>
+              <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginBottom: 10 }}>
                 Asienta los litros de gasoil suministrados y el horómetro actual de la planta eléctrica en este nodo.
+              </div>
+
+              {/* Guía informativa: Diferencia entre Surtido y Ajuste */}
+              <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginBottom: 14, padding: '10px 14px', background: 'rgba(56, 189, 248, 0.08)', borderRadius: 8, border: '1px solid rgba(56, 189, 248, 0.25)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ fontSize: '1.1rem', lineHeight: 1 }}>⛽</span>
+                <div>
+                  <strong style={{ color: 'var(--tx1)' }}>Surtido Real de Combustible:</strong> Úsalo exclusivamente cuando se abastece combustible físico (desde cisterna o llenando la planta). En nodos con reserva, el surtido a la planta descuenta de la reserva externa.
+                  <div style={{ marginTop: 4, color: 'var(--tx2)' }}>
+                    Si observas que el nivel en sistema no coincide con la realidad física (vara o sensor), cambia el <strong>Tipo de Registro</strong> a <span style={{ color: '#a78bfa', fontWeight: 700 }}>"Ajuste / Calibración de Niveles"</span> para calibrar sin despachos ficticios.
+                  </div>
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
@@ -3719,6 +3776,117 @@ function PendingPage({ onLogout }) {
                 </div>
                 <div className="fm" style={{ fontSize: '1.45rem', fontWeight: 900, color: 'var(--green)' }}>
                   {resultingTotal} <span style={{ fontSize: '.82rem', fontWeight: 600 }}>Lts</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Plantilla: Ajuste y Calibración de Niveles Reales */}
+          {type === 'ajuste_combustible' && (
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: '.84rem', color: 'var(--tx1)', fontWeight: 700, marginBottom: 2, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="badge" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', fontWeight: 800 }}>AJUSTE / CALIBRACIÓN</span>
+                Calibración de Niveles Reales por Medición Física
+              </div>
+              <div style={{ fontSize: '.74rem', color: 'var(--tx3)', marginBottom: 14 }}>
+                Permite corregir discrepancias entre el sistema y la medición física con vara en sitio (por consumo de planta, evaporación o error previo). No simula despachos ficticios ni descuenta entre tanques.
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div>
+                  <label className="lbl">Planta Eléctrica</label>
+                  <select className="fi" value={selPlantTag || (equipment.find(e => e.type === 'GEN')?.tag || '')} onChange={e => setSelPlantTag(e.target.value)}>
+                    {equipment.filter(e => e.type === 'GEN').map(eq => (
+                      <option key={eq.id} value={eq.tag}>{eq.tag} ({eq.capacity ? eq.capacity + ' kVA' : 'Generador'})</option>
+                    ))}
+                    {equipment.filter(e => e.type === 'GEN').length === 0 && (
+                      <option value="GEN-PLT-00">Planta Eléctrica del Nodo</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="lbl">Motivo del Ajuste</label>
+                  <select className="fi" value={adjustMotivo} onChange={e => setAdjustMotivo(e.target.value)}>
+                    <option value="Medición física con vara en sitio">Medición física con vara en sitio</option>
+                    <option value="Consumo de planta por corte eléctrico no asentado">Consumo de planta por corte eléctrico no asentado</option>
+                    <option value="Corrección por error de técnico en surtido previo">Corrección por error de técnico en surtido previo</option>
+                    <option value="Auditoría periódica de inventario">Auditoría periódica de inventario</option>
+                    <option value="Otro motivo operativo">Otro motivo operativo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="lbl">
+                    Nivel Real Sub-Tanque Planta (Lts)
+                    <span style={{ marginLeft: 6, color: 'var(--tx3)', fontSize: '.7rem' }}>(Cap: {nodeTankInfo?.tanque_lts || 300} L)</span>
+                  </label>
+                  <input
+                    className="fi fm"
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="Ej: 80"
+                    value={adjustSub}
+                    onChange={e => setAdjustSub(e.target.value)}
+                  />
+                  <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 3 }}>
+                    Nivel actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curSub} Lts</strong>
+                    {parseFloat(adjustSub) !== curSub && !isNaN(parseFloat(adjustSub)) && (
+                      <span style={{ marginLeft: 6, fontWeight: 700, color: (parseFloat(adjustSub) - curSub) >= 0 ? '#10b981' : '#f55b5d' }}>
+                        ({(parseFloat(adjustSub) - curSub) >= 0 ? `+${(parseFloat(adjustSub) - curSub)}` : (parseFloat(adjustSub) - curSub)} L)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="lbl">
+                    Nivel Real Reserva del Nodo (Lts)
+                    {(nodeTankInfo?.cap_reserva_lts || 0) > 0 && (
+                      <span style={{ marginLeft: 6, color: 'var(--tx3)', fontSize: '.7rem' }}>(Cap: {nodeTankInfo?.cap_reserva_lts} L)</span>
+                    )}
+                  </label>
+                  <input
+                    className="fi fm"
+                    type="number"
+                    step="any"
+                    min="0"
+                    placeholder="Ej: 160"
+                    value={adjustRes}
+                    onChange={e => setAdjustRes(e.target.value)}
+                  />
+                  <div style={{ fontSize: '.7rem', color: 'var(--tx3)', marginTop: 3 }}>
+                    Nivel actual en sistema: <strong style={{ color: 'var(--tx2)' }}>{curRes} Lts</strong>
+                    {parseFloat(adjustRes) !== curRes && !isNaN(parseFloat(adjustRes)) && (
+                      <span style={{ marginLeft: 6, fontWeight: 700, color: (parseFloat(adjustRes) - curRes) >= 0 ? '#10b981' : '#f55b5d' }}>
+                        ({(parseFloat(adjustRes) - curRes) >= 0 ? `+${(parseFloat(adjustRes) - curRes)}` : (parseFloat(adjustRes) - curRes)} L)
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className="lbl">Horómetro Actual de la Planta (Horas)</label>
+                  <input className="fi fm" type="text" placeholder="Ej: 600:42:00 o 600" value={fuelHoro} onChange={e => setFuelHoro(e.target.value)} />
+                </div>
+              </div>
+
+              {/* Resumen del Balance tras Ajuste */}
+              <div style={{ marginTop: 14, padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 10, border: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 }}>
+                    Balance Total Resultante en el Nodo tras Calibrar
+                  </div>
+                  <div style={{ fontSize: '.8rem', color: 'var(--tx2)', marginTop: 2 }}>
+                    Sub-tanque: <strong style={{ color: 'var(--tx1)' }}>{parseFloat(adjustSub)||0} Lts</strong> | Reserva: <strong style={{ color: 'var(--blue)' }}>{parseFloat(adjustRes)||0} Lts</strong>
+                    <span style={{ marginLeft: 8, color: '#8b5cf6', fontSize: '.74rem', fontWeight: 600 }}>
+                      (Ajuste directo sin descuento entre tanques)
+                    </span>
+                  </div>
+                </div>
+                <div className="fm" style={{ fontSize: '1.45rem', fontWeight: 900, color: 'var(--green)' }}>
+                  {(parseFloat(adjustSub)||0) + (parseFloat(adjustRes)||0)} <span style={{ fontSize: '.82rem', fontWeight: 600 }}>Lts</span>
                 </div>
               </div>
             </div>
@@ -4345,8 +4513,8 @@ function PendingPage({ onLogout }) {
                           }
                         }
 
-                        // 3. Si era un surtido, sincronizar también con Combustible (refills y tanques)
-                        if (record.type === 'surtido') {
+                        // 3. Si era un surtido o calibración, sincronizar también con Combustible (refills y tanques) y Firestore
+                        if (record.type === 'surtido' || record.type === 'ajuste_combustible') {
                           try {
                             const curRefills = JSON.parse(localStorage.getItem('airtek_fuel_refills_v12') || '[]');
                             const updatedRefills = curRefills.filter(r => {
@@ -4362,21 +4530,67 @@ function PendingPage({ onLogout }) {
 
                             // Revertir litros en tanques según la Tabla de la Verdad
                             const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
-                            const updatedTanks = revertFuelTanks(curTanks, {
-                              lugar: nodeName,
-                              tag: record.generatorTag,
-                              destino: record.fuelDestination,
-                              litros: record.fuelLiters,
-                              litrosPlanta: record.fuelLitersPlanta,
-                              litrosReserva: record.fuelLitersReserva,
-                              prevSub: record.fuelPrevSub,
-                              prevRes: record.fuelPrevRes,
-                              resSub: record.fuelSubtankLevel != null ? record.fuelSubtankLevel : record.fuelSubLevel,
-                              resRes: record.fuelReserveLevel,
-                              prevHoro: (typeof prevHoro !== 'undefined' && prevHoro > 0) ? formatCleanHoro(prevHoro) : null
-                            });
+                            let updatedTanks = curTanks;
+                            if (record.type === 'surtido') {
+                              updatedTanks = revertFuelTanks(curTanks, {
+                                lugar: nodeName,
+                                tag: record.generatorTag,
+                                destino: record.fuelDestination,
+                                litros: record.fuelLiters,
+                                litrosPlanta: record.fuelLitersPlanta,
+                                litrosReserva: record.fuelLitersReserva,
+                                prevSub: record.fuelPrevSub,
+                                prevRes: record.fuelPrevRes,
+                                resSub: record.fuelSubtankLevel != null ? record.fuelSubtankLevel : record.fuelSubLevel,
+                                resRes: record.fuelReserveLevel,
+                                prevHoro: (typeof prevHoro !== 'undefined' && prevHoro > 0) ? formatCleanHoro(prevHoro) : null
+                              });
+                            } else if (record.type === 'ajuste_combustible') {
+                              const nfd = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+                              const targetNorm = nfd(nodeName);
+                              updatedTanks = curTanks.map(t => {
+                                const exact = nfd(t.lugar) === targetNorm;
+                                const isPlt = record.generatorTag ? t.tag === record.generatorTag : exact;
+                                if (!exact && !isPlt) return t;
+                                const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+                                const curR = parseFloat(t.reserva_lts) || 0;
+                                const restoredSub = isPlt && record.diffSub != null ? Math.max(0, curS - (parseFloat(record.diffSub) || 0)) : curS;
+                                const restoredRes = exact && record.diffReserve != null ? Math.max(0, curR - (parseFloat(record.diffReserve) || 0)) : curR;
+                                const cons = t.consumo_lh > 0 ? t.consumo_lh : 1;
+                                const aut = Number(((restoredSub + restoredRes) / cons).toFixed(1));
+                                return {
+                                  ...t,
+                                  subtanque_actual: restoredSub,
+                                  reserva_lts: restoredRes,
+                                  aut_total_h: aut,
+                                  dias_aut: Number((aut / 24).toFixed(2))
+                                };
+                              });
+                            }
                             localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(updatedTanks));
-                          } catch(e) {}
+
+                            // Sincronizar niveles revertidos en Firestore para que vuelva permanentemente a su estado original
+                            const nfd = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+                            const targetNorm = nfd(nodeName);
+                            const revTank = updatedTanks.find(t => (record.generatorTag && t.tag === record.generatorTag) || nfd(t.lugar) === targetNorm);
+                            if (revTank) {
+                              await persistNodeFuelUpdate({
+                                db,
+                                nodeId,
+                                nodeName,
+                                plantTag: record.generatorTag,
+                                resultingSub: revTank.subtanque_actual,
+                                resultingRes: revTank.reserva_lts,
+                                resultingTotal: (parseFloat(revTank.subtanque_actual) || 0) + (parseFloat(revTank.reserva_lts) || 0),
+                                addedTotalDespacho: 0,
+                                fuelDest: 'Reversión / Eliminación de Registro',
+                                fuelHoro: revTank.horometro_actual || '',
+                                userProfile
+                              });
+                            }
+                          } catch(e) {
+                            console.warn('Error al revertir combustible en DB:', e);
+                          }
                         }
 
                         setConfirmModal({
@@ -15148,18 +15362,41 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         setRefills(updatedRefills);
 
         // 2. Revertir niveles: sub-tanque solo de la planta del surtido, reserva solo en plantas del nodo con reserva
-        setTanks(prev => revertFuelTanks(prev, {
-          lugar: refillToDelete.lugar,
-          tag: refillToDelete.tag,
-          destino: refillToDelete.destino,
-          litros: refillToDelete.litros,
-          litrosPlanta: refillToDelete.litros_planta,
-          litrosReserva: refillToDelete.litros_reserva,
-          prevSub: refillToDelete.prev_subtanque_lts,
-          prevRes: refillToDelete.prev_reserva_lts,
-          resSub: refillToDelete.subtanque_lts,
-          resRes: refillToDelete.reserva_lts
-        }));
+        let revertedTanksList = [];
+        setTanks(prev => {
+          revertedTanksList = revertFuelTanks(prev, {
+            lugar: refillToDelete.lugar,
+            tag: refillToDelete.tag,
+            destino: refillToDelete.destino,
+            litros: refillToDelete.litros,
+            litrosPlanta: refillToDelete.litros_planta,
+            litrosReserva: refillToDelete.litros_reserva,
+            prevSub: refillToDelete.prev_subtanque_lts,
+            prevRes: refillToDelete.prev_reserva_lts,
+            resSub: refillToDelete.subtanque_lts,
+            resRes: refillToDelete.reserva_lts
+          });
+          return revertedTanksList;
+        });
+
+        // Persistir tanques revertidos en Firestore para el nodo
+        const normFnRev = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const targetNormRev = normFnRev(refillToDelete.lugar);
+        const revT = (revertedTanksList.length > 0 ? revertedTanksList : tanks).find(t => (refillToDelete.tag && t.tag === refillToDelete.tag) || normFnRev(t.lugar) === targetNormRev);
+        if (revT) {
+          await persistNodeFuelUpdate({
+            db,
+            nodeName: refillToDelete.lugar,
+            plantTag: refillToDelete.tag,
+            resultingSub: revT.subtanque_actual,
+            resultingRes: revT.reserva_lts,
+            resultingTotal: (parseFloat(revT.subtanque_actual) || 0) + (parseFloat(revT.reserva_lts) || 0),
+            addedTotalDespacho: 0,
+            fuelDest: 'Reversión de Surtido Eliminado',
+            fuelHoro: revT.horometro_actual || '',
+            userProfile
+          });
+        }
 
         // 3. Revertir horómetro de la planta al anterior
         if (refillToDelete.tag) {
@@ -18740,10 +18977,15 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       return (
         <div className="overlay" style={{ zIndex: 10000, animation: 'fin 0.2s ease' }} onClick={onClose}>
           <div className="card fin" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: 540, padding: 24, borderRadius: 16, background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 className="fd" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
-                Registrar Surtido de Combustible
-              </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div>
+                <h3 className="fd" style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--tx1)', margin: 0 }}>
+                  Registrar Surtido de Combustible
+                </h3>
+                <p style={{ color: 'var(--tx3)', fontSize: '.74rem', margin: '3px 0 0' }}>
+                  Despacho físico real. Para calibrar niveles que no cuadran con la vara, usa <strong>Ajustar</strong>.
+                </p>
+              </div>
               <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--tx3)', cursor: 'pointer', fontSize: 18, fontWeight: 700 }}>✕</button>
             </div>
 
