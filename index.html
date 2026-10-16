@@ -2795,20 +2795,18 @@ function PendingPage({ onLogout }) {
         const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
         const baseTanks = curTanks.length > 0 ? curTanks : INITIAL_FUEL_TANKS;
         const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-        const srcT = plantTag ? baseTanks.find(x => x.tag === plantTag) : null;
-        const srcHasRes = srcT ? capResOf(srcT) > 0 : true;
         const updatedTanks = baseTanks.map(t => {
           const tNorm = normFn(t.lugar);
           const exactNode = tNorm === targetNorm;
           const isPlant = plantTag ? t.tag === plantTag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
           const subCap = parseFloat(t.tanque_lts) || 0;
           const resCap = capResOf(t);
-          const shareRes = exactNode && resCap > 0 && srcHasRes;
+          const shareRes = exactNode && resCap > 0;
           if (!isPlant && !shareRes) return t;
           const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
           const curR = parseFloat(t.reserva_lts) || 0;
           const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(resultingSub) || 0)) : (Number(resultingSub) || 0)) : curS;
-          const newR = ((isPlant && resCap > 0) || shareRes) ? Math.min(resCap, Math.max(0, Number(resultingRes) || 0)) : curR;
+          const newR = ((isPlant && resCap > 0) || shareRes) ? (resCap > 0 ? Math.min(resCap, Math.max(0, Number(resultingRes) || 0)) : Math.max(0, Number(resultingRes) || 0)) : curR;
           const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
           return {
             ...t,
@@ -2844,14 +2842,12 @@ function PendingPage({ onLogout }) {
       const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
       const target = normFn(r.lugar);
       const capRes = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-      const src = r.tag ? tanksList.find(x => x.tag === r.tag) : null;
-      const srcHasRes = src ? capRes(src) > 0 : true;
       return tanksList.map(t => {
         const exactNode = normFn(t.lugar) === target;
         const isPlant = r.tag ? t.tag === r.tag : exactNode;
         const resCap = capRes(t);
         const subCap = parseFloat(t.tanque_lts) || 0;
-        const shareRes = exactNode && resCap > 0 && srcHasRes;
+        const shareRes = exactNode && resCap > 0;
         if (!isPlant && !shareRes) return t;
 
         let dSub = 0, dRes = 0;
@@ -2865,7 +2861,7 @@ function PendingPage({ onLogout }) {
           const lP = parseFloat(r.litrosPlanta) || 0;
           const lR = parseFloat(r.litrosReserva) || 0;
           if (d === 'Surtido Reserva' || d === 'Reserva') { dRes = l; }
-          else if (d === 'Surtido Planta' || d === 'Sub-tanque' || d === 'Trasiego Interno') { dSub = lP || l; dRes = srcHasRes ? -(lP || l) : 0; }
+          else if (d === 'Surtido Planta' || d === 'Sub-tanque' || d === 'Trasiego Interno') { dSub = lP || l; dRes = -(lP || l); }
           else { dSub = lP || (l / 2); dRes = lR || (l / 2); }
         }
 
@@ -3033,7 +3029,7 @@ function PendingPage({ onLogout }) {
       const [saving, setSaving] = useState(false);
       const authorizedStaff = useAuthorizedStaff(userProfile);
       const [selPlantTag, setSelPlantTag] = useState(() => preSurtido?.plantTag || initialDraft?.selPlantTag || '');
-      const [fuelDest, setFuelDest] = useState(() => initialDraft?.fuelDest || 'Surtido Reserva');
+      const [fuelDest, setFuelDest] = useState(() => initialDraft?.fuelDest || (preSurtido ? 'Surtido Planta' : 'Surtido Reserva'));
       const [fuelLts, setFuelLts] = useState(() => initialDraft?.fuelLts || '');
       const [fuelLtsPlanta, setFuelLtsPlanta] = useState(() => initialDraft?.fuelLtsPlanta || '');
       const [fuelLtsReserva, setFuelLtsReserva] = useState(() => initialDraft?.fuelLtsReserva || '');
@@ -3105,19 +3101,20 @@ function PendingPage({ onLogout }) {
           const lts = parseFloat(fuelLts) || 0;
           addedTotalDespacho = lts;
           ltsP = lts;
-          // Surtido a planta: llena el sub-tanque hasta su límite nominal y, si el nodo tiene reserva, descuenta de ella lo transferido
-          newSub = subCap > 0 ? Math.min(subCap, curSub + lts) : (curSub + lts);
-          newRes = resCap > 0 ? Math.max(0, curRes - (newSub - curSub)) : curRes;
+          const hasReserve = (resCap > 0 || curRes > 0);
+          // Surtido a planta: si el nodo tiene reserva, descuenta los litros surtidos directamente de la reserva
+          newRes = hasReserve ? Math.max(0, curRes - lts) : curRes;
+          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + lts)) : (curSub + lts);
         } else if (fuelDest === 'Trasiego Interno') {
           const lts = parseFloat(fuelLts) || 0;
           ltsP = lts;
           addedTotalDespacho = 0;
           newRes = Math.max(0, curRes - lts);
-          newSub = subCap > 0 ? Math.min(subCap, curSub + lts) : (curSub + lts);
+          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + lts)) : (curSub + lts);
         } else if (fuelDest === 'Surtido Planta y Reserva') {
           ltsP = parseFloat(fuelLtsPlanta) || 0;
           ltsR = parseFloat(fuelLtsReserva) || 0;
-          newSub = subCap > 0 ? Math.min(subCap, curSub + ltsP) : (curSub + ltsP);
+          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + ltsP)) : (curSub + ltsP);
           newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
           addedTotalDespacho = ltsP + ltsR;
         }
@@ -14835,20 +14832,18 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
         // 1. Actualizar niveles del tanque correspondiente con exactitud y respeto estricto a las capacidades físicas
         const capResOfR = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-        const srcTankR = newRefill.tag ? tanks.find(x => x.tag === newRefill.tag) : null;
-        const srcHasResR = srcTankR ? capResOfR(srcTankR) > 0 : true;
         setTanks(prev => prev.map(t => {
           const tNorm = normFn(t.lugar);
           const exactNode = tNorm === targetNorm;
           const isPlant = newRefill.tag ? t.tag === newRefill.tag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
           const subCap = parseFloat(t.tanque_lts) || 0;
           const resCap = capResOfR(t);
-          const shareRes = exactNode && resCap > 0 && srcHasResR;
+          const shareRes = exactNode && resCap > 0;
           if (!isPlant && !shareRes) return t;
           const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
           const curR = parseFloat(t.reserva_lts) || 0;
           const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(newRefill.subtanque_lts) || 0)) : (Number(newRefill.subtanque_lts) || 0)) : curS;
-          const newR = ((isPlant && resCap > 0) || shareRes) ? Math.min(resCap, Math.max(0, Number(newRefill.reserva_lts) || 0)) : curR;
+          const newR = ((isPlant && resCap > 0) || shareRes) ? (resCap > 0 ? Math.min(resCap, Math.max(0, Number(newRefill.reserva_lts) || 0)) : Math.max(0, Number(newRefill.reserva_lts) || 0)) : curR;
           const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
           return {
             ...t,
@@ -18622,19 +18617,20 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           const l = parseFloat(litros) || 0;
           addedTotal = l;
           ltsP = l;
-          // Surtido a planta: llena el sub-tanque hasta su límite nominal y, si el nodo tiene reserva, descuenta de ella lo transferido
-          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
-          newRes = resCap > 0 ? Math.max(0, curRes - (newSub - curSub)) : curRes;
+          const hasReserve = (resCap > 0 || curRes > 0);
+          // Surtido a planta: si el nodo tiene reserva, descuenta los litros surtidos directamente de la reserva
+          newRes = hasReserve ? Math.max(0, curRes - l) : curRes;
+          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + l)) : (curSub + l);
         } else if (destino === 'Trasiego Interno') {
           const l = parseFloat(litros) || 0;
           ltsP = l;
           addedTotal = 0; // Trasiego interno no añade combustible externo al nodo
           newRes = Math.max(0, curRes - l);
-          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
+          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + l)) : (curSub + l);
         } else if (destino === 'Surtido Planta y Reserva') {
           ltsP = parseFloat(litrosPlanta) || 0;
           ltsR = parseFloat(litrosReserva) || 0;
-          newSub = subCap > 0 ? Math.min(subCap, curSub + ltsP) : (curSub + ltsP);
+          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + ltsP)) : (curSub + ltsP);
           newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
           addedTotal = ltsP + ltsR;
         }
