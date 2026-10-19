@@ -8262,8 +8262,6 @@ ${f.obsGenerales}`;
         if (nid && nodes.length > 0) { const n = nodes.find(n => n.id === nid); if (n) setSel(n); }
       }, [nodes]);
 
-      if (sel) return <NodeDetail node={sel} userProfile={userProfile} onBack={() => setSel(null)} toast={toast} />;
-
       // Vercel Best Practice: rerender-use-deferred-value & rerender-memo - Keeps typing responsive and caches results
       const deferredSearch = useDeferredValue(search);
 
@@ -8293,6 +8291,8 @@ ${f.obsGenerales}`;
           return loc.toLowerCase() === fStateLow || (fStateLow.startsWith('falco') && loc === 'Falcón');
         });
       }, [nodes, deferredSearch, fType, fState, normalizeLoc]);
+
+      if (sel) return <NodeDetail node={sel} userProfile={userProfile} onBack={() => setSel(null)} toast={toast} />;
 
       return (
         <div className="fin">
