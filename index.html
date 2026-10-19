@@ -941,14 +941,14 @@
     }
     
     /* ── Node cards ── */
-    .ncard { transition: background .2s, border-color .2s, box-shadow .2s; }
+    .ncard { content-visibility: auto; contain-intrinsic-size: 0 110px; transition: background .2s, border-color .2s, box-shadow .2s; }
     .ncard:hover {
       background: var(--bg-elevated) !important;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
 
     /* ── Record rows ── */
-    .rrow { transition: background .15s; cursor: pointer; }
+    .rrow { content-visibility: auto; contain-intrinsic-size: 0 48px; transition: background .15s; cursor: pointer; }
     .rrow:hover { background: var(--bg-elevated) !important; }
 
     /* ═══════════════════════════════════════════════════════════════
@@ -984,7 +984,11 @@
     };
   </script>
   <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useRef, useCallback, useMemo } = React;
+    const { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue, useTransition } = React;
+
+    // Vercel Best Practice: js-hoist-regexp - RegExp hoisted to module scope to avoid re-compilation in hot loops
+    const NODE_NAME_PREFIX_REGEX = /^(nodo|datacenter|data center|sede|oficina)\s*/i;
+    const normalizeNodeName = (s) => (s || '').toLowerCase().replace(NODE_NAME_PREFIX_REGEX, '').trim();
 
     // ═══════════════════════════════════════════════════════
     // AIRTEK UI DESIGN KIT — COMPONENTES DE ICONOS SVG
@@ -2739,7 +2743,7 @@ function PendingPage({ onLogout }) {
       fuelHoro = '',
       userProfile = {}
     }) {
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const normFn = normalizeNodeName;
       const targetNorm = normFn(nodeName);
 
       // 1. Persistir en Firestore si db está disponible
@@ -2840,7 +2844,7 @@ function PendingPage({ onLogout }) {
     // Revierte el efecto de un surtido sobre los tanques: sub-tanque SOLO de la planta (por tag)
     // y reserva compartida SOLO en las plantas del mismo nodo que realmente tienen reserva.
     function revertFuelTanks(tanksList, r) {
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const normFn = normalizeNodeName;
       const target = normFn(r.lugar);
       const capRes = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
       return tanksList.map(t => {
@@ -2900,7 +2904,7 @@ function PendingPage({ onLogout }) {
       cleanNode = cleanNode.replace(/^nodo\s+/i, '').trim();
 
       // Buscar tanques de este nodo
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const normFn = normalizeNodeName;
       const nodeNorm = normFn(cleanNode);
       const siteTanks = (tanks && tanks.length > 0 ? tanks : INITIAL_FUEL_TANKS).filter(t => {
         const tNorm = normFn(t.lugar);
@@ -3041,7 +3045,7 @@ function PendingPage({ onLogout }) {
 
       // Obtener los niveles actuales del nodo para la Tabla de la Verdad con agregación inteligente de reserva
       const nodeTankInfo = useMemo(() => {
-        const norm = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const norm = normalizeNodeName;
         const targetNorm = norm(nodeName);
 
         let list = INITIAL_FUEL_TANKS;
@@ -4339,6 +4343,48 @@ function PendingPage({ onLogout }) {
     // ═══════════════════════════════════════════════════
     // DETALLE DE REGISTRO
     // ═══════════════════════════════════════════════════
+        // Vercel Best Practice: rerender-no-inline-components - Hoisted outside RecordDetail to prevent full remounts
+    const InfoItem = ({ label, value, mono }) => (
+      <div>
+        <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>{label}</div>
+        <div className={mono ? 'fm' : ''} style={{ fontSize: '.9rem', color: 'var(--tx1)', fontWeight: 500 }}>{value || '—'}</div>
+      </div>
+    );
+
+        // Vercel Best Practice: rerender-no-inline-components - Hoisted outside renderMeasurements
+    function MeasurementDisplayCard({ tag, highlight, vals = {}, equipment = [] }) {
+      const type = getEqTypeFromTag(tag, equipment);
+      const ti = EQ_TYPES[type] || EQ_TYPES.OTR;
+      const ld = calcLoad(type, vals);
+      const load = ld.ac + ld.dc;
+      return (
+        <div style={{ background: highlight ? 'rgba(33, 192, 250,.06)' : 'var(--bg-surface)', borderRadius: 10, padding: '10px 12px', marginBottom: 6, border: `1px solid ${highlight ? 'rgba(33, 192, 250,.2)' : 'var(--border)'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span className="badge" style={{ background: ti.bg, color: ti.color, fontSize: '.62rem' }}>{type}</span>
+              <span className="fm" style={{ fontSize: '.88rem', color: 'var(--tx1)', fontWeight: 600 }}>{tag}</span>
+              {(() => {
+                const eq = (equipment || []).find(e => e.tag === tag);
+                if (eq?.type === 'ETP' && eq.solarRegPercentage) {
+                  return <span style={{ color: '#0166ff', fontSize: '.73rem', fontWeight: 600 }}>{eq.solarRegPercentage}%</span>;
+                }
+                return null;
+              })()}
+            </div>
+            {load > 0 && <span className="fm" style={{ fontSize: '.8rem', color: '#008000', fontWeight: 700 }}>{load.toFixed(2)} kW</span>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 6 }}>
+            {Object.entries(vals).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => (
+              <div key={k} style={{ background: 'var(--bg-deep)', borderRadius: 5, padding: '6px 8px' }}>
+                <div style={{ fontSize: '.6rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 1, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>{getFieldLabel(k)} <span style={{ color: 'var(--amber)', fontWeight: 600 }}>{getFieldUnit(k)}</span></div>
+                <div className="fm" style={{ fontSize: '.95rem', color: '#008000', fontWeight: 600 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     function RecordDetail({ record, onBack, nodeId, nodeName, equipment, userProfile, toast }) {
       const [confirmModal, setConfirmModal] = useState(null);
       const rt = REC_TYPES[record.type] || { label: record.type, icon: '', color: '#64748b' };
@@ -4413,12 +4459,7 @@ function PendingPage({ onLogout }) {
         } catch (e) { console.error(e); }
         setSaving(false);
       };
-      const II = ({ label, value, mono }) => (
-        <div>
-          <div style={{ fontSize: '.68rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>{label}</div>
-          <div className={mono ? 'fm' : ''} style={{ fontSize: '.9rem', color: 'var(--tx1)', fontWeight: 500 }}>{value || '—'}</div>
-        </div>
-      );
+      const II = InfoItem;
       return (
         <div className="fin">
           {editMeas && (
@@ -4520,7 +4561,7 @@ function PendingPage({ onLogout }) {
                             const updatedRefills = curRefills.filter(r => {
                               if (r.id === 'r_rec_' + record.id || r.id === 'db_' + record.id) return false;
                               const matchFecha = r.fecha === new Date(record.date?.toDate ? record.date.toDate() : record.date).toLocaleDateString('es-VE');
-                              const nfd = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+                              const nfd = normalizeNodeName;
                               const matchLugar = nfd(r.lugar) === nfd(nodeName) && (!record.generatorTag || !r.tag || r.tag === record.generatorTag);
                               const matchLitros = parseFloat(r.litros) === parseFloat(record.fuelLiters);
                               if (matchFecha && matchLugar && matchLitros) return false;
@@ -4546,7 +4587,7 @@ function PendingPage({ onLogout }) {
                                 prevHoro: (typeof prevHoro !== 'undefined' && prevHoro > 0) ? formatCleanHoro(prevHoro) : null
                               });
                             } else if (record.type === 'ajuste_combustible') {
-                              const nfd = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+                              const nfd = normalizeNodeName;
                               const targetNorm = nfd(nodeName);
                               updatedTanks = curTanks.map(t => {
                                 const exact = nfd(t.lugar) === targetNorm;
@@ -4570,7 +4611,7 @@ function PendingPage({ onLogout }) {
                             localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(updatedTanks));
 
                             // Sincronizar niveles revertidos en Firestore para que vuelva permanentemente a su estado original
-                            const nfd = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+                            const nfd = normalizeNodeName;
                             const targetNorm = nfd(nodeName);
                             const revTank = updatedTanks.find(t => (record.generatorTag && t.tag === record.generatorTag) || nfd(t.lugar) === targetNorm);
                             if (revTank) {
@@ -4679,39 +4720,7 @@ function PendingPage({ onLogout }) {
               return sum + ld.ac + ld.dc;
             }, 0);
 
-            const MeasCard = ({ tag, highlight }) => {
-              const vals = meas[tag] || {};
-              const type = getEqTypeFromTag(tag, equipment);
-              const ti = EQ_TYPES[type] || EQ_TYPES.OTR;
-              const ld = calcLoad(type, vals);
-              const load = ld.ac + ld.dc;
-              return (
-                <div style={{ background: highlight ? 'rgba(33, 192, 250,.06)' : 'var(--bg-surface)', borderRadius: 10, padding: '10px 12px', marginBottom: 6, border: `1px solid ${highlight ? 'rgba(33, 192, 250,.2)' : 'var(--border)'}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span className="badge" style={{ background: ti.bg, color: ti.color, fontSize: '.62rem' }}>{type}</span>
-                      <span className="fm" style={{ fontSize: '.88rem', color: 'var(--tx1)', fontWeight: 600 }}>{tag}</span>
-                      {(() => {
-                        const eq = (equipment || []).find(e => e.tag === tag);
-                        if (eq?.type === 'ETP' && eq.solarRegPercentage) {
-                          return <span style={{ color: '#0166ff', fontSize: '.73rem', fontWeight: 600 }}>{eq.solarRegPercentage}%</span>;
-                        }
-                        return null;
-                      })()}
-                    </div>
-                    {load > 0 && <span className="fm" style={{ fontSize: '.8rem', color: '#008000', fontWeight: 700 }}>{load.toFixed(2)} kW</span>}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 6 }}>
-                    {Object.entries(vals).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => (
-                      <div key={k} style={{ background: 'var(--bg-deep)', borderRadius: 5, padding: '6px 8px' }}>
-                        <div style={{ fontSize: '.6rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 1, fontFamily: "'Outfit', 'Montserrat', sans-serif" }}>{getFieldLabel(k)} <span style={{ color: 'var(--amber)', fontWeight: 600 }}>{getFieldUnit(k)}</span></div>
-                        <div className="fm" style={{ fontSize: '.95rem', color: '#008000', fontWeight: 600 }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            };
+            const MeasCard = ({ tag, highlight }) => <MeasurementDisplayCard tag={tag} highlight={highlight} vals={meas[tag] || {}} equipment={equipment} />;
 
             return (
               <div>
@@ -5157,7 +5166,7 @@ function PendingPage({ onLogout }) {
       const [loading, setLoading] = useState(true);
       const [showForm, setShowForm] = useState(false);
       const [equipment, setEquipment] = useState([]);
-      const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', assistants: '', recordedBy: userProfile?.name || '', notify: false });
+      const [form, setForm] = useState(() => ({ date: new Date().toISOString().slice(0, 16), equipo: '', description: '', assistants: '', recordedBy: userProfile?.name || '', notify: false }));
       const [saving, setSaving] = useState(false);
       const canWrite = ['admin', 'supervisor', 'directivo', 'tecnico'].includes(userProfile?.role) || !!userProfile;
 
@@ -6979,7 +6988,7 @@ ${f.obsGenerales}`;
       
       // Estado en tiempo real de la reserva y combustible del nodo
       const [nodeFuelState, setNodeFuelState] = useState(() => {
-        const norm = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const norm = normalizeNodeName;
         const targetNorm = norm(nodeName);
         let list = INITIAL_FUEL_TANKS;
         try {
@@ -8135,29 +8144,35 @@ ${f.obsGenerales}`;
 
       if (sel) return <NodeDetail node={sel} userProfile={userProfile} onBack={() => setSel(null)} toast={toast} />;
 
-      const normalizeLoc = (loc) => {
+      // Vercel Best Practice: rerender-use-deferred-value & rerender-memo - Keeps typing responsive and caches results
+      const deferredSearch = useDeferredValue(search);
+
+      const normalizeLoc = useCallback((loc) => {
         const l = (loc || '').trim().toLowerCase();
         if (l === 'falcon' || l === 'falcón') return 'Falcón';
         if (l === 'lara') return 'Lara';
         if (l === 'colombia') return 'Colombia';
         return 'Zulia';
-      };
+      }, []);
 
-      const filtered = nodes.filter(n => {
-        const ms = n.name.toLowerCase().includes(search.toLowerCase()) || (n.zone || '').toLowerCase().includes(search.toLowerCase());
-        const loc = normalizeLoc(n.estado);
-        let stateMatch = true;
-        if (fState === 'all') {
-          stateMatch = true;
-        } else if (fState === 'Venezuela') {
-          stateMatch = loc !== 'Colombia';
-        } else if (fState === 'Colombia') {
-          stateMatch = loc === 'Colombia';
-        } else {
-          stateMatch = loc.toLowerCase() === fState.toLowerCase() || (fState === 'Falcon' && loc === 'Falcón') || (fState === 'Falcón' && loc === 'Falcón');
-        }
-        return ms && (fType === 'all' || n.type === fType) && stateMatch;
-      });
+      const filtered = useMemo(() => {
+        const q = (deferredSearch || '').toLowerCase().trim();
+        const fStateLow = fState.toLowerCase();
+        return nodes.filter(n => {
+          if (q) {
+            const nameMatch = (n.name || '').toLowerCase().includes(q);
+            const zoneMatch = (n.zone || '').toLowerCase().includes(q);
+            if (!nameMatch && !zoneMatch) return false;
+          }
+          if (fType !== 'all' && n.type !== fType) return false;
+          if (fState === 'all') return true;
+
+          const loc = normalizeLoc(n.estado);
+          if (fState === 'Venezuela') return loc !== 'Colombia';
+          if (fState === 'Colombia') return loc === 'Colombia';
+          return loc.toLowerCase() === fStateLow || (fStateLow.startsWith('falco') && loc === 'Falcón');
+        });
+      }, [nodes, deferredSearch, fType, fState, normalizeLoc]);
 
       return (
         <div className="fin">
@@ -14972,7 +14987,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
 
         // Sincronizar con maintenances y Firestore si hay valor numérico
         if (finalHAct !== null && !isNaN(finalHAct) && finalHAct > 0) {
-          const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+          const normFn = normalizeNodeName;
           setMaintenances(prev => prev.map(m => {
             if (m.tag ? m.tag === plantKey : normFn(m.planta) === normFn(plantKey)) {
               const horasTrab = parseFloat((finalHAct - m.horometro_mtto).toFixed(1));
@@ -15016,7 +15031,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           return merged;
         });
 
-        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const normFn = normalizeNodeName;
         setMaintenances(prev => prev.map(m => {
           const entry = m.tag ? updatedEntries[m.tag] : Object.entries(updatedEntries).find(([k]) => normFn(k) === normFn(m.planta))?.[1];
           if (entry && entry.horometro_actual != null) {
@@ -15041,7 +15056,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const handleAddRefill = async (newRefill) => {
         setRefills(prev => [newRefill, ...prev]);
         
-        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const normFn = normalizeNodeName;
         const targetNorm = normFn(newRefill.lugar);
 
         // 1. Actualizar niveles del tanque correspondiente con exactitud y respeto estricto a las capacidades físicas
@@ -15188,7 +15203,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
           obs
         } = adjustData;
 
-        const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const normFn = normalizeNodeName;
         const targetNorm = normFn(plant.lugar);
 
         // 1. Parsear horómetro si se proporcionó
@@ -15380,7 +15395,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
         });
 
         // Persistir tanques revertidos en Firestore para el nodo
-        const normFnRev = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+        const normFnRev = normalizeNodeName;
         const targetNormRev = normFnRev(refillToDelete.lugar);
         const revT = (revertedTanksList.length > 0 ? revertedTanksList : tanks).find(t => (refillToDelete.tag && t.tag === refillToDelete.tag) || normFnRev(t.lugar) === targetNormRev);
         if (revT) {
@@ -16288,7 +16303,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [showImageModal, setShowImageModal] = useState(false);
       const [generatingImg, setGeneratingImg] = useState(false);
 
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const normFn = normalizeNodeName;
 
       // Función auxiliar para parsear fechas de surtido
       const parseRefillDate = str => {
@@ -16315,50 +16330,79 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const uniqueZonas = Array.from(new Set(tanks.map(t => t.zona))).filter(Boolean).sort();
       const uniqueLugares = Array.from(new Set([...refills.map(r => r.lugar), ...tanks.map(t => t.lugar)])).filter(Boolean).sort();
 
-      const filtered = refills.filter(r => {
-        const matchingTank = tanks.find(t => t.tag === r.tag || normFn(t.lugar) === normFn(r.lugar)) || {};
-        const tankRegion = (matchingTank.region || 'Zulia').toLowerCase();
-        const tankZona = matchingTank.zona || '';
+      // Vercel Best Practice: rerender-use-deferred-value - Instant typing in search
+      const deferredSearch = useDeferredValue(search);
 
-        if (regionFilter !== 'all' && tankRegion !== regionFilter.toLowerCase()) return false;
-        if (zonaFilter !== 'all' && tankZona !== zonaFilter) return false;
-        if (semanaFilter !== 'all' && r.semana !== semanaFilter) return false;
-        if (lugarFilter !== 'all' && r.lugar !== lugarFilter) return false;
-        if (search) {
-          const q = search.toLowerCase();
-          const matchLugar = (r.lugar || '').toLowerCase().includes(q);
-          const matchTag = (r.tag || '').toLowerCase().includes(q);
-          const matchTec = (r.tecnico || '').toLowerCase().includes(q);
-          if (!matchLugar && !matchTag && !matchTec) return false;
+      // Vercel Best Practice: js-index-maps - O(1) tank lookup Map instead of O(N*M) nested .find() loops
+      const tanksLookup = useMemo(() => {
+        const byTag = new Map();
+        const byNormLugar = new Map();
+        for (let i = 0; i < tanks.length; i++) {
+          const t = tanks[i];
+          if (t.tag) byTag.set(t.tag, t);
+          const nl = normalizeNodeName(t.lugar);
+          if (nl && !byNormLugar.has(nl)) byNormLugar.set(nl, t);
         }
-        return true;
-      });
+        return { byTag, byNormLugar };
+      }, [tanks]);
 
-      // Cálculos específicos para métricas de Despachos
-      const totalLitros = filtered.reduce((acc, r) => acc + (parseFloat(r.litros) || 0), 0);
-      const totalDespachos = filtered.length;
-      const lugaresAtendidos = new Set(filtered.map(r => r.lugar)).size;
-      const avgLitrosDespacho = totalDespachos > 0 ? Math.round(totalLitros / totalDespachos) : 0;
+      // Vercel Best Practice: rerender-memo - Memoized filtered refills
+      const filtered = useMemo(() => {
+        const q = (deferredSearch || '').toLowerCase().trim();
+        const regLow = regionFilter !== 'all' ? regionFilter.toLowerCase() : null;
+        return refills.filter(r => {
+          const matchingTank = (r.tag && tanksLookup.byTag.get(r.tag)) || tanksLookup.byNormLugar.get(normalizeNodeName(r.lugar)) || {};
+          const tankRegion = (matchingTank.region || 'Zulia').toLowerCase();
+          const tankZona = matchingTank.zona || '';
 
-      // Distribución Planta vs Reserva
-      let totPlanta = 0;
-      let totReserva = 0;
-      filtered.forEach(r => {
-        const lp = parseFloat(r.litros_planta) || 0;
-        const lr = parseFloat(r.litros_reserva) || 0;
-        if (lp > 0 || lr > 0) {
-          totPlanta += lp;
-          totReserva += lr;
-        } else {
-          const dest = r.destino || '';
+          if (regLow && tankRegion !== regLow) return false;
+          if (zonaFilter !== 'all' && tankZona !== zonaFilter) return false;
+          if (semanaFilter !== 'all' && r.semana !== semanaFilter) return false;
+          if (lugarFilter !== 'all' && r.lugar !== lugarFilter) return false;
+          if (q) {
+            const matchLugar = (r.lugar || '').toLowerCase().includes(q);
+            const matchTag = (r.tag || '').toLowerCase().includes(q);
+            const matchTec = (r.tecnico || '').toLowerCase().includes(q);
+            if (!matchLugar && !matchTag && !matchTec) return false;
+          }
+          return true;
+        });
+      }, [refills, tanksLookup, regionFilter, zonaFilter, semanaFilter, lugarFilter, deferredSearch]);
+
+      // Vercel Best Practice: js-combine-iterations & rerender-memo - Single pass calculation
+      const refillStats = useMemo(() => {
+        let totalLitros = 0;
+        let totPlanta = 0;
+        let totReserva = 0;
+        const lugaresSet = new Set();
+
+        for (let i = 0; i < filtered.length; i++) {
+          const r = filtered[i];
           const lts = parseFloat(r.litros) || 0;
-          if (dest.includes('Planta')) {
-            totPlanta += lts;
+          totalLitros += lts;
+          if (r.lugar) lugaresSet.add(r.lugar);
+
+          const lp = parseFloat(r.litros_planta) || 0;
+          const lr = parseFloat(r.litros_reserva) || 0;
+          if (lp > 0 || lr > 0) {
+            totPlanta += lp;
+            totReserva += lr;
           } else {
-            totReserva += lts;
+            const dest = r.destino || '';
+            if (dest.includes('Planta')) {
+              totPlanta += lts;
+            } else {
+              totReserva += lts;
+            }
           }
         }
-      });
+        const totalDespachos = filtered.length;
+        const lugaresAtendidos = lugaresSet.size;
+        const avgLitrosDespacho = totalDespachos > 0 ? Math.round(totalLitros / totalDespachos) : 0;
+        return { totalLitros, totalDespachos, lugaresAtendidos, avgLitrosDespacho, totPlanta, totReserva };
+      }, [filtered]);
+
+      const { totalLitros, totalDespachos, lugaresAtendidos, avgLitrosDespacho, totPlanta, totReserva } = refillStats;
       const pctPlanta = totalLitros > 0 ? Math.round((totPlanta / totalLitros) * 100) : 0;
       const pctReserva = totalLitros > 0 ? (100 - pctPlanta) : 0;
 
@@ -17671,7 +17715,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [generatingImg, setGeneratingImg] = useState(false);
       const [modalZoneFilter, setModalZoneFilter] = useState('all');
 
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const normFn = normalizeNodeName;
 
       const uniqueZonas = Array.from(new Set(tanks.map(t => t.zona))).filter(Boolean).sort();
 
@@ -19759,7 +19803,7 @@ function Sidebar({ userProfile, view, setView, onLogout, toast }) {
     
     // ── MODAL: ACTUALIZACIÓN RÁPIDA DE HORÓMETROS (BIDIRECCIONAL) ─────────────
     function UpdateHorometersModal({ tanks = [], refills = [], maintenances = [], customHorometers = {}, onSave, onClose, toast }) {
-      const normFn = s => (s || '').toLowerCase().replace(/^(nodo|datacenter|data center|sede|oficina)\s*/i, '').trim();
+      const normFn = normalizeNodeName;
 
       // Inicializar el estado de edición local para todas las plantas
       const [entries, setEntries] = useState(() => {
