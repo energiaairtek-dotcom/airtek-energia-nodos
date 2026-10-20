@@ -7522,26 +7522,32 @@ ${f.obsGenerales}`;
         const unsub = db.collection('energy_nodes').doc(nodeId).collection('fuel').doc('state').onSnapshot(snap => {
           if (snap.exists) {
             const data = snap.data();
-            let rLts = data.reserva_lts !== undefined ? data.reserva_lts : prev.reserva_lts;
-            let cLts = data.cap_reserva_lts !== undefined ? data.cap_reserva_lts : prev.cap_reserva_lts;
             const cLugar = (nodeName || '').toLowerCase();
+            let rawRes = data.reserva_lts;
+            let rawCap = data.cap_reserva_lts;
+
             // Auto-sanar en Firestore si el nodo sufrió el error previo de reserva en 0
-            if (cLugar.includes('callao') && rLts === 0) {
-              rLts = 1259.0;
-              cLts = 2500;
+            if (cLugar.includes('callao') && (rawRes === 0 || rawRes === undefined)) {
+              rawRes = 1259.0;
+              rawCap = 2500;
               snap.ref.set({ reserva_lts: 1259.0, cap_reserva_lts: 2500 }, { merge: true }).catch(() => {});
-            } else if (cLugar.includes('18 de octubre') && rLts === 0) {
-              rLts = 230.0;
-              cLts = 240;
+            } else if (cLugar.includes('18 de octubre') && (rawRes === 0 || rawRes === undefined)) {
+              rawRes = 230.0;
+              rawCap = 240;
               snap.ref.set({ reserva_lts: 230.0, cap_reserva_lts: 240 }, { merge: true }).catch(() => {});
             }
-            setNodeFuelState(prev => ({
-              ...prev,
-              reserva_lts: rLts,
-              cap_reserva_lts: cLts || prev.cap_reserva_lts,
-              subtanque_actual: data.subtanque_actual !== undefined ? data.subtanque_actual : prev.subtanque_actual,
-              total_nodo_lts: data.total_nodo_lts !== undefined ? data.total_nodo_lts : prev.total_nodo_lts
-            }));
+
+            setNodeFuelState(prev => {
+              const rLts = rawRes !== undefined ? rawRes : prev.reserva_lts;
+              const cLts = rawCap !== undefined ? rawCap : prev.cap_reserva_lts;
+              return {
+                ...prev,
+                reserva_lts: rLts,
+                cap_reserva_lts: cLts || prev.cap_reserva_lts,
+                subtanque_actual: data.subtanque_actual !== undefined ? data.subtanque_actual : prev.subtanque_actual,
+                total_nodo_lts: data.total_nodo_lts !== undefined ? data.total_nodo_lts : prev.total_nodo_lts
+              };
+            });
           }
         }, err => console.warn('Fuel state listener:', err));
 
