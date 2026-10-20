@@ -67,9 +67,9 @@ El sistema administra **29 plantas eléctricas** distribuidas en 4 arquetipos op
   3. Pestaña de **Equipos** (insignia en cada generador `GEN`).
 - **Flujo:** Surtir o calibrar cualquiera de las dos plantas descuenta o actualiza el tanque central común y sincroniza a ambas en memoria, `localStorage` (`airtek_fuel_tanks_v13`) y Firestore (`energy_nodes/{id}/fuel/state`).
 
-### Categoría 2: Nodos Individuales con Reserva Dedicada (Marfi, Bella Vista, CPS, Comedor, etc.)
-- **Plantas:** `MARFI-PLT-00`, `BVIS-PLT-00`, `CPS-PLT-00`, `COM-PLT-00`, `LCAR-PLT-00`, `SANR-PLT-00`, `LCON-PLT-00`, `SRAF-PLT-00`, `SCRU-PLT-00`, `MACH-PLT-00`, `VILL-PLT-00`, `CABI-PLT-00`, `BACH-PLT-00`, `MENE-PLT-00`, `LPUE-PLT-00`.
-- **Características:** Cuentan con un subtanque propio del generador y un tanque de reserva externo dedicado.
+### Categoría 2: Nodos Individuales con Reserva Dedicada (Marfi, Bella Vista, Ojeda, Pomona, etc.)
+- **Plantas:** `MARFI-PLT-00`, `BVIS-PLT-00`, `CPS-PLT-00`, `COM-PLT-00`, `LCAR-PLT-00`, `SANR-PLT-00`, `LCON-PLT-00`, `SRAF-PLT-00`, `SCRU-PLT-00`, `MACH-PLT-00`, `VILL-PLT-00`, `CABI-PLT-00`, `BACH-PLT-00`, `MENE-PLT-00`, `LPUE-PLT-00`, y las recién actualizadas con reserva de 1,000 L: `OJEDA-PLT-00`, `POMO-PLT-00`, `MARI-PLT-00`, `CANA-PLT-00`.
+- **Características:** Cuentan con un subtanque propio del generador y un tanque de reserva externo dedicado (ej. 1,000 L en Ojeda, Pomona, Marite y Cañada).
 - **Flujo de Operación:**
   - `Surtido Planta`: Llena el subtanque (tope nominal) y descuenta de su reserva dedicada.
   - `Surtido Externo Planta`: El camión cisterna llena el subtanque directamente sin tocar la reserva dedicada.
@@ -77,8 +77,8 @@ El sistema administra **29 plantas eléctricas** distribuidas en 4 arquetipos op
   - `Trasiego Interno`: Pasa litros de su reserva dedicada al subtanque sin añadir combustible externo al total del nodo.
 
 ### Categoría 3: Nodos "Directo a Planta" Sin Reserva Externa (`cap_reserva = 0`)
-- **Plantas:** `POMO-PLT-00`, `OJEDA-PLT-00`, `CANA-PLT-00`, `MARI-PLT-00`, `LTUN-PLT-00`, `SVG-PLT-00`, `PORT-PLT-00`.
-- **Características:** No existe tanque cisterna externo. Todo el combustible reside en el tanque interno de la planta (ej. 100 L).
+- **Plantas:** `LTUN-PLT-00` (Las Tunas: 100 L), `SVG-PLT-00` (Servicios Generales: 50 L), `PORT-PLT-00` (Planta Portátil: 100 L).
+- **Características:** No existe tanque cisterna externo. Todo el combustible reside en el tanque interno de la planta.
 - **Flujo de Operación:**
   - El modal restringe automáticamente las opciones y selecciona **"Surtido Directo a Planta"**.
   - No muestra opciones irrelevantes de trasiego ni de reserva.

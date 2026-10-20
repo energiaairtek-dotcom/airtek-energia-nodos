@@ -11383,13 +11383,13 @@ function IconSun({ size = 16, color = "currentColor" }) {
     "kva": 25,
     "tanque_lts": 100.0,
     "subtanque_actual": 100.0,
-    "reserva_lts": 0.0,
-    "cap_reserva": 0,
-    "cap_reserva_lts": 0,
+    "reserva_lts": 1000.0,
+    "cap_reserva": 1000,
+    "cap_reserva_lts": 1000,
     "consumo_lh": 4.0,
     "aut_tanque_h": 25.0,
-    "aut_total_h": 25.0,
-    "dias_aut": 1.04,
+    "aut_total_h": 275.0,
+    "dias_aut": 11.46,
     "cant_faltante": 0,
     "horometro_actual": "1339h 00m",
     "tipo": "nodo"
@@ -11404,13 +11404,13 @@ function IconSun({ size = 16, color = "currentColor" }) {
     "kva": 25,
     "tanque_lts": 100.0,
     "subtanque_actual": 100.0,
-    "reserva_lts": 0.0,
-    "cap_reserva": 0,
-    "cap_reserva_lts": 0,
+    "reserva_lts": 1000.0,
+    "cap_reserva": 1000,
+    "cap_reserva_lts": 1000,
     "consumo_lh": 4.0,
     "aut_tanque_h": 25.0,
-    "aut_total_h": 25.0,
-    "dias_aut": 1.04,
+    "aut_total_h": 275.0,
+    "dias_aut": 11.46,
     "cant_faltante": 0,
     "horometro_actual": "1786h 54m",
     "tipo": "nodo"
@@ -11509,13 +11509,13 @@ function IconSun({ size = 16, color = "currentColor" }) {
     "kva": 30,
     "tanque_lts": 100.0,
     "subtanque_actual": 100.0,
-    "reserva_lts": 0.0,
-    "cap_reserva": 0,
-    "cap_reserva_lts": 0,
+    "reserva_lts": 1000.0,
+    "cap_reserva": 1000,
+    "cap_reserva_lts": 1000,
     "consumo_lh": 6.0,
     "aut_tanque_h": 16.67,
-    "aut_total_h": 16.67,
-    "dias_aut": 0.69,
+    "aut_total_h": 183.33,
+    "dias_aut": 7.64,
     "cant_faltante": 0,
     "horometro_actual": "1011h 00m",
     "tipo": "nodo"
@@ -11656,13 +11656,13 @@ function IconSun({ size = 16, color = "currentColor" }) {
     "kva": 30,
     "tanque_lts": 100.0,
     "subtanque_actual": 100.0,
-    "reserva_lts": 0.0,
-    "cap_reserva": 0,
-    "cap_reserva_lts": 0,
+    "reserva_lts": 1000.0,
+    "cap_reserva": 1000,
+    "cap_reserva_lts": 1000,
     "consumo_lh": 6.0,
     "aut_tanque_h": 16.67,
-    "aut_total_h": 16.67,
-    "dias_aut": 0.69,
+    "aut_total_h": 183.33,
+    "dias_aut": 7.64,
     "cant_faltante": 0,
     "horometro_actual": "1387h 36m",
     "tipo": "nodo"
@@ -15034,7 +15034,7 @@ function IconSun({ size = 16, color = "currentColor" }) {
           return saved ? JSON.parse(saved) : INITIAL_FUEL_REFILLS;
         } catch (e) { return INITIAL_FUEL_REFILLS; }
       });
-      const direct100LTags = ['POMO-PLT-00', 'OJEDA-PLT-00', 'CANA-PLT-00', 'MARI-PLT-00', 'LTUN-PLT-00'];
+      const direct100LTags = ['LTUN-PLT-00'];
       const normalizeTanksList = (rawList) => {
         const baseList = rawList || [];
         // 1. Agregación de reservas compartidas por sede física
@@ -15054,10 +15054,6 @@ function IconSun({ size = 16, color = "currentColor" }) {
           const lNorm = (t.lugar || '').toLowerCase();
           const sKey = normalizeNodeName(t.lugar);
           const isDirect100 = direct100LTags.includes(t.tag) ||
-            lNorm.includes('pomona') ||
-            lNorm.includes('ciudad ojeda') ||
-            lNorm.includes('cañada') ||
-            lNorm.includes('marite') ||
             lNorm.includes('tunas');
 
           let subCap = parseFloat(t.tanque_lts) || 0;
@@ -15074,6 +15070,11 @@ function IconSun({ size = 16, color = "currentColor" }) {
           if (sKey.includes('18 de octubre')) {
             if (resCap < 240) resCap = 240;
             if (resAct === 0) resAct = 230.0;
+          }
+          // Nuevas reservas de 1000L instaladas en Pomona, Ojeda, Marite y Cañada
+          if (sKey.includes('pomona') || sKey.includes('ojeda') || sKey.includes('marite') || sKey.includes('cañada')) {
+            if (resCap < 1000) resCap = 1000;
+            if (resAct === 0) resAct = 1000.0;
           }
 
           if (isDirect100) {
