@@ -2772,8 +2772,13 @@ function PendingPage({ onLogout }) {
           }
 
           if (targetNodeId) {
+            const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
+            const siteMatchingTanks = INITIAL_FUEL_TANKS.filter(x => normFn(x.lugar) === targetNorm);
+            const siteCapRes = siteMatchingTanks.reduce((m, x) => Math.max(m, capResOf(x)), 0);
+
             const fuelPayload = {
               reserva_lts: Number(resultingRes) || 0,
+              cap_reserva_lts: siteCapRes > 0 ? siteCapRes : (Number(resultingCapRes) || 0),
               subtanque_actual: Number(resultingSub) || 0,
               total_nodo_lts: Number(resultingTotal) || 0,
               lastRefillDate: new Date(),
@@ -2800,26 +2805,27 @@ function PendingPage({ onLogout }) {
         }
       }
 
-      // 2. Persistir en LocalStorage (airtek_fuel_tanks_v13) con coincidencia normalizada
+      // 2. Persistir en LocalStorage (airtek_fuel_tanks_v13) con coincidencia normalizada y reserva compartida
       try {
         const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
         const baseTanks = curTanks.length > 0 ? curTanks : INITIAL_FUEL_TANKS;
         const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
+        const siteCapRes = baseTanks.filter(x => normFn(x.lugar) === targetNorm).reduce((m, x) => Math.max(m, capResOf(x)), 0);
         const updatedTanks = baseTanks.map(t => {
           const tNorm = normFn(t.lugar);
           const exactNode = tNorm === targetNorm;
           const isPlant = plantTag ? t.tag === plantTag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
           const subCap = parseFloat(t.tanque_lts) || 0;
-          const resCap = capResOf(t);
-          const shareRes = exactNode && resCap > 0;
-          if (!isPlant && !shareRes) return t;
+          const effectiveCapRes = exactNode && siteCapRes > 0 ? siteCapRes : capResOf(t);
+          if (!isPlant && !exactNode) return t;
           const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
-          const curR = parseFloat(t.reserva_lts) || 0;
           const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(resultingSub) || 0)) : (Number(resultingSub) || 0)) : curS;
-          const newR = ((isPlant && resCap > 0) || shareRes) ? (resCap > 0 ? Math.min(resCap, Math.max(0, Number(resultingRes) || 0)) : Math.max(0, Number(resultingRes) || 0)) : curR;
+          const newR = exactNode ? (effectiveCapRes > 0 ? Math.min(effectiveCapRes, Math.max(0, Number(resultingRes) || 0)) : Math.max(0, Number(resultingRes) || 0)) : (parseFloat(t.reserva_lts) || 0);
           const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
           return {
             ...t,
+            cap_reserva: effectiveCapRes,
+            cap_reserva_lts: effectiveCapRes,
             subtanque_actual: newS,
             reserva_lts: newR,
             aut_total_h: autTotal,
@@ -6996,10 +7002,12 @@ ${f.obsGenerales}`;
         eq,
         records,
         nodeFuelState,
+        userProfile,
         isExpanded,
         onToggleExpand,
         onInspect,
         onAdjustHoro,
+        onCalibrateFuel,
         onRefill,
         onSelectRecord,
         children
@@ -7108,12 +7116,14 @@ ${f.obsGenerales}`;
             statusText,
             plantRecords,
             isExpanded,
+            userProfile,
             reservaLts: nodeFuelState?.reserva_lts || 0,
             capReservaLts: nodeFuelState?.cap_reserva_lts || 0
           },
           actions: {
             onInspect,
             onAdjustHoro,
+            onCalibrateFuel,
             onRefill,
             onToggleExpand,
             onSelectRecord
@@ -7178,9 +7188,10 @@ ${f.obsGenerales}`;
 
       Specs: function PlantCardSpecs() {
         const { 
-          state: { eq, currentH, reservaLts, capReservaLts },
-          actions: { onAdjustHoro }
+          state: { eq, currentH, reservaLts, capReservaLts, userProfile },
+          actions: { onAdjustHoro, onCalibrateFuel }
         } = usePlantCard();
+        const canEditFuel = ['admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase());
 
         return (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px', marginBottom: 6 }}>
@@ -7225,10 +7236,27 @@ ${f.obsGenerales}`;
                 <div style={{ fontSize: '.84rem', fontWeight: 700, color: 'var(--tx1)', fontFamily: "'Outfit', 'Montserrat', monospace" }}>{formatHHMMSS(currentH)}</div>
               </div>
             )}
-            <div style={{ background: 'var(--bg-elevated)', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
+            <div 
+              onClick={canEditFuel ? onCalibrateFuel : undefined}
+              title={canEditFuel ? "Haz clic para calibrar o ajustar combustible y reserva" : undefined}
+              style={{ 
+                background: 'var(--bg-elevated)', 
+                padding: '6px 10px', 
+                borderRadius: 8, 
+                border: '1px solid var(--border)',
+                cursor: canEditFuel ? 'pointer' : 'default',
+                transition: 'all 0.2s ease',
+                position: 'relative'
+              }}
+              onMouseEnter={e => { if (canEditFuel) { e.currentTarget.style.borderColor = 'var(--blue)'; e.currentTarget.style.background = 'rgba(1, 102, 255, 0.08)'; } }}
+              onMouseLeave={e => { if (canEditFuel) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-elevated)'; } }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '.65rem', color: 'var(--tx3)', textTransform: 'uppercase', letterSpacing: '.04em', fontWeight: 600 }}>Reserva</span>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: reservaLts > 0 ? '#10b981' : '#ef4444' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {canEditFuel && <span style={{ fontSize: '.62rem', color: 'var(--blue)', fontWeight: 700 }}>✏️ Modificar</span>}
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: reservaLts > 0 ? '#10b981' : '#ef4444' }} />
+                </div>
               </div>
               <div style={{ fontSize: '.84rem', fontWeight: 700, color: reservaLts > 0 ? 'var(--blue)' : '#ef4444', fontFamily: "'Outfit', sans-serif" }}>
                 {reservaLts.toLocaleString()} <span style={{ fontSize: '.7rem', fontWeight: 600, color: 'var(--tx3)' }}>Lts</span>
@@ -7266,15 +7294,27 @@ ${f.obsGenerales}`;
 
       Actions: function PlantCardActions() {
         const {
-          state: { plantRecords, isExpanded },
-          actions: { onInspect, onAdjustHoro, onRefill, onToggleExpand }
+          state: { plantRecords, isExpanded, userProfile },
+          actions: { onInspect, onAdjustHoro, onCalibrateFuel, onRefill, onToggleExpand }
         } = usePlantCard();
+        const canEditFuel = ['admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase());
 
         return (
           <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {plantRecords.length > 0 && (
               <button className="bs" style={{ padding: '7px 14px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600 }} onClick={onToggleExpand}>
                 {isExpanded ? 'Ocultar Hist.' : `Historial (${plantRecords.length})`}
+              </button>
+            )}
+            {canEditFuel && (
+              <button 
+                className="bs" 
+                style={{ padding: '7px 14px', fontSize: '.8rem', borderRadius: 8, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 6 }} 
+                onClick={onCalibrateFuel}
+                title="Calibrar niveles de combustible y capacidad de reserva física"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Calibrar Combustible
               </button>
             )}
             <button 
@@ -7449,6 +7489,7 @@ ${f.obsGenerales}`;
     function NodePlantas({ nodeId, nodeName, nodeType, equipment, records, userProfile, toast, onSubViewChange, setSelRecord }) {
       const genEqs = sortEquipment(equipment.filter(e => e.type === 'GEN' && e.active !== false));
       const [calibrateModalPlant, setCalibrateModalPlant] = useState(null);
+      const [calibrateFuelPlant, setCalibrateFuelPlant] = useState(null);
       const [horoRefreshTrigger, setHoroRefreshTrigger] = useState(0);
 
       useEffect(() => {
@@ -7481,9 +7522,23 @@ ${f.obsGenerales}`;
         const unsub = db.collection('energy_nodes').doc(nodeId).collection('fuel').doc('state').onSnapshot(snap => {
           if (snap.exists) {
             const data = snap.data();
+            let rLts = data.reserva_lts !== undefined ? data.reserva_lts : prev.reserva_lts;
+            let cLts = data.cap_reserva_lts !== undefined ? data.cap_reserva_lts : prev.cap_reserva_lts;
+            const cLugar = (nodeName || '').toLowerCase();
+            // Auto-sanar en Firestore si el nodo sufrió el error previo de reserva en 0
+            if (cLugar.includes('callao') && rLts === 0) {
+              rLts = 1259.0;
+              cLts = 2500;
+              snap.ref.set({ reserva_lts: 1259.0, cap_reserva_lts: 2500 }, { merge: true }).catch(() => {});
+            } else if (cLugar.includes('18 de octubre') && rLts === 0) {
+              rLts = 230.0;
+              cLts = 240;
+              snap.ref.set({ reserva_lts: 230.0, cap_reserva_lts: 240 }, { merge: true }).catch(() => {});
+            }
             setNodeFuelState(prev => ({
               ...prev,
-              reserva_lts: data.reserva_lts !== undefined ? data.reserva_lts : prev.reserva_lts,
+              reserva_lts: rLts,
+              cap_reserva_lts: cLts || prev.cap_reserva_lts,
               subtanque_actual: data.subtanque_actual !== undefined ? data.subtanque_actual : prev.subtanque_actual,
               total_nodo_lts: data.total_nodo_lts !== undefined ? data.total_nodo_lts : prev.total_nodo_lts
             }));
@@ -7555,10 +7610,12 @@ ${f.obsGenerales}`;
                   eq={eq}
                   records={records}
                   nodeFuelState={nodeFuelState}
+                  userProfile={userProfile}
                   isExpanded={!!expandedHist[eq.id]}
                   onToggleExpand={() => setExpandedHist(p => ({ ...p, [eq.id]: !p[eq.id] }))}
                   onInspect={() => handleInspect(eq)}
                   onAdjustHoro={() => setCalibrateModalPlant(eq)}
+                  onCalibrateFuel={() => setCalibrateFuelPlant(eq)}
                   onRefill={() => {
                     localStorage.setItem('airtek_presurtido', JSON.stringify({ plantTag: eq.tag, plantCapacity: eq.capacity }));
                     onSubViewChange('newRecord');
@@ -7593,6 +7650,56 @@ ${f.obsGenerales}`;
               toast={toast} 
               onClose={() => setCalibrateModalPlant(null)} 
               onSaved={() => setHoroRefreshTrigger(k => k + 1)} 
+            />
+          )}
+          {calibrateFuelPlant && (
+            <AdjustFuelLevelModal
+              tanks={(() => {
+                try {
+                  const saved = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+                  if (saved.length > 0) return saved;
+                } catch(e) {}
+                return INITIAL_FUEL_TANKS;
+              })()}
+              preselectedPlant={{
+                ...calibrateFuelPlant,
+                lugar: nodeName,
+                tag: calibrateFuelPlant.tag
+              }}
+              userProfile={userProfile}
+              toast={toast}
+              onClose={() => setCalibrateFuelPlant(null)}
+              onSave={async (adj) => {
+                try {
+                  await persistNodeFuelUpdate({
+                    db,
+                    nodeId,
+                    nodeName,
+                    plantTag: calibrateFuelPlant.tag,
+                    resultingSub: adj.newSub,
+                    resultingRes: adj.newRes,
+                    resultingTotal: adj.newTotal,
+                    resultingCapRes: adj.newCapRes,
+                    addedTotalDespacho: 0,
+                    resultingLtsP: 0,
+                    resultingLtsR: 0,
+                    fuelDest: `Calibración (${adj.motivo})`,
+                    fuelHoro: adj.newHorometro || '',
+                    userProfile
+                  });
+                  setNodeFuelState({
+                    reserva_lts: adj.newRes,
+                    cap_reserva_lts: adj.newCapRes,
+                    subtanque_actual: adj.newSub,
+                    total_nodo_lts: adj.newTotal
+                  });
+                  toast('Combustible y reserva calibrados con éxito.', 'success');
+                  setCalibrateFuelPlant(null);
+                } catch (e) {
+                  console.error(e);
+                  toast('Error calibrando combustible: ' + e.message, 'error');
+                }
+              }}
             />
           )}
         </div>
@@ -8045,6 +8152,37 @@ ${f.obsGenerales}`;
                               {eq.batCellType && eq.batCellType !== 'No aplica' && <span style={{ color: '#64748b', fontSize: '.73rem' }}>{eq.batCellType}</span>}
                               {eq.type === 'GEN' && eq.capacity && <span style={{ color: '#eab308', fontSize: '.73rem', fontWeight: 700 }}>{eq.capacity} KVA</span>}
                               {eq.type === 'GEN' && eq.phases && <span style={{ color: '#eab308', fontSize: '.73rem' }}>{eq.phases === 'Monofásica' ? '1Φ' : '3Φ'} {eq.phases}</span>}
+                              {eq.type === 'GEN' && (() => {
+                                let list = INITIAL_FUEL_TANKS;
+                                try {
+                                  const s = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+                                  if (s.length > 0) list = s;
+                                } catch(e) {}
+                                const norm = normalizeNodeName(node.name);
+                                const siteTanks = list.filter(t => normalizeNodeName(t.lugar) === norm);
+                                const plantTank = siteTanks.find(t => t.tag === eq.tag) || siteTanks[0];
+                                const sharedRes = siteTanks.reduce((m, t) => Math.max(m, parseFloat(t.reserva_lts) || 0), 0);
+                                const capRes = siteTanks.reduce((m, t) => Math.max(m, parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0), 0);
+                                const subAct = plantTank ? (parseFloat(plantTank.subtanque_actual != null ? plantTank.subtanque_actual : plantTank.tanque_lts) || 0) : 0;
+                                const subCap = plantTank ? (parseFloat(plantTank.tanque_lts) || 0) : 0;
+                                return (
+                                  <span style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: 6, 
+                                    fontSize: '.72rem', 
+                                    fontWeight: 600, 
+                                    background: 'rgba(1, 102, 255, 0.08)', 
+                                    color: 'var(--blue)', 
+                                    padding: '2px 8px', 
+                                    borderRadius: 6,
+                                    border: '1px solid rgba(1, 102, 255, 0.2)'
+                                  }}>
+                                    <span>⛽ Tanque: <strong>{subAct}/{subCap}L</strong></span>
+                                    {capRes > 0 && <span>| Reserva: <strong style={{ color: sharedRes > 0 ? '#10b981' : '#ef4444' }}>{sharedRes}/{capRes}L</strong></span>}
+                                  </span>
+                                );
+                              })()}
                               <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <span style={{ color: 'var(--tx4)', fontSize: '.72rem' }}>{fmtDate(eq.installedAt)}</span>
                                 {canWrite && <button onClick={() => setEditEq(eq)}
@@ -10999,13 +11137,13 @@ function IconSun({ size = 16, color = "currentColor" }) {
     "kva": 100,
     "tanque_lts": 330.0,
     "subtanque_actual": 330.0,
-    "reserva_lts": 0.0,
-    "cap_reserva": 0,
-    "cap_reserva_lts": 0,
+    "reserva_lts": 230.0,
+    "cap_reserva": 240,
+    "cap_reserva_lts": 240,
     "consumo_lh": 22.0,
     "aut_tanque_h": 15.0,
-    "aut_total_h": 15.0,
-    "dias_aut": 0.62,
+    "aut_total_h": 25.5,
+    "dias_aut": 1.06,
     "cant_faltante": 10,
     "horometro_actual": "18h 18m",
     "tipo": "datacenter"
@@ -11041,13 +11179,13 @@ function IconSun({ size = 16, color = "currentColor" }) {
     "kva": 100,
     "tanque_lts": 330.0,
     "subtanque_actual": 330.0,
-    "reserva_lts": 0.0,
-    "cap_reserva": 0,
-    "cap_reserva_lts": 0,
+    "reserva_lts": 1259.0,
+    "cap_reserva": 2500,
+    "cap_reserva_lts": 2500,
     "consumo_lh": 22.0,
     "aut_tanque_h": 15.0,
-    "aut_total_h": 15.0,
-    "dias_aut": 0.62,
+    "aut_total_h": 72.2,
+    "dias_aut": 3.01,
     "cant_faltante": 1241,
     "horometro_actual": "276h 30m",
     "tipo": "datacenter"
@@ -14883,8 +15021,23 @@ function IconSun({ size = 16, color = "currentColor" }) {
       });
       const direct100LTags = ['POMO-PLT-00', 'OJEDA-PLT-00', 'CANA-PLT-00', 'MARI-PLT-00', 'LTUN-PLT-00'];
       const normalizeTanksList = (rawList) => {
-        return (rawList || []).map(t => {
+        const baseList = rawList || [];
+        // 1. Agregación de reservas compartidas por sede física
+        const siteReserveMap = new Map();
+        baseList.forEach(t => {
+          const sKey = normalizeNodeName(t.lugar);
+          const cRes = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+          const aRes = parseFloat(t.reserva_lts) || 0;
+          const cur = siteReserveMap.get(sKey) || { capRes: 0, actRes: 0 };
+          siteReserveMap.set(sKey, {
+            capRes: Math.max(cur.capRes, cRes),
+            actRes: Math.max(cur.actRes, aRes)
+          });
+        });
+
+        return baseList.map(t => {
           const lNorm = (t.lugar || '').toLowerCase();
+          const sKey = normalizeNodeName(t.lugar);
           const isDirect100 = direct100LTags.includes(t.tag) ||
             lNorm.includes('pomona') ||
             lNorm.includes('ciudad ojeda') ||
@@ -14893,9 +15046,20 @@ function IconSun({ size = 16, color = "currentColor" }) {
             lNorm.includes('tunas');
 
           let subCap = parseFloat(t.tanque_lts) || 0;
-          let resCap = parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0;
+          const siteRes = siteReserveMap.get(sKey) || { capRes: 0, actRes: 0 };
+          let resCap = siteRes.capRes;
           let subAct = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
-          let resAct = parseFloat(t.reserva_lts) || 0;
+          let resAct = siteRes.actRes;
+
+          // Auto-sanar discrepancias históricas en El Callao y 18 de Octubre
+          if (sKey.includes('callao')) {
+            if (resCap < 2500) resCap = 2500;
+            if (resAct === 0) resAct = 1259.0;
+          }
+          if (sKey.includes('18 de octubre')) {
+            if (resCap < 240) resCap = 240;
+            if (resAct === 0) resAct = 230.0;
+          }
 
           if (isDirect100) {
             subCap = 100.0;
@@ -15236,30 +15400,33 @@ function IconSun({ size = 16, color = "currentColor" }) {
         const normFn = normalizeNodeName;
         const targetNorm = normFn(newRefill.lugar);
 
-        // 1. Actualizar niveles del tanque correspondiente con exactitud y respeto estricto a las capacidades físicas
+        // 1. Actualizar niveles del tanque correspondiente y sincronizar reserva compartida con todas las plantas hermanas
         const capResOfR = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-        setTanks(prev => prev.map(t => {
-          const tNorm = normFn(t.lugar);
-          const exactNode = tNorm === targetNorm;
-          const isPlant = newRefill.tag ? t.tag === newRefill.tag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
-          const subCap = parseFloat(t.tanque_lts) || 0;
-          const resCap = capResOfR(t);
-          const shareRes = exactNode && resCap > 0;
-          if (!isPlant && !shareRes) return t;
-          const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
-          const curR = parseFloat(t.reserva_lts) || 0;
-          const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(newRefill.subtanque_lts) || 0)) : (Number(newRefill.subtanque_lts) || 0)) : curS;
-          const newR = ((isPlant && resCap > 0) || shareRes) ? (resCap > 0 ? Math.min(resCap, Math.max(0, Number(newRefill.reserva_lts) || 0)) : Math.max(0, Number(newRefill.reserva_lts) || 0)) : curR;
-          const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-          return {
-            ...t,
-            subtanque_actual: newS,
-            reserva_lts: newR,
-            aut_total_h: autTotal,
-            dias_aut: Number((autTotal / 24).toFixed(2)),
-            horometro_actual: (isPlant && newRefill.horometro && newRefill.horometro !== '—') ? newRefill.horometro : t.horometro_actual
-          };
-        }));
+        setTanks(prev => {
+          const siteCapRes = prev.filter(x => normFn(x.lugar) === targetNorm).reduce((m, x) => Math.max(m, capResOfR(x)), 0);
+          return prev.map(t => {
+            const tNorm = normFn(t.lugar);
+            const exactNode = tNorm === targetNorm;
+            const isPlant = newRefill.tag ? t.tag === newRefill.tag : exactNode;
+            if (!isPlant && !exactNode) return t;
+            const subCap = parseFloat(t.tanque_lts) || 0;
+            const effectiveCapRes = exactNode && siteCapRes > 0 ? siteCapRes : capResOfR(t);
+            const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
+            const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(newRefill.subtanque_lts) || 0)) : (Number(newRefill.subtanque_lts) || 0)) : curS;
+            const newR = exactNode ? (effectiveCapRes > 0 ? Math.min(effectiveCapRes, Math.max(0, Number(newRefill.reserva_lts) || 0)) : Math.max(0, Number(newRefill.reserva_lts) || 0)) : (parseFloat(t.reserva_lts) || 0);
+            const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
+            return {
+              ...t,
+              cap_reserva: effectiveCapRes,
+              cap_reserva_lts: effectiveCapRes,
+              subtanque_actual: newS,
+              reserva_lts: newR,
+              aut_total_h: autTotal,
+              dias_aut: Number((autTotal / 24).toFixed(2)),
+              horometro_actual: (isPlant && newRefill.horometro && newRefill.horometro !== '—') ? newRefill.horometro : t.horometro_actual
+            };
+          });
+        });
 
         // 2. Persistir en Firestore (energy_nodes/{id}/fuel/state y node.fuelState) y LocalStorage centralizado
         await persistNodeFuelUpdate({
@@ -19051,14 +19218,16 @@ function IconSun({ size = 16, color = "currentColor" }) {
       const [savedReport, setSavedReport] = useState(null);
 
       const selTank = tanks.find(t => t.id === selectedTankId) || tanks.find(t => t.lugar === lugar) || tanks[0];
+      const normSelLugar = normalizeNodeName(selTank?.lugar);
+      const sisterTanks = tanks.filter(t => normalizeNodeName(t.lugar) === normSelLugar);
       const subCap = parseFloat(selTank?.tanque_lts) || 0;
-      const resCap = parseFloat(selTank?.cap_reserva_lts != null ? selTank.cap_reserva_lts : selTank?.cap_reserva) || 0;
+      const resCap = sisterTanks.reduce((m, t) => Math.max(m, parseFloat(t.cap_reserva_lts != null ? t.cap_reserva_lts : t.cap_reserva) || 0), 0);
       const rawSub = parseFloat(selTank?.subtanque_actual != null ? selTank.subtanque_actual : selTank?.tanque_lts) || 0;
       const curSub = subCap > 0 ? Math.min(subCap, rawSub) : rawSub;
-      const rawRes = parseFloat(selTank?.reserva_lts) || 0;
+      const rawRes = sisterTanks.reduce((m, t) => Math.max(m, parseFloat(t.reserva_lts) || 0), 0);
       const curRes = resCap > 0 ? Math.min(resCap, rawRes) : 0;
 
-      // Calcular en tiempo real según la Tabla de la Verdad y límites físicos estrictos
+      // Calcular en tiempo real según la Tabla de la Verdad y límites físicos estrictos con reserva compartida
       const calcResultingLevels = () => {
         let newSub = curSub;
         let newRes = curRes;
@@ -19075,20 +19244,26 @@ function IconSun({ size = 16, color = "currentColor" }) {
           const l = parseFloat(litros) || 0;
           addedTotal = l;
           ltsP = l;
-          const hasReserve = (resCap > 0 || curRes > 0);
-          // Surtido a planta: si el nodo tiene reserva, descuenta los litros surtidos directamente de la reserva
-          newRes = hasReserve ? Math.max(0, curRes - l) : curRes;
-          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + l)) : (curSub + l);
+          // Surtido a planta: si el nodo tiene reserva física, descuenta los litros despachados de la reserva compartida
+          newRes = resCap > 0 ? Math.max(0, curRes - l) : 0;
+          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
+        } else if (destino === 'Surtido Externo Planta') {
+          const l = parseFloat(litros) || 0;
+          addedTotal = l;
+          ltsP = l;
+          // Cisterna suministra directamente al tanque de la planta: la reserva compartida NO se modifica
+          newRes = curRes;
+          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
         } else if (destino === 'Trasiego Interno') {
           const l = parseFloat(litros) || 0;
           ltsP = l;
           addedTotal = 0; // Trasiego interno no añade combustible externo al nodo
           newRes = Math.max(0, curRes - l);
-          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + l)) : (curSub + l);
+          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
         } else if (destino === 'Surtido Planta y Reserva') {
           ltsP = parseFloat(litrosPlanta) || 0;
           ltsR = parseFloat(litrosReserva) || 0;
-          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + ltsP)) : (curSub + ltsP);
+          newSub = subCap > 0 ? Math.min(subCap, curSub + ltsP) : (curSub + ltsP);
           newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
           addedTotal = ltsP + ltsR;
         }
@@ -19241,9 +19416,11 @@ function IconSun({ size = 16, color = "currentColor" }) {
                     <option value="Surtido Planta">Surtido Directo a Planta ({subCap} L máx)</option>
                   ) : (
                     <>
-                      <option value="Surtido Planta">Surtido a Planta (descuenta de la reserva - {subCap} L máx)</option>
-                      <option value="Surtido Reserva">Surtido a Reserva (Cisterna a Tanque - {resCap} L máx)</option>
-                      <option value="Surtido Planta y Reserva">Surtido Planta y Reserva (Cisterna a Ambos)</option>
+                      <option value="Surtido Planta">Surtido a Planta (descuenta de la reserva compartida - {subCap} L máx)</option>
+                      <option value="Surtido Externo Planta">Surtido Externo a Planta (Cisterna directo a Planta - {subCap} L máx)</option>
+                      <option value="Surtido Reserva">Surtido a Reserva (Cisterna a Tanque Reserva - {resCap} L máx)</option>
+                      <option value="Surtido Planta y Reserva">Surtido Mixto (Cisterna a Planta y Reserva)</option>
+                      <option value="Trasiego Interno">Trasiego Interno (De Reserva a Planta - {curRes} L disp.)</option>
                     </>
                   )}
                 </select>
