@@ -1365,6 +1365,11 @@
     try {
       if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
       db = firebase.firestore();
+      db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+        if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+          console.warn('Firestore offline persistence notice:', err.message || err.code);
+        }
+      });
       auth = firebase.auth();
     } catch (e) { console.error('Firebase error:', e); }
 

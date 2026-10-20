@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ── 🛡️ FUNCIONES DE SEGURIDAD Y ROLES ─────────────────────────────────
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Identificación de Super Admins por token para bootstrapping sin bloqueos
+    function isSuperAdminAuth() {
+      return isAuthenticated() 
+        && request.auth.token.email != null
+        && (
+          request.auth.token.email.lower().matches('.*robert.*') 
+          || request.auth.token.email.lower().matches('.*ruidiaz.*') 
+          || request.auth.token.email.lower().matches('.*diego[.]campos.*')
+        );
+    }
+
+    // Obtención segura del perfil de usuario (airtek_users prioritario, luego energy_users)
+    function getUserData() {
+      let uid = request.auth.uid;
+      let au = /databases/$(database)/documents/airtek_users/$(uid);
+      let eu = /databases/$(database)/documents/energy_users/$(uid);
+      return exists(au) ? get(au).data : (exists(eu) ? get(eu).data : {});
+    }
+
+    function isStrictAdmin() {
+      let data = getUserData();
+      let isRoot = data.get('role', data.get('rol', '')) == 'admin';
+      let isNodos = data.get('apps', {}).get('nodos', '') == 'admin';
+      let isPm = data.get('apps', {}).get('pm', '') == 'admin';
+      let isAlmacen = data.get('apps', {}).get('almacen', '') == 'admin';
+      
+      return isAuthenticated() && (isSuperAdminAuth() || isRoot || isNodos || isPm || isAlmacen);
+    }
+
+    function isApprovedUser() {
+      let data = getUserData();
+      return isAuthenticated() && (isSuperAdminAuth() || data.get('approved', false) == true);
+    }
+
+    function isSupervisorOrAdmin() {
+      let data = getUserData();
+      let role = data.get('apps', {}).get('nodos', data.get('role', data.get('rol', '')));
+      return isApprovedUser() && (isSuperAdminAuth() || role == 'supervisor' || role == 'admin');
+    }
+
+    function canWriteNodos() {
+      let data = getUserData();
+      let role = data.get('apps', {}).get('nodos', data.get('role', data.get('rol', '')));
+      return isApprovedUser() && (role == 'tecnico' || role == 'supervisor' || role == 'admin');
+    }
+
+    function canWritePM() {
+      let data = getUserData();
+      let pmRole = data.get('apps', {}).get('pm', data.get('role', data.get('rol', '')));
+      return isApprovedUser() && (pmRole == 'admin' || pmRole == 'editor' || pmRole == 'supervisor');
+    }
+
+    function canWriteAlmacen() {
+      let data = getUserData();
+      let almRole = data.get('apps', {}).get('almacen', data.get('role', data.get('rol', '')));
+      return isApprovedUser() && (almRole == 'admin' || almRole == 'operador');
+    }
+
+    // ── 1. NODOS Y SUBCOLECCIONES (Nodos, Equipos, Combustible, Registros) ─
+    match /energy_nodes/{nodeId} {
+      allow read: if isApprovedUser();
+      allow create, update: if isStrictAdmin() || canWriteNodos();
+      // Protección contra borrado accidental: solo supervisores o admins pueden borrar nodos
+      allow delete: if isStrictAdmin() || isSupervisorOrAdmin();
+
+      // Subcolecciones internas (energy_equipment, energy_records, fuel, node_alerts, node_events, node_docs)
+      match /{subcollection}/{docId} {
+        allow read: if isApprovedUser();
+        allow create, update: if isStrictAdmin() || canWriteNodos();
+        // Borrado restringido a supervisores y admins para proteger la trazabilidad de inspecciones y combustible
+        allow delete: if isStrictAdmin() || isSupervisorOrAdmin();
+      }
+    }
+
+    // Colección de registros legacy si se consulta en raíz:
+    match /energy_records/{recordId} {
+      allow read: if isApprovedUser();
+      allow create, update: if isStrictAdmin() || canWriteNodos();
+      allow delete: if isStrictAdmin() || isSupervisorOrAdmin();
+    }
+
+    // ── 2. CONFIGURACIÓN GENERAL (Personal Autorizado) ─────────────────────
+    match /energy_config/{configId} {
+      allow read: if isApprovedUser();
+      // Solo administradores y supervisores pueden modificar la lista de personal autorizado
+      allow write: if isStrictAdmin() || isSupervisorOrAdmin();
+    }
+
+    // ── 3. ARTIFACTS / PM V7 Y ALMACÉN ─────────────────────────────────────
+    match /artifacts/{appId}/public/data/{collection=**} {
+      allow read: if isAuthenticated();
+      allow create, update: if isStrictAdmin() || canWritePM() || canWriteAlmacen();
+      allow delete: if isStrictAdmin() || isSupervisorOrAdmin();
+    }
+
+    // ── 4. PERFILES (Gestión de Usuarios - airtek_users) ───────────────────
+    match /airtek_users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isStrictAdmin());
+      
+      // Creación: usuarios comunes crean perfil pendiente con rol tecnico/lector;
+      // super admins pueden inicializar su cuenta directamente.
+      allow create: if (
+        isAuthenticated() && request.auth.uid == uid 
+        && (
+          isSuperAdminAuth()
+          || (
+            request.resource.data.get('approved', true) == false
+            && request.resource.data.get('role', '') != 'admin'
+            && request.resource.data.get('role', '') != 'supervisor'
+            && request.resource.data.get('apps', {}).get('nodos', '') != 'admin'
+            && request.resource.data.get('apps', {}).get('nodos', '') != 'supervisor'
+            && request.resource.data.get('apps', {}).get('pm', '') != 'admin'
+            && request.resource.data.get('apps', {}).get('pm', '') != 'supervisor'
+            && request.resource.data.get('apps', {}).get('almacen', '') != 'admin'
+            && request.resource.data.get('apps', {}).get('almacen', '') != 'supervisor'
+          )
+        )
+      ) || isStrictAdmin();
+                    
+      // Actualización: Admin total, o el propio usuario modificando campos no sensibles (nombre, preferencias)
+      // pero nunca auto-aprobándose ni escalando privilegios.
+      allow update: if isStrictAdmin()
+                    || (
+                      isAuthenticated() && request.auth.uid == uid
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'rol', 'apps', 'approved', 'email'])
+                    );
+                    
+      allow delete: if isStrictAdmin();
+    }
+
+    // ── 5. PERFILES LEGACY (energy_users) ──────────────────────────────────
+    match /energy_users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isStrictAdmin());
+      
+      allow create: if (
+        isAuthenticated() && request.auth.uid == uid 
+        && (
+          isSuperAdminAuth()
+          || (
+            request.resource.data.get('approved', true) == false
+            && request.resource.data.get('role', '') != 'admin'
+            && request.resource.data.get('role', '') != 'supervisor'
+            && request.resource.data.get('rol', '') != 'admin'
+            && request.resource.data.get('rol', '') != 'supervisor'
+          )
+        )
+      ) || isStrictAdmin();
+                    
+      allow update: if isStrictAdmin()
+                    || (
+                      isAuthenticated() && request.auth.uid == uid
+                      && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'rol', 'approved', 'email'])
+                    );
+                    
+      allow delete: if isStrictAdmin();
+    }
+  }
+}
