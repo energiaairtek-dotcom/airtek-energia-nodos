@@ -55,27 +55,55 @@ Este documento define la arquitectura, normas operativas, modelos de datos, regl
 
 ---
 
-## 4. Reglas Críticas del Sistema de Combustible
+## 4. Matriz Universal y Reglas del Sistema de Combustible
 
-### A. Reserva Compartida por Sede Física
-- Los nodos con múltiples plantas eléctricas (como **Datacenter El Callao** con `CALL-PLT-00` y `CALL-PLT-01`, o **Datacenter 18 de Octubre** con `18OT-PLT-00` y `18OT-PLT-01`) **comparten un único tanque de reserva físico**.
-- Ambas plantas deben reflejar **exactamente la misma capacidad y litros de reserva** en:
-  1. La tabla principal de **Control de Surtidos**.
-  2. La pestaña de **Plantas Eléctricas** del nodo (tarjetas `PlantCard`).
-  3. La pestaña de **Equipos** en la tarjeta de cada generador `GEN`.
-- Surtir o ajustar cualquiera de las dos plantas debe descontar o actualizar el tanque común de la sede y propagarse a todas las plantas hermanas en memoria, en `localStorage` (`airtek_fuel_tanks_v13`) y en Firestore (`energy_nodes/{id}/fuel/state`).
+El sistema administra **29 plantas eléctricas** distribuidas en 4 arquetipos operativos claros:
 
-### B. Lógica de Despacho en `NewFuelRefillModal`
-- **Surtido a Planta (con reserva en nodo):** Descuenta los litros del tanque de reserva compartida (`newRes = Math.max(0, curRes - l)`) y llena el subtanque de la planta seleccionada (`newSub = Math.min(subCap, curSub + l)`).
-- **Surtido Externo a Planta (Cisterna a Planta):** Ingresa combustible directamente de un camión cisterna al subtanque de la planta seleccionada **sin modificar** la reserva compartida.
-- **Surtido a Reserva:** Llena el tanque de reserva compartida hasta su tope físico nominal.
-- **Trasiego Interno:** Trasiega litros de la reserva externa al subtanque de la planta, sin añadir combustible nuevo al total del nodo.
-- **Nodos sin Reserva (Directo a Planta):** Suministro directo al subtanque sin afectar reservas.
+### Categoría 1: Nodos Multiplanta con Reserva Compartida (El Callao, 18 de Octubre)
+- **Características:** Sedes con 2 plantas eléctricas (`-00` y `-01`) que se alimentan de un **único tanque de reserva físico central** (ej. 2,500 L en Callao, 240 L en 18 de Octubre).
+- **Regla de Oro:** Ambas plantas comparten **la misma capacidad y el mismo volumen disponible de reserva** en todas las vistas:
+  1. Tabla principal de **Control de Surtidos**.
+  2. Pestaña de **Plantas Eléctricas** del nodo (tarjetas `PlantCard`).
+  3. Pestaña de **Equipos** (insignia en cada generador `GEN`).
+- **Flujo:** Surtir o calibrar cualquiera de las dos plantas descuenta o actualiza el tanque central común y sincroniza a ambas en memoria, `localStorage` (`airtek_fuel_tanks_v13`) y Firestore (`energy_nodes/{id}/fuel/state`).
 
-### C. Calibración Directa para Supervisores y Administradores
-- Los usuarios con rol `admin`, `supervisor` o `directivo` tienen permiso para calibrar niveles reales (medición de vara en sitio, horómetros, capacidades de tanques y consumos) desde dos puntos:
+### Categoría 2: Nodos Individuales con Reserva Dedicada (Marfi, Bella Vista, CPS, Comedor, etc.)
+- **Plantas:** `MARFI-PLT-00`, `BVIS-PLT-00`, `CPS-PLT-00`, `COM-PLT-00`, `LCAR-PLT-00`, `SANR-PLT-00`, `LCON-PLT-00`, `SRAF-PLT-00`, `SCRU-PLT-00`, `MACH-PLT-00`, `VILL-PLT-00`, `CABI-PLT-00`, `BACH-PLT-00`, `MENE-PLT-00`, `LPUE-PLT-00`.
+- **Características:** Cuentan con un subtanque propio del generador y un tanque de reserva externo dedicado.
+- **Flujo de Operación:**
+  - `Surtido Planta`: Llena el subtanque (tope nominal) y descuenta de su reserva dedicada.
+  - `Surtido Externo Planta`: El camión cisterna llena el subtanque directamente sin tocar la reserva dedicada.
+  - `Surtido Reserva`: Llena el tanque de reserva externo hasta su tope nominal.
+  - `Trasiego Interno`: Pasa litros de su reserva dedicada al subtanque sin añadir combustible externo al total del nodo.
+
+### Categoría 3: Nodos "Directo a Planta" Sin Reserva Externa (`cap_reserva = 0`)
+- **Plantas:** `POMO-PLT-00`, `OJEDA-PLT-00`, `CANA-PLT-00`, `MARI-PLT-00`, `LTUN-PLT-00`, `SVG-PLT-00`, `PORT-PLT-00`.
+- **Características:** No existe tanque cisterna externo. Todo el combustible reside en el tanque interno de la planta (ej. 100 L).
+- **Flujo de Operación:**
+  - El modal restringe automáticamente las opciones y selecciona **"Surtido Directo a Planta"**.
+  - No muestra opciones irrelevantes de trasiego ni de reserva.
+  - La reserva se mantiene estrictamente en `0 L` y la UI muestra la etiqueta clara `Directo a Planta`.
+
+### Categoría 4: Nodos con Tanques de Gran Capacidad / Megatanques (Atlantis, Bachaquero, etc.)
+- **Plantas:** `ATL-PLT-00` (1,700 L), `ATL-PLT-01` (60 L), `ATL-PLT-02` (1,000 L), `BACH-PLT-00` (1,000 L tanque + 1,000 L reserva), `LPUE-PLT-00` (1,100 L tanque + 1,000 L reserva).
+- **Características:** Instalaciones críticas con grandes volúmenes de almacenamiento nominal.
+- **Flujo de Operación:** En Atlantis, cada planta opera con su tanque propio de gran autonomía directo a planta. Bachaquero y Los Puertos operan con tanque nominal y reserva masiva respetando consumos nominales (L/h) para el cálculo de autonomía en días.
+
+---
+
+### D. Tipos de Despacho en `NewFuelRefillModal`
+1. **Surtido a Planta (con reserva en nodo):** Descuenta los litros del tanque de reserva (`newRes = Math.max(0, curRes - l)`) y llena el subtanque de la planta seleccionada (`newSub = Math.min(subCap, curSub + l)`).
+2. **Surtido Externo a Planta (Cisterna a Planta):** Ingresa combustible de un camión cisterna directo al subtanque de la planta **sin modificar** la reserva del nodo.
+3. **Surtido a Reserva:** Llena el tanque de reserva hasta su tope físico nominal (`newRes = Math.min(resCap, curRes + l)`).
+4. **Trasiego Interno:** Trasiega litros de la reserva externa al subtanque de la planta, sin añadir combustible nuevo al total del nodo (`addedTotal = 0`).
+5. **Surtido Mixto:** Despacha litros tanto a la planta como a la reserva simultáneamente.
+
+---
+
+### E. Calibración Directa para Supervisores y Administradores
+- Los usuarios con rol `admin`, `supervisor` o `directivo` pueden calibrar niveles reales físicos (medición de vara en sitio, horómetros, capacidades y consumos) desde dos puntos:
   - Botón **`Ajustar`** en la tabla de Control de Surtidos.
-  - Botón **`Calibrar Combustible`** o botón **`Modificar`** dentro de la tarjeta de planta en `NodePlantas`.
+  - Botón **`Calibrar Combustible`** o **`Modificar`** dentro de la tarjeta de planta en `NodePlantas`.
 
 ---
 
