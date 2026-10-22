@@ -1,4 +1,4 @@
-import React from 'react';
+
 
 function AutonomiaInput({ label, val, onChange, unit, small }) {
       return (

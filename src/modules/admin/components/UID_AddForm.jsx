@@ -1,8 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { db, auth, TS } from '@/services/firebase';
-import { loadXLSX } from '@/utils/exportLibs';
-import { sanitize } from '@/utils/formatters';
-import { IconAlertTriangle, IconCheckCircle } from '@/components/icons';
+import { useState } from 'react';
+import { db, TS } from '@/services/firebase';
 
 function UID_AddForm({ toast, userProfile, onDone }) {
       const [uid, setUid] = useState('');

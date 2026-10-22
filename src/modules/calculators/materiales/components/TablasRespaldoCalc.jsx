@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
-import { calcularMaterialesTablas, MATERIALES_TABLAS_RESPALDO } from '@/modules/calculators/materiales/calc';
+import { MATERIALES_TABLAS_RESPALDO } from '@/modules/calculators/materiales/calc';
 import { IconExcel } from '@/components/icons';
 
 function TablasRespaldoCalc({ onGoUnificada }) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
 import { calcularMaterialesProyecto } from '@/modules/calculators/materiales/calc';
 import { DEFAULT_PROYECTO_FORM } from '@/modules/calculators/materiales/constants';

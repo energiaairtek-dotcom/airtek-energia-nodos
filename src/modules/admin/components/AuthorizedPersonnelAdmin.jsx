@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { db, TS } from '@/services/firebase';
-import { sanitize } from '@/utils/formatters';
+
 import { DEFAULT_AUTHORIZED_STAFF } from '@/hooks/useAuthorizedStaff';
 
 function AuthorizedPersonnelAdmin({ users = [], toast }) {

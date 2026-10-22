@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
-import { calcularMaterialesComunidades, MATERIALES_ACTIVACION } from '@/modules/calculators/materiales/calc';
+import { MATERIALES_ACTIVACION } from '@/modules/calculators/materiales/calc';
 import { IconExcel } from '@/components/icons';
 
 function ComunidadesCalc({ onGoUnificada }) {

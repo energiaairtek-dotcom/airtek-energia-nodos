@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { AutonomiaRedView } from '@/modules/calculators/autonomia/components/AutonomiaRedView';
 import { AutonomiaCalc } from '@/modules/calculators/autonomia/components/AutonomiaCalc';
 import { SimpleAutonomiaCalc } from '@/modules/calculators/autonomia/components/SimpleAutonomiaCalc';
-import { loadXLSX } from '@/utils/exportLibs';
-import { db } from '@/services/firebase';
-import { BAT_VN, BAT_DEFAULTS } from '@/config/constants';
-import { IconExcel, IconCopy, IconAlertTriangle, IconCheckCircle } from '@/components/icons';
-import { getBankId, calcLoad, getEqTypeFromTag, calcAutonomy, fmtHours } from '@/utils/energyCalculations';
+
+
+
+
+
 
             // ═══════════════════════════════════════════════════
     //  VISTA STANDALONE DE AUTONOMÍA

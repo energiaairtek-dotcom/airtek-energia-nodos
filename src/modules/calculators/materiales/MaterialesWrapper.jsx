@@ -1,12 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
-import { loadXLSX } from '@/utils/exportLibs';
-import { calcularMaterialesProyecto, calcularMaterialesComunidades, calcularMaterialesTablas, MATERIALES_TABLAS_RESPALDO, MATERIALES_ACTIVACION } from '@/modules/calculators/materiales/calc';
-import { DEFAULT_PROYECTO_FORM } from '@/modules/calculators/materiales/constants';
+import { useState } from 'react';
+
+
+
 import { MaterialesCalc } from '@/modules/calculators/materiales/components/MaterialesCalc';
 import { ComunidadesCalc } from '@/modules/calculators/materiales/components/ComunidadesCalc';
 import { TablasRespaldoCalc } from '@/modules/calculators/materiales/components/TablasRespaldoCalc';
 import { ListaUnificadaCalc } from '@/modules/calculators/materiales/components/ListaUnificadaCalc';
-import { IconExcel } from '@/components/icons';
+
 
     function MaterialesWrapper() {
       const [tab, setTab] = useState(() => localStorage.getItem('airtek_materiales_calc_tab') || 'proyecto');

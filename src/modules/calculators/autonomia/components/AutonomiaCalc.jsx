@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AutonomiaInput } from '@/modules/calculators/autonomia/components/AutonomiaInput';
 import { BAT_DEFAULTS, BAT_VN } from '@/config/constants';
 import { fmtHours } from '@/utils/energyCalculations';

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { db, TS } from '@/services/firebase';
+import { useState } from 'react';
+import { db } from '@/services/firebase';
 import { loadXLSX } from '@/utils/exportLibs';
-import { sanitize, parseHours, formatHHMMSS } from '@/utils/formatters';
+import { parseHours, formatHHMMSS } from '@/utils/formatters';
 
 function PlantasExcelSync({ nodes, toast, userProfile }) {
       const [loading, setLoading] = useState(false);

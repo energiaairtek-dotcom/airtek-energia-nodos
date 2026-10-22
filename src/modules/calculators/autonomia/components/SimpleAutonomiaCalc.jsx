@@ -1,7 +1,4 @@
-import React, { useState } from 'react';
-import { AutonomiaInput } from '@/modules/calculators/autonomia/components/AutonomiaInput';
-import { BAT_DEFAULTS } from '@/config/constants';
-import { fmtHours } from '@/utils/energyCalculations';
+import { useState } from 'react';
 
 function SimpleAutonomiaCalc() {
       const [cargaW, setCargaW] = useState('');

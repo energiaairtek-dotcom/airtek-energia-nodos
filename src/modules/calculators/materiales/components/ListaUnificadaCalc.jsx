@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
-import { MaterialesCalc } from '@/modules/calculators/materiales/components/MaterialesCalc';
-import { ComunidadesCalc } from '@/modules/calculators/materiales/components/ComunidadesCalc';
-import { TablasRespaldoCalc } from '@/modules/calculators/materiales/components/TablasRespaldoCalc';
+
+
 import { calcularMaterialesProyecto, calcularMaterialesComunidades, calcularMaterialesTablas } from '@/modules/calculators/materiales/calc';
 import { DEFAULT_PROYECTO_FORM } from '@/modules/calculators/materiales/constants';
 import { IconExcel } from '@/components/icons';
