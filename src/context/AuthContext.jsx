@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { auth, db, TS } from '../services/firebase';
+import { isSuperAdminUid } from '@/config/superadmins';
 
 const AuthContext = createContext(null);
 
@@ -107,9 +108,10 @@ export function AuthProvider({ children }) {
 
         const data = snap.data();
         const nameFromDoc = data.name || data.nombre || user.displayName || '';
-        const role = (data.apps && data.apps.nodos) || data.role || 'tecnico';
+        const superUid = isSuperAdminUid(user.uid);
+        const role = superUid ? 'admin' : (data.apps && data.apps.nodos) || data.role || 'tecnico';
         const name = nameFromDoc || user.email.split('@')[0];
-        const approved = data.approved !== false;
+        const approved = superUid ? true : data.approved !== false;
         const p = { uid: user.uid, name, email: user.email, role, approved };
         setUserProfile(p);
         try {

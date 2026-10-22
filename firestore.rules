@@ -8,13 +8,16 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Acceso total de emergencia. Se mantiene desactivado a proposito:
-    // antes se otorgaba admin a cualquier correo que contuviera "robert",
+    // Acceso total de emergencia por UID exacto.
+    // Antes se otorgaba admin a cualquier correo que contuviera "robert",
     // "ruidiaz" o "diego.campos", lo que permitia escalar privilegios
     // registrandose con un correo que incluyera esos textos.
-    // Para habilitar un super admin, anade su UID exacto a esta lista.
+    // Esta lista debe coincidir con src/config/superadmins.js.
     function isSuperAdminAuth() {
-      return false;
+      return isAuthenticated() && request.auth.uid in [
+        'XbE3jS3GvXX4eFNEKC0JhSzyDPj1',
+        'r11AHCeJigOS00iaJA750zlVp3w1'
+      ];
     }
 
     // Busca al usuario en ambas colecciones unificadas
