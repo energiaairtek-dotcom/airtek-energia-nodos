@@ -157,7 +157,7 @@ export function revertFuelTanks(tanksList, r) {
     const shareRes = exactNode && resCap > 0;
     if (!isPlant && !shareRes) return t;
 
-    let dSub = 0, dRes = 0;
+    let dSub = 0, dRes;
     const hasPrev = r.prevSub != null && r.resSub != null && !isNaN(parseFloat(r.prevSub)) && !isNaN(parseFloat(r.resSub));
     if (hasPrev) {
       dSub = parseFloat(r.resSub) - parseFloat(r.prevSub);

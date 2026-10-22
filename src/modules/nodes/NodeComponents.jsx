@@ -668,7 +668,7 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
         const shareRes = exactNode && resCap > 0;
         if (!isPlant && !shareRes) return t;
 
-        let dSub = 0, dRes = 0;
+        let dSub = 0, dRes;
         const hasPrev = r.prevSub != null && r.resSub != null && !isNaN(parseFloat(r.prevSub)) && !isNaN(parseFloat(r.resSub));
         if (hasPrev) {
           dSub = parseFloat(r.resSub) - parseFloat(r.prevSub);
@@ -2298,6 +2298,9 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
                         // 2. Si era un surtido o inspección con horómetro, revertir el horómetro del equipo
                         const plantTag = record.generatorTag || record.equipmentTag || record.equipmentAction?.tag || (equipment.find(e => e.type === 'GEN')?.tag || '');
                         let horoRestored = null;
+                        // Se declara fuera del if porque más abajo se usa para revertir
+                        // el horómetro en el flujo de combustible.
+                        let prevHoro = 0;
 
                         if (plantTag) {
                           const recSnap = await db.collection('energy_nodes').doc(nodeId).collection('energy_records')
@@ -2309,7 +2312,6 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
 
                           // El horómetro de una inspección de planta vive en measurements[tag].horometer,
                           // no en measurements.horometer. Sin ese acceso, se retrocedía al valor semilla.
-                          let prevHoro = 0;
                           for (const r of otherRecords) {
                             const rawHoro = r.fuelHorometer
                               || r.measurements?.[plantTag]?.horometer
