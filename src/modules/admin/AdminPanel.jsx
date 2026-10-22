@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '@/utils/exportLibs';
 import { db, auth, TS } from '@/services/firebase';
 import { verifyAdminRole } from '@/context/AuthContext';
 import { SEED_NODES, NODE_TYPES, EQ_TYPES, BAT_TYPES } from '@/config/constants';
@@ -103,6 +103,7 @@ import { IconPlus, IconSearch, IconExcel, IconCheckCircle, IconAlertTriangle } f
         reader.onload = async (evt) => {
           try {
             const data = evt.target.result;
+            const XLSX = await loadXLSX();
             const workbook = XLSX.read(data, { type: 'binary' });
             const sheetName = workbook.SheetNames.find(n => n.includes('MANTTO 2026')) || workbook.SheetNames[0];
             setLog(prev => [...prev, `Hoja seleccionada: "${sheetName}"`]);

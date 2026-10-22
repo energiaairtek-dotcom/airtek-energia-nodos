@@ -2,7 +2,8 @@
 
 export const NODE_NAME_PREFIX_REGEX = /^(nodo|datacenter|data center|sede|oficina)\s*/i;
 
-export const normalizeNodeName = (s) => (s || '').toLowerCase().replace(NODE_NAME_PREFIX_REGEX, '').trim();
+export const normalizeNodeName = (s) =>
+  (s || '').toLowerCase().trim().replace(NODE_NAME_PREFIX_REGEX, '').trim();
 
 export const formatHHMMSS = (hoursFloat) => {
   if (hoursFloat === null || hoursFloat === undefined || isNaN(hoursFloat)) return '00:00:00';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue, useTransition, useContext } from 'react';
-import * as XLSX from 'xlsx';
-import html2canvas from 'html2canvas';
+import { loadXLSX, loadHtml2Canvas } from '@/utils/exportLibs';
+import { computeDispatchLevels, validateDispatch } from './fuelCalc';
 import firebase, { db, TS, FieldValue } from '@/services/firebase';
 import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
 import { IconExcel, IconAlertTriangle, IconCheckCircle, IconCopy } from '@/components/icons';
@@ -2032,12 +2032,13 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
       };
 
       // Copiar cuadro como imagen usando html2canvas (con fondo adaptativo neutro #121214 / #ffffff)
-      const copyExecutiveImage = () => {
+      const copyExecutiveImage = async () => {
+        const html2canvas = await loadHtml2Canvas();
         const cardEl = document.getElementById('airtek-executive-fuel-card-surtidos');
         if (!cardEl) return;
         setGeneratingImg(true);
         setTimeout(() => {
-          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
+          html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
             canvas.toBlob(blob => {
               if (navigator.clipboard && navigator.clipboard.write) {
                 navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
@@ -2067,12 +2068,14 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
         }, 120);
       };
 
-      const downloadExecutiveImage = () => {
+      const downloadExecutiveImage = async () => {
+
+        const html2canvas = await loadHtml2Canvas();
         const cardEl = document.getElementById('airtek-executive-fuel-card-surtidos');
         if (!cardEl) return;
         setGeneratingImg(true);
         setTimeout(() => {
-          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
+          html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
             const link = document.createElement('a');
             link.download = `reporte_combustible_${Date.now()}.png`;
             link.href = canvas.toDataURL('image/png');
@@ -2086,7 +2089,9 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
         }, 120);
       };
 
-      const exportExcel = () => {
+      const exportExcel = async () => {
+
+        const XLSX = await loadXLSX();
         const rows = filtered.map(r => ({
           'LUGAR / NODO': r.lugar,
           'TAG PLANTA': r.tag,
@@ -2102,11 +2107,11 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
           'TÉCNICO / CUADRILLA': r.tecnico,
           'OBSERVACIONES': r.obs
         }));
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [{ wch: 28 }, { wch: 16 }, { wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 24 }, { wch: 28 }];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Surtidos de Combustible');
-        window.XLSX.writeFile(wb, 'reporte_surtidos_combustible_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Surtidos de Combustible');
+        XLSX.writeFile(wb, 'reporte_surtidos_combustible_' + Date.now() + '.xlsx');
       };
 
       const summaryData = getSitesSummaryData();
@@ -3257,7 +3262,9 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
         });
       };
 
-      const exportExcel = () => {
+      const exportExcel = async () => {
+
+        const XLSX = await loadXLSX();
         const rows = filtered.map(t => ({
           'ZONA': t.zona,
           'LUGAR / DATACENTER': t.lugar,
@@ -3280,11 +3287,11 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
           'AUTONOMÍA NETA (Días)': t.diasAutNeto,
           'ESTADO': t.statusText
         }));
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 24 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 14 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Autonomía de Combustible');
-        window.XLSX.writeFile(wb, 'reporte_autonomia_combustible_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Autonomía de Combustible');
+        XLSX.writeFile(wb, 'reporte_autonomia_combustible_' + Date.now() + '.xlsx');
       };
 
       return (
@@ -3637,11 +3644,11 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
                         className="bp"
                         disabled={generatingImg}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 20px', fontSize: '.84rem' }}
-                        onClick={() => {
+                        onClick={async () => {
                           const cardEl = document.getElementById('airtek-executive-fuel-card');
                           if (!cardEl) return;
-                          setGeneratingImg(true);
-                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
+                          const html2canvas = await loadHtml2Canvas();
+                          html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
                             canvas.toBlob(blob => {
                               if (navigator.clipboard && navigator.clipboard.write) {
                                 navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(() => {
@@ -3677,11 +3684,11 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
                         className="bs"
                         disabled={generatingImg}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px', fontSize: '.84rem' }}
-                        onClick={() => {
+                        onClick={async () => {
                           const cardEl = document.getElementById('airtek-executive-fuel-card');
                           if (!cardEl) return;
-                          setGeneratingImg(true);
-                          window.html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
+                          const html2canvas = await loadHtml2Canvas();
+                          html2canvas(cardEl, { scale: 2, useCORS: true, backgroundColor: isDark ? '#121214' : '#ffffff' }).then(canvas => {
                             const link = document.createElement('a');
                             link.download = `reporte_combustible_airtek_${Date.now()}.png`;
                             link.href = canvas.toDataURL('image/png');
@@ -4037,7 +4044,9 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
       const alertas = maintenances.filter(m => m.status === 'alerta').length;
       const criticos = maintenances.filter(m => m.status === 'critico').length;
 
-      const exportExcel = () => {
+      const exportExcel = async () => {
+
+        const XLSX = await loadXLSX();
         const rows = filtered.map(m => ({
           'PLANTA / LUGAR': m.planta,
           'TAG': m.tag,
@@ -4056,11 +4065,11 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
           'PRÓXIMO CAMBIO': m.prox_cambio,
           'OBSERVACIONES': m.obs
         }));
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [{ wch: 32 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 20 }, { wch: 18 }, { wch: 30 }];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Mantenimiento de Plantas');
-        window.XLSX.writeFile(wb, 'reporte_mantenimiento_plantas_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Mantenimiento de Plantas');
+        XLSX.writeFile(wb, 'reporte_mantenimiento_plantas_' + Date.now() + '.xlsx');
       };
 
       return (
@@ -4224,71 +4233,32 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
       const rawRes = sisterTanks.reduce((m, t) => Math.max(m, parseFloat(t.reserva_lts) || 0), 0);
       const curRes = resCap > 0 ? Math.min(resCap, rawRes) : 0;
 
-      // Calcular en tiempo real según la Tabla de la Verdad y límites físicos estrictos con reserva compartida
-      const calcResultingLevels = () => {
-        let newSub = curSub;
-        let newRes = curRes;
-        let addedTotal = 0;
-        let ltsP = 0;
-        let ltsR = 0;
-
-        if (destino === 'Surtido Reserva') {
-          const l = parseFloat(litros) || 0;
-          newRes = resCap > 0 ? Math.min(resCap, curRes + l) : (curRes + l);
-          addedTotal = l;
-          ltsR = l;
-        } else if (destino === 'Surtido Planta') {
-          const l = parseFloat(litros) || 0;
-          addedTotal = l;
-          ltsP = l;
-          // Surtido a planta: si el nodo tiene reserva física, descuenta los litros despachados de la reserva compartida
-          newRes = resCap > 0 ? Math.max(0, curRes - l) : 0;
-          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
-        } else if (destino === 'Surtido Externo Planta') {
-          const l = parseFloat(litros) || 0;
-          addedTotal = l;
-          ltsP = l;
-          // Cisterna suministra directamente al tanque de la planta: la reserva compartida NO se modifica
-          newRes = curRes;
-          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
-        } else if (destino === 'Trasiego Interno') {
-          const l = parseFloat(litros) || 0;
-          ltsP = l;
-          addedTotal = 0; // Trasiego interno no añade combustible externo al nodo
-          newRes = Math.max(0, curRes - l);
-          newSub = subCap > 0 ? Math.min(subCap, curSub + l) : (curSub + l);
-        } else if (destino === 'Surtido Planta y Reserva') {
-          ltsP = parseFloat(litrosPlanta) || 0;
-          ltsR = parseFloat(litrosReserva) || 0;
-          newSub = subCap > 0 ? Math.min(subCap, curSub + ltsP) : (curSub + ltsP);
-          newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
-          addedTotal = ltsP + ltsR;
-        }
-
-        return { newSub, newRes, newTotal: newSub + newRes, addedTotal, ltsP, ltsR };
-      };
-
-      const { newSub, newRes, newTotal, addedTotal, ltsP, ltsR } = calcResultingLevels();
+      // Cálculo puro compartido con el formulario de nodos (src/modules/fuel/fuelCalc.js)
+      const { newSub, newRes, newTotal, addedTotal, ltsP, ltsR } = computeDispatchLevels({
+        destino,
+        litros,
+        litrosPlanta,
+        litrosReserva,
+        curSub,
+        curRes,
+        subCap,
+        resCap,
+      });
 
       const handleSave = () => {
-        if (destino !== 'Trasiego Interno' && addedTotal <= 0) {
-          alert('Ingresa una cantidad válida de litros suministrados.');
+        const validationError = validateDispatch({
+          destino,
+          litros,
+          litrosPlanta,
+          litrosReserva,
+          curSub,
+          curRes,
+          subCap,
+          resCap,
+        });
+        if (validationError) {
+          alert(validationError);
           return;
-        }
-        if (destino === 'Trasiego Interno') {
-          const inputLts = parseFloat(litros) || 0;
-          if (inputLts <= 0) {
-            alert('Ingresa los litros a trasegar de la reserva a la planta.');
-            return;
-          }
-          if (curRes <= 0) {
-            alert('No se puede realizar trasiego: la reserva externa del nodo está en 0 Lts.');
-            return;
-          }
-          if (inputLts > curRes) {
-            alert(`No puedes trasegar ${inputLts}L porque la reserva solo dispone de ${curRes}L.`);
-            return;
-          }
         }
 
         const newRecord = {

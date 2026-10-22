@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue, useTransition, useContext } from 'react';
-import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import QRCodeLib from 'qrcode';
+import { loadXLSX, loadJsPDF, loadQRCode } from '@/utils/exportLibs';
+import { computeDispatchLevels, validateDispatch } from '@/modules/fuel/fuelCalc';
 import firebase, { db, auth, TS, FieldValue } from '@/services/firebase';
 import { 
   NODE_TYPES, EQ_TYPES, BAT_TYPES, BAT_CELL_TYPES, 
@@ -31,11 +30,20 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
       useEffect(() => {
         if (!ref.current) return;
         ref.current.innerHTML = '';
-        try {
-          const canvas = document.createElement('canvas');
-          ref.current.appendChild(canvas);
-          QRCodeLib.toCanvas(canvas, url, { width: 200, margin: 2 }).catch(() => {});
-        } catch { }
+        let cancelled = false;
+        (async () => {
+          try {
+            const qrModule = await loadQRCode();
+            const QRCodeLib = qrModule.default || qrModule;
+            if (cancelled || !ref.current) return;
+            const canvas = document.createElement('canvas');
+            ref.current.appendChild(canvas);
+            QRCodeLib.toCanvas(canvas, url, { width: 200, margin: 2 }).catch(() => {});
+          } catch (e) {
+            console.warn('No se pudo generar el QR:', e);
+          }
+        })();
+        return () => { cancelled = true; };
       }, []);
       const print = () => {
         const w = window.open('', '_blank');
@@ -1020,50 +1028,32 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
         }
       }, [type, curSub, curRes]);
 
-      // Calcular en tiempo real según la Tabla de la Verdad
+      // Cálculo puro compartido con el modal de surtidos (src/modules/fuel/fuelCalc.js)
       const calcResultingLevels = () => {
-        let newSub = curSub;
-        let newRes = curRes;
-        let addedTotalDespacho = 0;
-        let ltsP = 0;
-        let ltsR = 0;
+        const levels = computeDispatchLevels({
+          destino: fuelDest,
+          litros: fuelLts,
+          litrosPlanta: fuelLtsPlanta,
+          litrosReserva: fuelLtsReserva,
+          curSub,
+          curRes,
+          subCap: parseFloat(nodeTankInfo?.tanque_lts) || 300,
+          resCap: parseFloat(nodeTankInfo?.cap_reserva_lts) || 0,
+        });
 
-        const subCap = parseFloat(nodeTankInfo?.tanque_lts) || 300;
-        const resCap = parseFloat(nodeTankInfo?.cap_reserva_lts) || 0;
-
-        if (fuelDest === 'Surtido Reserva') {
-          const lts = parseFloat(fuelLts) || 0;
-          newRes = resCap > 0 ? Math.min(resCap, curRes + lts) : (curRes + lts);
-          addedTotalDespacho = lts;
-          ltsR = lts;
-        } else if (fuelDest === 'Surtido Planta') {
-          const lts = parseFloat(fuelLts) || 0;
-          addedTotalDespacho = lts;
-          ltsP = lts;
-          const hasReserve = (resCap > 0 || curRes > 0);
-          // Surtido a planta: si el nodo tiene reserva, descuenta los litros surtidos directamente de la reserva
-          newRes = hasReserve ? Math.max(0, curRes - lts) : curRes;
-          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + lts)) : (curSub + lts);
-        } else if (fuelDest === 'Trasiego Interno') {
-          const lts = parseFloat(fuelLts) || 0;
-          ltsP = lts;
-          addedTotalDespacho = 0;
-          newRes = Math.max(0, curRes - lts);
-          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + lts)) : (curSub + lts);
-        } else if (fuelDest === 'Surtido Planta y Reserva') {
-          ltsP = parseFloat(fuelLtsPlanta) || 0;
-          ltsR = parseFloat(fuelLtsReserva) || 0;
-          newSub = subCap > 0 ? (curSub >= subCap ? subCap : Math.min(subCap, curSub + ltsP)) : (curSub + ltsP);
-          newRes = resCap > 0 ? Math.min(resCap, curRes + ltsR) : (curRes + ltsR);
-          addedTotalDespacho = ltsP + ltsR;
-        }
-
-        // Total real en el nodo sumando todos los sub-tanques de las plantas del nodo + reserva
+        // Total real del nodo: subtanque de esta planta + resto de subtanques + reserva
         const otherSubs = (nodeTankInfo.matchingTanks || [])
           .filter(t => t.tag !== selPlantTag)
           .reduce((acc, t) => acc + (parseFloat(t.subtanque_actual) || 0), 0);
-        const newTotal = newSub + otherSubs + newRes;
-        return { newSub, newRes, newTotal, addedTotalDespacho, ltsP, ltsR, otherSubs, sumAllSubs: newSub + otherSubs };
+        const newTotal = levels.newSub + otherSubs + levels.newRes;
+
+        return {
+          ...levels,
+          newTotal,
+          addedTotalDespacho: levels.addedTotal,
+          otherSubs,
+          sumAllSubs: levels.newSub + otherSubs,
+        };
       };
 
       const { newSub: resultingSub, newRes: resultingRes, newTotal: resultingTotal, addedTotalDespacho, ltsP: resultingLtsP, ltsR: resultingLtsR } = calcResultingLevels();
@@ -1155,46 +1145,27 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
       const save = async () => {
         if (!date) { toast('Selecciona la fecha.', 'error'); return; }
 
-        if (type === 'surtido') {
-          const inputLts = parseFloat(fuelLts) || 0;
-          const inputLtsP = parseFloat(fuelLtsPlanta) || 0;
-          const inputLtsR = parseFloat(fuelLtsReserva) || 0;
-          const hasReserveTank = (nodeTankInfo?.cap_reserva_lts || 0) > 0 || curRes > 0;
+        if (type === 'ajuste_combustible') {
+          const pSub = parseFloat(adjustSub);
+          const pRes = parseFloat(adjustRes);
+          if (isNaN(pSub) || pSub < 0) { toast('Ingresa un nivel válido para el sub-tanque.', 'error'); return; }
+          if (isNaN(pRes) || pRes < 0) { toast('Ingresa un nivel válido para la reserva.', 'error'); return; }
+        }
 
-          if (type === 'ajuste_combustible') {
-            const pSub = parseFloat(adjustSub);
-            const pRes = parseFloat(adjustRes);
-            if (isNaN(pSub) || pSub < 0) { toast('Ingresa un nivel válido para el sub-tanque.', 'error'); return; }
-            if (isNaN(pRes) || pRes < 0) { toast('Ingresa un nivel válido para la reserva.', 'error'); return; }
-          }
-          if (fuelDest === 'Surtido Planta') {
-            if (inputLts <= 0) {
-              toast('Ingresa la cantidad de litros suministrados a la planta.', 'error');
-              return;
-            }
-          } else if (fuelDest === 'Trasiego Interno') {
-            if (inputLts <= 0) {
-              toast('Ingresa la cantidad de litros a trasegar a la planta.', 'error');
-              return;
-            }
-            if (curRes <= 0) {
-              toast('No se puede trasegar a la planta: la reserva externa del nodo está en 0 Lts.', 'error');
-              return;
-            }
-            if (inputLts > curRes) {
-              toast(`Stock insuficiente: La reserva dispone de ${curRes} Lts. No puedes trasegar ${inputLts} Lts.`, 'error');
-              return;
-            }
-          } else if (fuelDest === 'Surtido Reserva') {
-            if (inputLts <= 0) {
-              toast('Ingresa los litros suministrados a la reserva.', 'error');
-              return;
-            }
-          } else if (fuelDest === 'Surtido Planta y Reserva') {
-            if (inputLtsP <= 0 && inputLtsR <= 0) {
-              toast('Ingresa los litros a suministrar a la planta o a la reserva.', 'error');
-              return;
-            }
+        if (type === 'surtido') {
+          const validationError = validateDispatch({
+            destino: fuelDest,
+            litros: fuelLts,
+            litrosPlanta: fuelLtsPlanta,
+            litrosReserva: fuelLtsReserva,
+            curSub,
+            curRes,
+            subCap: parseFloat(nodeTankInfo?.tanque_lts) || 0,
+            resCap: parseFloat(nodeTankInfo?.cap_reserva_lts) || 0,
+          });
+          if (validationError) {
+            toast(validationError, 'error');
+            return;
           }
         }
 
@@ -2445,35 +2416,39 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
 
                         // 2. Si era un surtido o inspección con horómetro, revertir el horómetro del equipo
                         const plantTag = record.generatorTag || record.equipmentTag || record.equipmentAction?.tag || (equipment.find(e => e.type === 'GEN')?.tag || '');
-                        
+                        let horoRestored = null;
+
                         if (plantTag) {
                           const recSnap = await db.collection('energy_nodes').doc(nodeId).collection('energy_records')
                             .orderBy('date', 'desc').get();
-                          
+
                           const otherRecords = recSnap.docs
                             .map(d => d.data())
                             .filter(r => (r.generatorTag === plantTag || r.equipmentTag === plantTag || r.equipmentAction?.tag === plantTag));
 
-                          var prevHoro = 0;
+                          // El horómetro de una inspección de planta vive en measurements[tag].horometer,
+                          // no en measurements.horometer. Sin ese acceso, se retrocedía al valor semilla.
+                          let prevHoro = 0;
                           for (const r of otherRecords) {
-                            const hVal = parseFloat(r.fuelHorometer || r.measurements?.horometer || r.equipmentAction?.horometer) || 0;
+                            const rawHoro = r.fuelHorometer
+                              || r.measurements?.[plantTag]?.horometer
+                              || r.measurements?.horometer
+                              || r.equipmentAction?.horometer;
+                            const hVal = parseHours(rawHoro);
                             if (hVal > 0) {
                               prevHoro = hVal;
                               break;
                             }
                           }
 
-                          if (prevHoro === 0) {
-                            const seed = INITIAL_MAINTENANCE_LOG.find(m => m.tag === plantTag);
-                            if (seed) prevHoro = seed.horometro_actual;
-                          }
-
+                          // Si no hay lectura anterior no se toca el equipo: nunca se cae al valor semilla.
                           if (prevHoro > 0) {
                             const genEq = equipment.find(e => e.type === 'GEN' && e.tag === plantTag);
                             if (genEq) {
                               await db.collection('energy_nodes').doc(nodeId).collection('energy_equipment').doc(genEq.id).update({
                                 horometer: prevHoro
                               });
+                              horoRestored = formatCleanHoro(prevHoro);
                             }
                           }
                         }
@@ -2560,7 +2535,12 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
 
                         setConfirmModal({
                           title: 'Registro eliminado con éxito',
-                          msg: 'El registro fue eliminado y los valores de horómetro y combustible fueron restaurados correctamente.',
+                          msg:
+                            record.type === 'surtido' || record.type === 'ajuste_combustible'
+                              ? 'El registro fue eliminado y los niveles de combustible fueron restaurados.'
+                              : horoRestored
+                                ? `El registro fue eliminado. Horómetro restaurado a ${horoRestored}.`
+                                : 'El registro fue eliminado. No había una lectura anterior de horómetro, así que el equipo quedó como estaba.',
                           type: 'success',
                           confirmText: 'Aceptar',
                           cancelText: false,
@@ -5673,7 +5653,9 @@ ${f.obsGenerales}`;
         return () => { u1(); u2(); };
       }, [node.id]);
 
-      const exportPDF = () => {
+      const exportPDF = async () => {
+
+        const { jsPDF } = await loadJsPDF();
         const jsPDFDoc = jsPDF || window.jspdf?.jsPDF;
         const doc = new jsPDFDoc({ orientation: 'p', unit: 'mm', format: 'a4' });
         const pw = doc.internal.pageSize.getWidth();
@@ -5826,7 +5808,9 @@ ${f.obsGenerales}`;
         toast('PDF generado (Versión impresión)', 'success');
       };
 
-      const exportXLSX = () => {
+      const exportXLSX = async () => {
+
+        const XLSX = await loadXLSX();
         // Hoja 1: Inspecciones y mediciones ordenadas por banco — carga por equipo + carga por banco + ATS
         const measRows = [];
         const inspRecs = records.filter(r => (r.type === 'inspeccion' || r.type === 'actualizacion_carga') && r.measurements && Object.keys(r.measurements).length > 0);

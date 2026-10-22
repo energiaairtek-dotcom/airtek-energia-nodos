@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '@/utils/exportLibs';
 import { db } from '@/services/firebase';
 import { BAT_VN, BAT_DEFAULTS } from '@/config/constants';
 import { IconExcel, IconCopy, IconAlertTriangle, IconCheckCircle } from '@/components/icons';
@@ -479,7 +479,9 @@ import { getBankId, calcLoad, getEqTypeFromTag, calcAutonomy, fmtHours } from '@
       const optimos = nodesData.filter(r => r.status === 'optimo').length;
       const sinCarga = nodesData.filter(r => r.status === 'sin_carga').length;
 
-      const exportExcel = () => {
+      const exportExcel = async () => {
+
+        const XLSX = await loadXLSX();
         if (!nodesData.length) return;
         const rows = filtered.map(r => ({
           'NODO': r.nodeName,
@@ -500,16 +502,16 @@ import { getBankId, calcLoad, getEqTypeFromTag, calcAutonomy, fmtHours } from '@
           'ÚLTIMA MEDICIÓN': r.dateStr
         }));
 
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [
           { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 14 },
           { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 14 },
           { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 16 },
           { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 16 }
         ];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Autonomía por Banco');
-        window.XLSX.writeFile(wb, 'reporte_autonomia_red_airtek_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Autonomía por Banco');
+        XLSX.writeFile(wb, 'reporte_autonomia_red_airtek_' + Date.now() + '.xlsx');
       };
 
       const reportText = generateTextReport();

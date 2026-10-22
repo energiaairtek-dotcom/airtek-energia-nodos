@@ -17,30 +17,17 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'esnext',
     outDir: 'dist',
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('node_modules/firebase')) {
-            return 'vendor-firebase';
-          }
-          if (id.includes('node_modules/xlsx')) {
-            return 'vendor-xlsx';
-          }
-          if (id.includes('node_modules/jspdf') || id.includes('node_modules/html2canvas')) {
-            return 'vendor-pdf';
-          }
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-            return 'vendor-react';
-          }
-          if (id.includes('src/modules/nodes/NodeComponents')) {
-            return 'module-nodes';
-          }
-          if (id.includes('src/modules/fuel/CombustibleWrapper') || id.includes('src/modules/fuel/fuelData')) {
-            return 'module-fuel';
-          }
+        // Solo se separan las dependencias grandes de terceros. Los módulos de la
+        // app NO se fuerzan a chunks propios: al agruparlos, Rollup arrastraba
+        // código compartido (iconos, servicios) a los chunks diferidos y el entry
+        // terminaba importándolos, anulando la carga bajo demanda.
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-firebase': ['firebase/compat/app', 'firebase/compat/auth', 'firebase/compat/firestore'],
         },
       },
     },

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import * as XLSX from 'xlsx';
+import { loadXLSX } from '@/utils/exportLibs';
 import { IconExcel, IconCheckCircle } from '@/components/icons';
 
     function MaterialesWrapper() {
@@ -433,7 +433,9 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         });
       };
 
-      const exportXlsx = () => {
+      const exportXlsx = async () => {
+
+        const XLSX = await loadXLSX();
         if (!resultados || !resultados.length) return;
         const rows = resultados.map(r => ({
           'Material': r.nombre,
@@ -441,11 +443,11 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
           'Unidad': r.unidad,
           'Sección': r.seccion,
         }));
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [{ wch: 55 }, { wch: 12 }, { wch: 10 }, { wch: 14 }];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Materiales');
-        window.XLSX.writeFile(wb, 'materiales_airtek_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Materiales');
+        XLSX.writeFile(wb, 'materiales_airtek_' + Date.now() + '.xlsx');
       };
 
       const removeResultadoItem = (id) => {
@@ -684,7 +686,9 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         });
       };
 
-      const exportXlsx = () => {
+      const exportXlsx = async () => {
+
+        const XLSX = await loadXLSX();
         if (!resultados || !resultados.length) return;
         const rows = resultados.map((r, idx) => ({
           'MATERIAL': r.nombre,
@@ -692,11 +696,11 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
           'NUMERO DE RESPALDOS': idx === 0 ? numResp : '',
           'MATERIAL TOTAL': fmt(r.total)
         }));
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
         ws['!cols'] = [{ wch: 65 }, { wch: 20 }, { wch: 24 }, { wch: 18 }];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Activacion C.Tradicional');
-        window.XLSX.writeFile(wb, 'Materiales_Activacion_Comunidades_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Activacion C.Tradicional');
+        XLSX.writeFile(wb, 'Materiales_Activacion_Comunidades_' + Date.now() + '.xlsx');
       };
 
       return (
@@ -904,15 +908,17 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         });
       };
 
-      const exportXlsx = () => {
+      const exportXlsx = async () => {
+
+        const XLSX = await loadXLSX();
         if (!resultados || !resultados.length) return;
         const rows = resultados.map(r => ({
           'MATERIAL': r.nombre,
           'MATERIAL TOTAL': `${fmt(r.total)} ${r.unidad}`
         }));
 
-        const wb = window.XLSX.utils.book_new();
-        const ws = window.XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(rows);
 
         // Agregar caja lateral de Cantidad de Tablas a Construir
         ws['F1'] = { v: 'CANTIDAD DE TABLAS A CONSTRUIR', t: 's' };
@@ -924,8 +930,8 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         ws['G4'] = { v: totalTablas, t: 'n' };
 
         ws['!cols'] = [{ wch: 65 }, { wch: 18 }, { wch: 12 }, { wch: 18 }, { wch: 4 }, { wch: 30 }, { wch: 14 }];
-        window.XLSX.utils.book_append_sheet(wb, ws, 'Armado de Tablas de Respaldo');
-        window.XLSX.writeFile(wb, 'Materiales_Armado_Tablas_Respaldo_' + Date.now() + '.xlsx');
+        XLSX.utils.book_append_sheet(wb, ws, 'Armado de Tablas de Respaldo');
+        XLSX.writeFile(wb, 'Materiales_Armado_Tablas_Respaldo_' + Date.now() + '.xlsx');
       };
 
       return (
@@ -1202,9 +1208,10 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
       };
 
       // Exportar a Excel con hojas múltiples
-      const exportExcelConsolidado = () => {
+      const exportExcelConsolidado = async () => {
+        const XLSX = await loadXLSX();
         if (!itemsConsolidados || itemsConsolidados.length === 0) return;
-        const wb = window.XLSX.utils.book_new();
+        const wb = XLSX.utils.book_new();
 
         // 1. Hoja Consolidado General
         const rowsConsolidado = itemsConsolidados.map(r => ({
@@ -1213,9 +1220,9 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
           'UNIDAD': r.unidad,
           'ORIGEN / DESGLOSE': r.desglose.map(d => `${d.origen}: ${fmt(d.cantidad)} ${r.unidad}`).join(' | ')
         }));
-        const wsConsolidado = window.XLSX.utils.json_to_sheet(rowsConsolidado);
+        const wsConsolidado = XLSX.utils.json_to_sheet(rowsConsolidado);
         wsConsolidado['!cols'] = [{ wch: 65 }, { wch: 18 }, { wch: 12 }, { wch: 45 }];
-        window.XLSX.utils.book_append_sheet(wb, wsConsolidado, 'Consolidado General');
+        XLSX.utils.book_append_sheet(wb, wsConsolidado, 'Consolidado General');
 
         // 2. Hoja Materiales Proyecto (si está seleccionada)
         if (incProyecto && proyItems.length > 0) {
@@ -1225,9 +1232,9 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
             'UNIDAD': p.unidad,
             'SECCIÓN': p.seccion || 'Proyecto'
           }));
-          const wsProy = window.XLSX.utils.json_to_sheet(rowsProy);
+          const wsProy = XLSX.utils.json_to_sheet(rowsProy);
           wsProy['!cols'] = [{ wch: 65 }, { wch: 16 }, { wch: 12 }, { wch: 20 }];
-          window.XLSX.utils.book_append_sheet(wb, wsProy, 'Materiales Proyecto');
+          XLSX.utils.book_append_sheet(wb, wsProy, 'Materiales Proyecto');
         }
 
         // 3. Hoja Activación Comunidades (si está seleccionada)
@@ -1239,9 +1246,9 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
             'MATERIAL TOTAL': fmt(c.cantidad),
             'UNIDAD': c.unidad
           }));
-          const wsCom = window.XLSX.utils.json_to_sheet(rowsCom);
+          const wsCom = XLSX.utils.json_to_sheet(rowsCom);
           wsCom['!cols'] = [{ wch: 65 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 12 }];
-          window.XLSX.utils.book_append_sheet(wb, wsCom, 'Activacion Comunidades');
+          XLSX.utils.book_append_sheet(wb, wsCom, 'Activacion Comunidades');
         }
 
         // 4. Hoja Armado de Tablas de Respaldo (si está seleccionada)
@@ -1254,7 +1261,7 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
             'MATERIAL': t.nombre,
             'MATERIAL TOTAL': `${fmt(t.cantidad)} ${t.unidad}`
           }));
-          const wsTab = window.XLSX.utils.json_to_sheet(rowsTab);
+          const wsTab = XLSX.utils.json_to_sheet(rowsTab);
           wsTab['D1'] = { v: 'CANTIDAD DE TABLAS A CONSTRUIR', t: 's' };
           wsTab['D2'] = { v: 'COMUNIDAD TRADICIONAL', t: 's' };
           wsTab['E2'] = { v: numTrad, t: 'n' };
@@ -1263,10 +1270,10 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
           wsTab['D4'] = { v: 'TOTAL TABLAS', t: 's' };
           wsTab['E4'] = { v: totalTablas, t: 'n' };
           wsTab['!cols'] = [{ wch: 65 }, { wch: 20 }, { wch: 4 }, { wch: 30 }, { wch: 14 }];
-          window.XLSX.utils.book_append_sheet(wb, wsTab, 'Tablas de Respaldo');
+          XLSX.utils.book_append_sheet(wb, wsTab, 'Tablas de Respaldo');
         }
 
-        window.XLSX.writeFile(wb, 'Materiales_Consolidado_Airtek_' + Date.now() + '.xlsx');
+        XLSX.writeFile(wb, 'Materiales_Consolidado_Airtek_' + Date.now() + '.xlsx');
       };
 
       return (

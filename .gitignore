@@ -1,6 +1,9 @@
 node_modules
 dist
 scratch
+.npm-cache
+.tmp-build
+.tmp-probe
 *.log
 test_shot.png
 .DS_Store

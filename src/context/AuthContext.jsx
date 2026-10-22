@@ -1,7 +1,21 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { auth, db, TS } from '../services/firebase';
 
 const AuthContext = createContext(null);
+
+// Perfil guardado en el último inicio de sesión. Permite pintar la app al instante
+// mientras Firebase confirma la sesión en segundo plano (solo afecta a la UI,
+// los permisos reales siguen validándose en las reglas de Firestore).
+const readCachedProfile = () => {
+  try {
+    const raw = localStorage.getItem('energia_user_profile');
+    if (!raw) return null;
+    const profile = JSON.parse(raw);
+    return profile && profile.uid ? profile : null;
+  } catch (e) {
+    return null;
+  }
+};
 
 export const verifyAdminRole = async (profile) => {
   const isDesignated = (p) => {
@@ -43,9 +57,19 @@ export const verifyAdminRole = async (profile) => {
 };
 
 export function AuthProvider({ children }) {
+  const bootStart = useRef(typeof performance !== 'undefined' ? performance.now() : 0);
   const [authState, setAuthState] = useState('loading');
   const [userProfile, setUserProfile] = useState(null);
   const [firebaseUser, setFirebaseUser] = useState(null);
+
+  // Si Firebase no responde, no dejar la pantalla de carga para siempre.
+  useEffect(() => {
+    if (authState !== 'loading') return;
+    const timer = setTimeout(() => {
+      setAuthState((prev) => (prev === 'loading' ? 'timeout' : prev));
+    }, 12000);
+    return () => clearTimeout(timer);
+  }, [authState]);
 
   useEffect(() => {
     if (!auth) {
@@ -62,6 +86,17 @@ export function AuthProvider({ children }) {
           localStorage.removeItem('energia_user_profile');
         } catch (e) {}
         return;
+      }
+
+      // Pintar la app de inmediato con el perfil del último inicio de sesión del
+      // MISMO usuario, sin esperar la lectura de Firestore (se revalida enseguida).
+      const cached = readCachedProfile();
+      if (cached && cached.uid === user.uid) {
+        setUserProfile(cached);
+        setAuthState(cached.approved ? 'authenticated' : 'pending');
+        if (import.meta.env && import.meta.env.DEV) {
+          console.debug(`[auth] pintado desde caché en ${Math.round(performance.now() - bootStart.current)} ms`);
+        }
       }
 
       try {
@@ -150,6 +185,9 @@ export function AuthProvider({ children }) {
           localStorage.setItem('energia_user_profile', JSON.stringify(p));
         } catch (e) {}
         setAuthState(approved ? 'authenticated' : 'pending');
+        if (import.meta.env && import.meta.env.DEV) {
+          console.debug(`[auth] sesión confirmada en ${Math.round(performance.now() - bootStart.current)} ms`);
+        }
       } catch (e) {
         console.warn('Auth state load fallback:', e);
         const p = { uid: user.uid, name: user.email.split('@')[0], email: user.email, role: 'tecnico', approved: true };

@@ -24,6 +24,19 @@ export async function persistNodeFuelUpdate({
   const normFn = normalizeNodeName;
   const targetNorm = normFn(nodeName);
 
+  // Base vigente de tanques: la calibrada por el usuario (localStorage) si existe.
+  // Antes se usaba siempre la semilla, así que un cambio de capacidad se revertía
+  // en el siguiente surtido.
+  const readCurrentTanks = () => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
+      return Array.isArray(raw) && raw.length > 0 ? raw : INITIAL_FUEL_TANKS;
+    } catch (e) {
+      return INITIAL_FUEL_TANKS;
+    }
+  };
+  const baseTanks = readCurrentTanks();
+
   // 1. Persistir en Firestore si db está disponible
   if (db) {
     try {
@@ -46,7 +59,7 @@ export async function persistNodeFuelUpdate({
 
       if (targetNodeId) {
         const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-        const siteMatchingTanks = INITIAL_FUEL_TANKS.filter(x => normFn(x.lugar) === targetNorm);
+        const siteMatchingTanks = baseTanks.filter(x => normFn(x.lugar) === targetNorm);
         const siteCapRes = siteMatchingTanks.reduce((m, x) => Math.max(m, capResOf(x)), 0);
 
         const fuelPayload = {
@@ -80,8 +93,6 @@ export async function persistNodeFuelUpdate({
 
   // 2. Persistir en LocalStorage (airtek_fuel_tanks_v13) con coincidencia normalizada y reserva compartida
   try {
-    const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
-    const baseTanks = curTanks.length > 0 ? curTanks : INITIAL_FUEL_TANKS;
     const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
     const siteCapRes = baseTanks.filter(x => normFn(x.lugar) === targetNorm).reduce((m, x) => Math.max(m, capResOf(x)), 0);
     const updatedTanks = baseTanks.map(t => {
@@ -217,8 +228,9 @@ export function generateFuelReportText({ nodeName, date, record, equipment = [],
   lines.push(`${cleanNode} ${fechaStr}`);
 
   const isTrasiego = record?.fuelDestination === 'Trasiego Interno' || record?.destino === 'Trasiego Interno';
+  const ltsTrasiego = parseFloat(record?.fuelLitersPlanta || record?.litros_planta || record?.fuelLiters || record?.litros) || 0;
   if (isTrasiego) {
-    lines.push(`Trasiego interno a planta: ${ltsPlantaTotal} litros`);
+    lines.push(`Trasiego interno a planta: ${ltsTrasiego} litros`);
   } else if (isDual) {
     lines.push(`Surtido a la planta: ${ltsPlantaTotal} litros`);
     lines.push(`Surtido a la reserva: ${ltsReserva} litros`);
