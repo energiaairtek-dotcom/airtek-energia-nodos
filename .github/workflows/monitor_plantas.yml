@@ -1,0 +1,36 @@
+name: Monitoreo Desatendido de Plantas Eléctricas
+
+on:
+  schedule:
+    # Ejecutar automáticamente cada 4 horas (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC)
+    - cron: '0 */4 * * *'
+  workflow_dispatch: # Permite ejecutar manualmente con un clic en GitHub
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests openpyxl
+
+      - name: Ejecutar script de monitoreo y alarmas
+        env:
+          ONEDRIVE_URL: ${{ secrets.ONEDRIVE_URL || 'https://1drv.ms/x/c/2d21d74df8d2b570/IQBSDwn1pXdxTr7dW-quR5Y8AWR8dWvnipvRTS9CM_LKU-4?e=6NFapu' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER || 'smtp.gmail.com' }}
+          SMTP_PORT: 587
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+        run: |
+          python monitor_plantas_excel.py
