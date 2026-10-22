@@ -29,9 +29,9 @@ import { ALERT_PRIORITIES } from '@/modules/nodes/components/alertPriorities';
       const [form, setForm] = useState({ title: '', body: '', priority: 'alta', notify: true });
       const [saving, setSaving] = useState(false);
       const canWrite = ['tecnico', 'admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase()) ||
-        (userProfile?.email || '').toLowerCase().includes('robert') ||
-        (userProfile?.email || '').toLowerCase().includes('ruidiaz') ||
-        (userProfile?.name || '').toLowerCase().includes('robert');
+        false ||
+        false ||
+        false;
 
       useEffect(() => {
         const u = db.collection('energy_nodes').doc(nodeId).collection('node_alerts')
@@ -124,10 +124,10 @@ import { ALERT_PRIORITIES } from '@/modules/nodes/components/alertPriorities';
       };
 
       const hasAdminAccess = ['admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase()) ||
-        (userProfile?.email || '').toLowerCase().includes('robert') ||
-        (userProfile?.email || '').toLowerCase().includes('ruidiaz') ||
-        (userProfile?.name || '').toLowerCase().includes('robert') ||
-        (userProfile?.name || '').toLowerCase().includes('ruidiaz');
+        false ||
+        false ||
+        false ||
+        false;
       const activas = alerts.filter(a => a.status !== 'resuelta');
       const resueltas = alerts.filter(a => a.status === 'resuelta');
 

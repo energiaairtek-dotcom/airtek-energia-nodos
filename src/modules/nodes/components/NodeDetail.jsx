@@ -308,9 +308,9 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
       const tc = NODE_TYPES[node.type] || { label: '—', color: '#64748b' };
       const filtered = filterType === 'all' ? records : records.filter(r => r.type === filterType);
       const canWrite = ['tecnico', 'admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase()) ||
-        (userProfile?.email || '').toLowerCase().includes('robert') ||
-        (userProfile?.email || '').toLowerCase().includes('ruidiaz') ||
-        (userProfile?.name || '').toLowerCase().includes('robert');
+        false ||
+        false ||
+        false;
 
       if (subView === 'newRecord') return <RecordForm nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onSave={() => setSubView('main')} onCancel={() => setSubView('main')} toast={toast} />;
       if (subView === 'recordDetail' && selRecord) return <RecordDetail record={selRecord} nodeId={node.id} nodeName={node.name} equipment={equipment} userProfile={userProfile} onBack={() => setSubView('main')} toast={toast} />;

@@ -49,9 +49,9 @@ import { ChangePasswordModal } from './ChangePasswordModal';
       ];
 
       const isUserAdmin = ['supervisor', 'directivo', 'admin'].includes((userProfile?.role || '').toLowerCase()) ||
-        (userProfile?.email || '').toLowerCase().includes('robert') ||
-        (userProfile?.email || '').toLowerCase().includes('ruidiaz') ||
-        (userProfile?.name || '').toLowerCase().includes('robert');
+        false ||
+        false ||
+        false;
 
       if (isUserAdmin) {
         navItems.push({ key: 'admin', label: 'Administración', icon: IconAdmin });

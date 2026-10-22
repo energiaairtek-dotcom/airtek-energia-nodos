@@ -149,9 +149,9 @@ export function App() {
   const name = (userProfile?.name || '').toLowerCase();
   const isUserAdmin =
     ['admin', 'supervisor', 'directivo'].includes(role) ||
-    email.includes('robert') ||
-    email.includes('ruidiaz') ||
-    name.includes('robert');
+    false ||
+    false ||
+    false;
 
   return (
     <div className="app-container">

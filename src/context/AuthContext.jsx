@@ -18,20 +18,8 @@ const readCachedProfile = () => {
 };
 
 export const verifyAdminRole = async (profile) => {
-  const isDesignated = (p) => {
-    if (!p) return false;
-    const r = (p.role || '').toLowerCase();
-    const em = (p.email || '').toLowerCase();
-    const nm = (p.name || p.nombre || '').toLowerCase();
-    return (
-      ['admin', 'supervisor', 'directivo'].includes(r) ||
-      em.includes('robert') ||
-      em.includes('ruidiaz') ||
-      em.includes('diego.campos') ||
-      nm.includes('robert') ||
-      nm.includes('ruidiaz')
-    );
-  };
+  const roleOf = (p) => String((p && p.apps && p.apps.nodos) || (p && (p.role || p.rol)) || '').toLowerCase();
+  const isDesignated = (p) => ['admin', 'supervisor', 'directivo'].includes(roleOf(p));
 
   if (isDesignated(profile)) return true;
 
@@ -42,20 +30,13 @@ export const verifyAdminRole = async (profile) => {
 
   if (typeof auth !== 'undefined' && auth?.currentUser) {
     try {
-      const em = (auth.currentUser.email || '').toLowerCase();
-      if (em.includes('robert') || em.includes('ruidiaz') || em.includes('diego.campos')) return true;
       let snap = await db.collection('airtek_users').doc(auth.currentUser.uid).get();
       if (!snap.exists) snap = await db.collection('energy_users').doc(auth.currentUser.uid).get();
-      if (snap.exists) {
-        const data = snap.data();
-        const r = ((data.apps && data.apps.nodos) || data.role || 'tecnico').toLowerCase();
-        return ['admin', 'supervisor', 'directivo'].includes(r) || isDesignated(data);
-      }
+      if (snap.exists) return isDesignated(snap.data());
     } catch {}
   }
   return false;
 };
-
 export function AuthProvider({ children }) {
   const bootStart = useRef(typeof performance !== 'undefined' ? performance.now() : 0);
   const [authState, setAuthState] = useState('loading');
@@ -104,81 +85,31 @@ export function AuthProvider({ children }) {
         if (!snap.exists) snap = await db.collection('energy_users').doc(user.uid).get();
 
         if (!snap.exists) {
-          const emailLower = (user.email || '').toLowerCase();
-          const isSuper =
-            emailLower.includes('robert') || emailLower.includes('ruidiaz') || emailLower.includes('diego.campos');
           const defaultProfile = {
             name: user.displayName || user.email.split('@')[0],
             email: user.email.toLowerCase(),
-            role: isSuper ? 'admin' : 'tecnico',
-            approved: isSuper ? true : false,
+            role: 'tecnico',
+            approved: false,
             createdAt: TS(),
           };
           await db.collection('airtek_users').doc(user.uid).set({
             ...defaultProfile,
-            apps: { nodos: isSuper ? 'admin' : 'tecnico', pm: null, almacen: null },
+            apps: { nodos: 'tecnico', pm: null, almacen: null },
           });
           await db.collection('energy_users').doc(user.uid).set(defaultProfile);
           setUserProfile({ uid: user.uid, ...defaultProfile });
           try {
             localStorage.setItem('energia_user_profile', JSON.stringify({ uid: user.uid, ...defaultProfile }));
           } catch {}
-          setAuthState(isSuper ? 'authenticated' : 'pending');
+          setAuthState('pending');
           return;
         }
 
         const data = snap.data();
-        const emailLower = (user.email || '').toLowerCase();
         const nameFromDoc = data.name || data.nombre || user.displayName || '';
-        const isRobertOrSuperAdmin =
-          emailLower.includes('robert') ||
-          emailLower.includes('ruidiaz') ||
-          emailLower.includes('diego.campos') ||
-          nameFromDoc.toLowerCase().includes('robert') ||
-          nameFromDoc.toLowerCase().includes('ruidiaz');
-
-        let role = isRobertOrSuperAdmin ? 'admin' : (data.apps && data.apps.nodos) || data.role || 'tecnico';
-        let name =
-          isRobertOrSuperAdmin && emailLower.includes('robert') && (!nameFromDoc || nameFromDoc.includes('@'))
-            ? 'Robert Ruidiaz'
-            : nameFromDoc || user.email.split('@')[0];
-        const approved = isRobertOrSuperAdmin ? true : data.approved !== false;
-
-        if (
-          isRobertOrSuperAdmin &&
-          (data.role !== 'admin' || !data.apps || data.apps.nodos !== 'admin' || data.approved === false)
-        ) {
-          try {
-            await db
-              .collection('airtek_users')
-              .doc(user.uid)
-              .set(
-                {
-                  name: name,
-                  email: user.email.toLowerCase(),
-                  role: 'admin',
-                  approved: true,
-                  apps: { ...(data.apps || {}), nodos: 'admin' },
-                },
-                { merge: true }
-              );
-            await db
-              .collection('energy_users')
-              .doc(user.uid)
-              .set(
-                {
-                  name: name,
-                  email: user.email.toLowerCase(),
-                  role: 'admin',
-                  approved: true,
-                },
-                { merge: true }
-              );
-          } catch (syncErr) {
-            console.warn('Auto-grant admin sync:', syncErr);
-          }
-        }
-
+        const role = (data.apps && data.apps.nodos) || data.role || 'tecnico';
+        const name = nameFromDoc || user.email.split('@')[0];
+        const approved = data.approved !== false;
         const p = { uid: user.uid, name, email: user.email, role, approved };
         setUserProfile(p);
         try {
@@ -218,23 +149,21 @@ export function AuthProvider({ children }) {
     const cred = await auth.createUserWithEmailAndPassword(email, password);
     const user = cred.user;
     const emailLower = email.toLowerCase();
-    const isSuper =
-      emailLower.includes('robert') || emailLower.includes('ruidiaz') || emailLower.includes('diego.campos');
     const profile = {
       name: name.trim() || user.email.split('@')[0],
       email: emailLower,
       phone: phone ? phone.trim() : '',
-      role: isSuper ? 'admin' : 'tecnico',
-      approved: isSuper ? true : false,
+      role: 'tecnico',
+      approved: false,
       createdAt: TS(),
     };
     await db.collection('airtek_users').doc(user.uid).set({
       ...profile,
-      apps: { nodos: isSuper ? 'admin' : 'tecnico', pm: null, almacen: null },
+      apps: { nodos: 'tecnico', pm: null, almacen: null },
     });
     await db.collection('energy_users').doc(user.uid).set(profile);
     setUserProfile({ uid: user.uid, ...profile });
-    setAuthState(isSuper ? 'authenticated' : 'pending');
+    setAuthState('pending');
     return user;
   };
 

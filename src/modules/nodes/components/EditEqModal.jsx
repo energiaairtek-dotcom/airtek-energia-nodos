@@ -95,10 +95,10 @@ import { formatHHMMSS, parseHours } from '@/utils/formatters';
       };
 
       const hasAdminAccess = ['admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase()) ||
-        (userProfile?.email || '').toLowerCase().includes('robert') ||
-        (userProfile?.email || '').toLowerCase().includes('ruidiaz') ||
-        (userProfile?.name || '').toLowerCase().includes('robert') ||
-        (userProfile?.name || '').toLowerCase().includes('ruidiaz');
+        false ||
+        false ||
+        false ||
+        false;
 
       return (
         <div className="overlay" onClick={onClose}>

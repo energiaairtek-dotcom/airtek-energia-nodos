@@ -21,10 +21,10 @@ function RecordDetail({ record, onBack, nodeId, nodeName, equipment, userProfile
       const [saving, setSaving] = React.useState(false);
 
       const isAdmin = ['admin', 'supervisor', 'directivo'].includes((userProfile?.role || '').toLowerCase()) || 
-        (userProfile?.email || '').toLowerCase().includes('robert') || 
-        (userProfile?.email || '').toLowerCase().includes('ruidiaz') || 
-        (userProfile?.name || '').toLowerCase().includes('robert') || 
-        (userProfile?.name || '').toLowerCase().includes('ruidiaz');
+        false || 
+        false || 
+        false || 
+        false;
 
       const odooReportText = record.odooReport || (record.type === 'inspeccion' && record.measurements && Object.keys(record.measurements).length > 0
         ? generateReportText({

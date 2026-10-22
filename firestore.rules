@@ -8,15 +8,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Identificación de Super Admins por token para bootstrapping sin bloqueos
+    // Acceso total de emergencia. Se mantiene desactivado a proposito:
+    // antes se otorgaba admin a cualquier correo que contuviera "robert",
+    // "ruidiaz" o "diego.campos", lo que permitia escalar privilegios
+    // registrandose con un correo que incluyera esos textos.
+    // Para habilitar un super admin, anade su UID exacto a esta lista.
     function isSuperAdminAuth() {
-      return isAuthenticated() 
-        && request.auth.token.email != null
-        && (
-          request.auth.token.email.lower().matches('.*robert.*') 
-          || request.auth.token.email.lower().matches('.*ruidiaz.*') 
-          || request.auth.token.email.lower().matches('.*diego[.]campos.*')
-        );
+      return false;
     }
 
     // Busca al usuario en ambas colecciones unificadas
