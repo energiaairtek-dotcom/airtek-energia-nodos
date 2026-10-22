@@ -243,3 +243,85 @@ describe('persistNodeFuelUpdate', () => {
     expect(saved[0].subtanque_actual).toBe(100);
   });
 });
+describe('persistNodeFuelUpdate (payload de Firestore)', () => {
+  const makeDb = () => {
+    const writes = [];
+    const db = {
+      writes,
+      collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({}) }) }) }),
+      batch: () => ({ set: (ref, data) => writes.push(data), commit: async () => {} }),
+    };
+    return db;
+  };
+
+  beforeEach(() => {
+    const store = {};
+    globalThis.localStorage = {
+      getItem: (k) => (Object.prototype.hasOwnProperty.call(store, k) ? store[k] : null),
+      setItem: (k, v) => {
+        store[k] = String(v);
+      },
+      removeItem: (k) => {
+        delete store[k];
+      },
+    };
+  });
+
+  const tank = (lugar, cap) => ({
+    id: lugar,
+    lugar,
+    tag: 'T-1',
+    tanque_lts: 100,
+    subtanque_actual: 50,
+    reserva_lts: 400,
+    cap_reserva_lts: cap,
+    consumo_lh: 10,
+  });
+
+  it('escribe la capacidad vigente del tanque', async () => {
+    localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify([tank('Nodo Ojeda', 1500)]));
+    const db = makeDb();
+    await persistNodeFuelUpdate({
+      db,
+      nodeId: 'n1',
+      nodeName: 'Nodo Ojeda',
+      plantTag: 'T-1',
+      resultingSub: 60,
+      resultingRes: 420,
+      resultingTotal: 480,
+      addedTotalDespacho: 20,
+    });
+    expect(db.writes[0].cap_reserva_lts).toBe(1500);
+  });
+
+  it('no borra la capacidad si el nodo no está en la base de tanques', async () => {
+    const db = makeDb();
+    await persistNodeFuelUpdate({
+      db,
+      nodeId: 'n2',
+      nodeName: 'Nodo Desconocido',
+      plantTag: 'T-9',
+      resultingSub: 10,
+      resultingRes: 20,
+      resultingTotal: 30,
+      addedTotalDespacho: 5,
+    });
+    expect(Object.prototype.hasOwnProperty.call(db.writes[0], 'cap_reserva_lts')).toBe(false);
+  });
+
+  it('usa la capacidad recibida por parámetro cuando no hay tanque', async () => {
+    const db = makeDb();
+    await persistNodeFuelUpdate({
+      db,
+      nodeId: 'n3',
+      nodeName: 'Nodo Nuevo',
+      plantTag: 'T-3',
+      resultingSub: 10,
+      resultingRes: 20,
+      resultingTotal: 30,
+      addedTotalDespacho: 5,
+      resultingCapRes: 800,
+    });
+    expect(db.writes[0].cap_reserva_lts).toBe(800);
+  });
+});

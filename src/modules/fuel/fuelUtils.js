@@ -64,7 +64,6 @@ export async function persistNodeFuelUpdate({
 
         const fuelPayload = {
           reserva_lts: Number(resultingRes) || 0,
-          cap_reserva_lts: siteCapRes > 0 ? siteCapRes : (Number(resultingCapRes) || 0),
           subtanque_actual: Number(resultingSub) || 0,
           total_nodo_lts: Number(resultingTotal) || 0,
           lastRefillDate: new Date(),
@@ -77,6 +76,14 @@ export async function persistNodeFuelUpdate({
           updatedBy: userProfile?.name || 'Técnico',
           updatedAt: TS()
         };
+
+        // Solo se sobrescribe la capacidad si se conoce; si no, se deja la que
+        // ya estaba en Firestore en lugar de escribir un 0 que la borraría.
+        if (siteCapRes > 0) {
+          fuelPayload.cap_reserva_lts = siteCapRes;
+        } else if (resultingCapRes != null && Number(resultingCapRes) > 0) {
+          fuelPayload.cap_reserva_lts = Number(resultingCapRes);
+        }
 
         const batch = db.batch();
         const stateDocRef = db.collection('energy_nodes').doc(targetNodeId).collection('fuel').doc('state');

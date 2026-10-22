@@ -21,7 +21,7 @@ import {
   calcAutonomy, fmtHours, sortEquipment, checkAtsAlarms 
 } from '@/utils/energyCalculations';
 import { sendNotificationAlert } from '@/services/email';
-import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG } from '@/modules/fuel/fuelUtils';
+import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, persistNodeFuelUpdate } from '@/modules/fuel/fuelUtils';
 import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
 
     function QRModal({ node, onClose }) {
@@ -651,126 +651,6 @@ import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
           </div>
         </div>
       );
-    }
-
-    // Persistencia centralizada del estado de combustible en Firestore y LocalStorage
-    async function persistNodeFuelUpdate({
-      db,
-      nodeId,
-      nodeName,
-      plantTag,
-      resultingSub,
-      resultingRes,
-      resultingTotal,
-      addedTotalDespacho,
-      resultingLtsP = 0,
-      resultingLtsR = 0,
-      fuelDest = 'Surtido Reserva',
-      fuelHoro = '',
-      userProfile = {}
-    }) {
-      const normFn = normalizeNodeName;
-      const targetNorm = normFn(nodeName);
-
-      // 1. Persistir en Firestore si db está disponible
-      if (db) {
-        try {
-          let targetNodeId = nodeId;
-          if (!targetNodeId) {
-            try {
-              const nodesSnap = await db.collection('energy_nodes').get();
-              for (const nDoc of nodesSnap.docs) {
-                const nData = nDoc.data();
-                const nNorm = normFn(nData.name || nDoc.id);
-                if (nNorm === targetNorm || (targetNorm && nNorm.includes(targetNorm)) || (nNorm && targetNorm.includes(nNorm))) {
-                  targetNodeId = nDoc.id;
-                  break;
-                }
-              }
-            } catch (e) {
-              console.warn('Error buscando nodo por nombre:', e);
-            }
-          }
-
-          if (targetNodeId) {
-            const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-            const siteMatchingTanks = INITIAL_FUEL_TANKS.filter(x => normFn(x.lugar) === targetNorm);
-            const siteCapRes = siteMatchingTanks.reduce((m, x) => Math.max(m, capResOf(x)), 0);
-
-            const fuelPayload = {
-              reserva_lts: Number(resultingRes) || 0,
-              cap_reserva_lts: siteCapRes > 0 ? siteCapRes : (Number(resultingCapRes) || 0),
-              subtanque_actual: Number(resultingSub) || 0,
-              total_nodo_lts: Number(resultingTotal) || 0,
-              lastRefillDate: new Date(),
-              lastRefillLiters: Number(addedTotalDespacho) || 0,
-              lastRefillPlanta: Number(resultingLtsP) || 0,
-              lastRefillReserva: Number(resultingLtsR) || 0,
-              lastRefillDestino: fuelDest || 'Surtido Reserva',
-              lastRefillTag: plantTag || '',
-              lastRefillHoro: fuelHoro || '',
-              updatedBy: userProfile?.name || 'Técnico',
-              updatedAt: TS()
-            };
-
-            const batch = db.batch();
-            const stateDocRef = db.collection('energy_nodes').doc(targetNodeId).collection('fuel').doc('state');
-            const nodeDocRef = db.collection('energy_nodes').doc(targetNodeId);
-
-            batch.set(stateDocRef, fuelPayload, { merge: true });
-            batch.set(nodeDocRef, { fuelState: fuelPayload }, { merge: true });
-            await batch.commit();
-          }
-        } catch (fsErr) {
-          console.warn('Advertencia al persistir combustible en Firestore:', fsErr);
-        }
-      }
-
-      // 2. Persistir en LocalStorage (airtek_fuel_tanks_v13) con coincidencia normalizada y reserva compartida
-      try {
-        const curTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
-        const baseTanks = curTanks.length > 0 ? curTanks : INITIAL_FUEL_TANKS;
-        const capResOf = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-        const siteCapRes = baseTanks.filter(x => normFn(x.lugar) === targetNorm).reduce((m, x) => Math.max(m, capResOf(x)), 0);
-        const updatedTanks = baseTanks.map(t => {
-          const tNorm = normFn(t.lugar);
-          const exactNode = tNorm === targetNorm;
-          const isPlant = plantTag ? t.tag === plantTag : (exactNode || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm)));
-          const subCap = parseFloat(t.tanque_lts) || 0;
-          const effectiveCapRes = exactNode && siteCapRes > 0 ? siteCapRes : capResOf(t);
-          if (!isPlant && !exactNode) return t;
-          const curS = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
-          const newS = isPlant ? (subCap > 0 ? Math.min(subCap, Math.max(0, Number(resultingSub) || 0)) : (Number(resultingSub) || 0)) : curS;
-          const newR = exactNode ? (effectiveCapRes > 0 ? Math.min(effectiveCapRes, Math.max(0, Number(resultingRes) || 0)) : Math.max(0, Number(resultingRes) || 0)) : (parseFloat(t.reserva_lts) || 0);
-          const autTotal = t.consumo_lh > 0 ? Number(((newS + newR) / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-          return {
-            ...t,
-            cap_reserva: effectiveCapRes,
-            cap_reserva_lts: effectiveCapRes,
-            subtanque_actual: newS,
-            reserva_lts: newR,
-            aut_total_h: autTotal,
-            dias_aut: Number((autTotal / 24).toFixed(2))
-          };
-        });
-        localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(updatedTanks));
-      } catch (lsErr) {
-        console.warn('Error guardando tanques en LocalStorage:', lsErr);
-      }
-
-      // 3. Notificar a componentes locales en tiempo real
-      try {
-        window.dispatchEvent(new CustomEvent('airtek_fuel_updated', {
-          detail: {
-            nodeId,
-            nodeName,
-            plantTag,
-            resultingRes: Number(resultingRes) || 0,
-            resultingSub: Number(resultingSub) || 0,
-            resultingTotal: Number(resultingTotal) || 0
-          }
-        }));
-      } catch (e) {}
     }
 
     // Revierte el efecto de un surtido sobre los tanques: sub-tanque SOLO de la planta (por tag)
