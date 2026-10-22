@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue, useTransition, useContext } from 'react';
 import { loadXLSX, loadJsPDF, loadQRCode } from '@/utils/exportLibs';
 import { computeDispatchLevels, validateDispatch } from '@/modules/fuel/fuelCalc';
+import { validateInspection } from '@/modules/nodes/inspectionValidation';
 import firebase, { db, auth, TS, FieldValue } from '@/services/firebase';
 import { 
   NODE_TYPES, EQ_TYPES, BAT_TYPES, BAT_CELL_TYPES, 
@@ -4176,6 +4177,11 @@ ${f.obsGenerales}`;
       };
 
       const save = async () => {
+        const validationErrors = validateInspection(f);
+        if (validationErrors.length > 0) {
+          toast(validationErrors[0], 'error');
+          return;
+        }
         setSaving(true);
         try {
           const text = generarTextoOdoo();
