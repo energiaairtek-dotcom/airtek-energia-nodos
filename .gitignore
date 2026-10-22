@@ -1,0 +1,10 @@
+node_modules
+dist
+scratch
+*.log
+test_shot.png
+.DS_Store
+*.tmp
+*.xlsx
+plantas_alerta_state.json
+.github
