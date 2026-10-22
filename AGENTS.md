@@ -18,12 +18,12 @@ Este documento define la arquitectura, normas operativas, modelos de datos, regl
 
 | Capa | Tecnologías | Notas |
 | :--- | :--- | :--- |
-| **Frontend Core** | React 18 (UMD CDN), Babel Standalone | Aplicación SPA reactiva modular contenida en [`index.html`](./index.html). |
-| **Diseño y Estilos** | CSS Vanilla con Design System de Airtek | Variables CSS en `:root` (tokens de color, dark/light theme, glassmorphism, tipografías Outfit, Montserrat y JetBrains Mono). **Evitar emojis en la UI**, utilizar iconos SVG vectoriales limpios. |
-| **Base de Datos** | Google Cloud Firestore (SDK v10 compat) | Base de datos compartida multiapp (`energy_nodes`, `energy_users`, `airtek_users`, subcolecciones). |
+| **Frontend Core** | React 18, Vite 5 | Arquitectura SPA modularizada en `src/` (`App.jsx`, `main.jsx`, `modules/`, `components/`). Respaldo monolito en [`index.legacy.html`](./index.legacy.html). |
+| **Diseño y Estilos** | CSS Vanilla con Design System de Airtek | Variables CSS en `:root` en [`src/styles/global.css`](./src/styles/global.css) (tokens de color, dark/light theme, glassmorphism, tipografías Outfit, Montserrat y JetBrains Mono). **Evitar emojis en la UI**, utilizar iconos SVG vectoriales limpios en [`src/components/icons`](./src/components/icons). |
+| **Base de Datos** | Google Cloud Firestore (SDK v10 compat) | Base de datos compartida multiapp (`energy_nodes`, `energy_users`, `airtek_users`, subcolecciones) gestionada en [`src/services/firebase.js`](./src/services/firebase.js). |
 | **Reglas de Seguridad** | [`firestore.rules`](./firestore.rules) | Reglas endurecidas que preservan compatibilidad con PM V7 y Almacén. |
 | **Automatización Python** | Python 3.12, OpenPyXL | Script [`monitor_plantas_excel.py`](./monitor_plantas_excel.py) para auditoría y reportes ejecutivos en vivo en Excel. |
-| **Validación de Código** | `esbuild` | Verificación de sintaxis JSX antes de commitear en Git. |
+| **Validación & Build** | Vite & `esbuild` | Compilación ultrarrápida con `npm run build` y servidor local `npm run dev`. |
 
 ---
 
@@ -108,16 +108,18 @@ El sistema administra **29 plantas eléctricas** distribuidas en 4 arquetipos op
 ---
 
 ## 5. Directrices de Desarrollo y Flujo de Trabajo
-
-1. **Integridad de Código:**
-   - La aplicación frontend reside en [`index.html`](./index.html). Antes de realizar cambios, analiza los bloques específicos afectados y preserva la estructura de componentes.
-2. **Validación de Sintaxis Obligatoria:**
-   - Tras cualquier edición que involucre código JSX/React en `index.html`, debes compilar el bloque de scripts con `esbuild` o el script de pruebas en `scratch/` para verificar que haya **0 errores de sintaxis**:
+ 
+1. **Estructura Modular (`src/`):**
+   - La aplicación reside modularmente en `src/`: componentes transversales en `src/components/`, contextos en `src/context/`, módulos de negocio en `src/modules/` (`fuel/`, `nodes/`, `plants/`, `calculators/`, `admin/`, `auth/`), y servicios en `src/services/`.
+   - El archivo histórico [`index.legacy.html`](./index.legacy.html) permanece como respaldo íntegro.
+2. **Validación de Compilación Obligatoria:**
+   - Tras cualquier cambio de código, ejecuta la compilación de producción para validar que no haya errores de importación, sintaxis o dependencias:
      ```bash
-     npx esbuild scratch/babel_test.jsx --outfile=scratch/test_bundle.js
+     npm run build
      ```
 3. **Estilo Visual & UI:**
-   - No usar emojis en componentes ni botones (usar iconos SVG limpios y texto claro).
+   - No usar emojis en componentes ni botones (usar iconos SVG limpios desde [`src/components/icons`](./src/components/icons) y texto claro).
    - Mantener consistencia tipográfica con el design system oficial de Airtek (`var(--bg-surface)`, `var(--blue)`, `var(--tx1)`, etc.).
 4. **Despliegue:**
-   - Los commits a `main` disparan automáticamente el despliegue en Vercel. Asegurarse de que el árbol de trabajo esté limpio antes de desplegar.
+   - Configurado en [`vercel.json`](./vercel.json) con comando `npm run build` y salida en `/dist`.
+   - Los commits a `main` disparan automáticamente el despliegue en Vercel. Asegurarse de que el árbol de trabajo esté limpio y `npm run build` pase con éxito antes de desplegar.
