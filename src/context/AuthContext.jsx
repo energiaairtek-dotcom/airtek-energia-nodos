@@ -189,13 +189,14 @@ export function AuthProvider({ children }) {
           console.debug(`[auth] sesión confirmada en ${Math.round(performance.now() - bootStart.current)} ms`);
         }
       } catch (e) {
-        console.warn('Auth state load fallback:', e);
-        const p = { uid: user.uid, name: user.email.split('@')[0], email: user.email, role: 'tecnico', approved: true };
-        setUserProfile(p);
+        // No se pudo leer el perfil: no se inventa una sesión aprobada.
+        // Se muestra la pantalla de reintento en lugar de dejar entrar sin permisos.
+        console.warn('No se pudo cargar el perfil del usuario:', e);
         try {
-          localStorage.setItem('energia_user_profile', JSON.stringify(p));
+          localStorage.removeItem('energia_user_profile');
         } catch (err) {}
-        setAuthState('authenticated');
+        setUserProfile(null);
+        setAuthState('timeout');
       }
     });
 

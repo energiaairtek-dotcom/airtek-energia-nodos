@@ -44,20 +44,9 @@ function NodePlantas({ nodeId, nodeName, nodeType, equipment, records, userProfi
         const unsub = db.collection('energy_nodes').doc(nodeId).collection('fuel').doc('state').onSnapshot(snap => {
           if (snap.exists) {
             const data = snap.data();
-            const cLugar = (nodeName || '').toLowerCase();
             let rawRes = data.reserva_lts;
             let rawCap = data.cap_reserva_lts;
 
-            // Auto-sanar en Firestore si el nodo sufrió el error previo de reserva en 0
-            if (cLugar.includes('callao') && (rawRes === 0 || rawRes === undefined)) {
-              rawRes = 1259.0;
-              rawCap = 2500;
-              snap.ref.set({ reserva_lts: 1259.0, cap_reserva_lts: 2500 }, { merge: true }).catch(() => {});
-            } else if (cLugar.includes('18 de octubre') && (rawRes === 0 || rawRes === undefined)) {
-              rawRes = 230.0;
-              rawCap = 240;
-              snap.ref.set({ reserva_lts: 230.0, cap_reserva_lts: 240 }, { merge: true }).catch(() => {});
-            }
 
             setNodeFuelState(prev => {
               const rLts = rawRes !== undefined ? rawRes : prev.reserva_lts;

@@ -54,16 +54,13 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
           // Auto-sanar discrepancias históricas en El Callao y 18 de Octubre
           if (sKey.includes('callao')) {
             if (resCap < 2500) resCap = 2500;
-            if (resAct === 0) resAct = 1259.0;
           }
           if (sKey.includes('18 de octubre')) {
             if (resCap < 240) resCap = 240;
-            if (resAct === 0) resAct = 230.0;
           }
           // Nuevas reservas de 1000L instaladas en Pomona, Ojeda, Marite y Cañada
           if (sKey.includes('pomona') || sKey.includes('ojeda') || sKey.includes('marite') || sKey.includes('cañada')) {
             if (resCap < 1000) resCap = 1000;
-            if (resAct === 0) resAct = 1000.0;
           }
 
           if (isDirect100) {
