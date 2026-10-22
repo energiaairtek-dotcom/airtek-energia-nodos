@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
-import { loadXLSX, loadHtml2Canvas } from '@/utils/exportLibs';
-import { computeDispatchLevels, validateDispatch } from './fuelCalc';
+import { useState, useEffect } from 'react';
+
+
 import { SurtidosView } from '@/modules/fuel/views/SurtidosView';
 import { PlantasQuickList } from '@/modules/fuel/views/PlantasQuickList';
 import { TanquesAutonomiaView } from '@/modules/fuel/views/TanquesAutonomiaView';
@@ -10,10 +10,10 @@ import { UpdateHorometersModal } from '@/modules/fuel/components/UpdateHorometer
 import { NewFuelRefillModal } from '@/modules/fuel/components/NewFuelRefillModal';
 import { NewMaintenanceModal } from '@/modules/fuel/components/NewMaintenanceModal';
 import firebase, { db, TS } from '@/services/firebase';
-import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
-import { IconExcel, IconAlertTriangle, IconCheckCircle, IconCopy } from '@/components/icons';
-import { normalizeNodeName, formatCleanHoro, parseHorometerToHours } from '@/utils/formatters';
-import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, persistNodeFuelUpdate, revertFuelTanks, generateFuelReportText } from './fuelUtils';
+
+
+import { normalizeNodeName, formatCleanHoro } from '@/utils/formatters';
+import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, persistNodeFuelUpdate, revertFuelTanks } from './fuelUtils';
 
     function CombustibleWrapper({ userProfile, toast }) {
       const [tab, setTab] = useState('surtidos'); // surtidos | tanques | mtto

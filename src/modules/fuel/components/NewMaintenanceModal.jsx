@@ -1,6 +1,4 @@
-import React, { useState } from 'react';
-import { db } from '@/services/firebase';
-import { parseHours } from '@/utils/formatters';
+import { useState } from 'react';
 
 function NewMaintenanceModal({ tanks, userProfile, onSave, onClose }) {
       const [planta, setPlanta] = useState(tanks[0]?.lugar || '');

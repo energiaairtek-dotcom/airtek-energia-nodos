@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db } from '@/services/firebase';
-import { normalizeNodeName, formatCleanHoro } from '@/utils/formatters';
+import { useState } from 'react';
+
+
 import { loadXLSX } from '@/utils/exportLibs';
 import { IconExcel, IconCheckCircle, IconAlertTriangle } from '@/components/icons';
 

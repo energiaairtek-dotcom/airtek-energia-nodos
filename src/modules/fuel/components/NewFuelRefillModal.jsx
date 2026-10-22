@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '@/services/firebase';
-import { normalizeNodeName, parseHours } from '@/utils/formatters';
+import { useState, useMemo } from 'react';
+
+import { normalizeNodeName } from '@/utils/formatters';
 import { computeDispatchLevels, validateDispatch } from '@/modules/fuel/fuelCalc';
 import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
 import { generateFuelReportText } from '@/modules/fuel/fuelUtils';

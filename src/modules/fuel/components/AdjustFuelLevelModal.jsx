@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '@/services/firebase';
-import { normalizeNodeName, formatCleanHoro } from '@/utils/formatters';
+import { useState, useEffect, useMemo } from 'react';
+
+
 import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
 
 function AdjustFuelLevelModal({ tanks = [], preselectedPlant, userProfile, onSave, onClose, toast }) {

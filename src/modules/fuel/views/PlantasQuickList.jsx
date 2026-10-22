@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db } from '@/services/firebase';
-import { normalizeNodeName, formatCleanHoro } from '@/utils/formatters';
+import { useState, useMemo } from 'react';
 
 function PlantasQuickList({ tanks = [], onSelectPlant, onAdjustPlant }) {
       const [filter, setFilter] = useState('');

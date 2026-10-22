@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef, useDeferredValue } from 'react';
-import { db } from '@/services/firebase';
+import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+
 import { loadXLSX, loadHtml2Canvas } from '@/utils/exportLibs';
 import { normalizeNodeName, formatCleanHoro, parseHorometerToHours } from '@/utils/formatters';
 import { IconExcel, IconCopy } from '@/components/icons';

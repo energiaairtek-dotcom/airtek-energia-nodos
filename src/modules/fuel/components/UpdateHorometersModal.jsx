@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '@/services/firebase';
-import { formatCleanHoro, parseHours, normalizeNodeName, parseHorometerToHours } from '@/utils/formatters';
+import { useState } from 'react';
+
+import { formatCleanHoro, normalizeNodeName, parseHorometerToHours } from '@/utils/formatters';
 
 function UpdateHorometersModal({ tanks = [], refills = [], maintenances = [], customHorometers = {}, onSave, onClose, toast }) {
       const normFn = normalizeNodeName;
