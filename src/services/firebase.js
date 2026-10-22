@@ -42,5 +42,11 @@ try {
 
 export const auth = firebase.auth();
 export const TS = () => firebase.firestore.FieldValue.serverTimestamp();
+export const FieldValue = firebase.firestore.FieldValue;
 
+if (typeof window !== 'undefined') {
+  window.firebase = firebase;
+}
+
+export { firebase };
 export default firebase;

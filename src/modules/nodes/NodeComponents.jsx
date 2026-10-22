@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredVa
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import QRCodeLib from 'qrcode';
-import { db, auth, TS } from '@/services/firebase';
+import firebase, { db, auth, TS, FieldValue } from '@/services/firebase';
 import { 
   NODE_TYPES, EQ_TYPES, BAT_TYPES, BAT_CELL_TYPES, 
   AWG_AMPACITY, AWG_OPTIONS, BAT_VN, REC_TYPES 

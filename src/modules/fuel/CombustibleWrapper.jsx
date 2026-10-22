@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue, useTransition, useContext } from 'react';
 import * as XLSX from 'xlsx';
 import html2canvas from 'html2canvas';
-import { db, TS } from '@/services/firebase';
+import firebase, { db, TS, FieldValue } from '@/services/firebase';
 import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
 import { IconExcel, IconAlertTriangle, IconCheckCircle, IconCopy } from '@/components/icons';
 import { normalizeNodeName, formatCleanHoro, parseHorometerToHours } from '@/utils/formatters';
