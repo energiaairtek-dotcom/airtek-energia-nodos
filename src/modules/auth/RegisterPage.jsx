@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { auth, db, TS } from '@/services/firebase';
-import { AuthLogo, IconUser, IconKey, IconEye, IconEyeOff, IconCheckCircle } from '@/components/icons';
-import { Toast } from '@/components/common/Toast';
+import { IconUser, IconKey, IconCheckCircle } from '@/components/icons';
+
 import { sanitize } from '@/utils/formatters';
 
     function RegisterPage({ onBack }) {

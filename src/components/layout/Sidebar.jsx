@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { IconHome, IconCalc, IconAdmin, IconSun, IconMoon } from '@/components/icons';
 import { UserMenuDropdown } from './UserMenuDropdown';
 import { ChangePasswordModal } from './ChangePasswordModal';
-import { useTheme } from '@/context/ThemeContext';
+
 
     function Sidebar({ userProfile, view, setView, onLogout, toast }) {
       const [isExpanded, setIsExpanded] = useState(false);

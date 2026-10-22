@@ -13,7 +13,7 @@ window.addEventListener('vite:preloadError', () => {
   try {
     if (sessionStorage.getItem(KEY)) return;
     sessionStorage.setItem(KEY, '1');
-  } catch (e) {}
+  } catch {}
   window.location.reload();
 });
 

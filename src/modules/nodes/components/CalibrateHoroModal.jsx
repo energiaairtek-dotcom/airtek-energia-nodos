@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import firebase, { db } from '@/services/firebase';
 import { INITIAL_MAINTENANCE_LOG } from '@/modules/fuel/fuelUtils';
 import { formatHHMMSS, parseHours } from '@/utils/formatters';
-import { usePlantCard } from '@/modules/nodes/hooks/usePlantCard';
 
 function CalibrateHoroModal({ plantEq, nodeId, nodeName, userProfile, toast, onClose, onSaved }) {
       const catalogSeed = INITIAL_MAINTENANCE_LOG.find(m => m.tag === plantEq.tag);
@@ -19,7 +18,7 @@ function CalibrateHoroModal({ plantEq, nodeId, nodeName, userProfile, toast, onC
           if (ch[plantEq.tag].horometro_actual !== undefined) customH = parseFloat(ch[plantEq.tag].horometro_actual) || 0;
           if (ch[plantEq.tag].horometro_mtto !== undefined) customMtto = parseFloat(ch[plantEq.tag].horometro_mtto) || 0;
         }
-      } catch(e) {}
+      } catch {}
 
       let tankH = 0;
       try {
@@ -28,7 +27,7 @@ function CalibrateHoroModal({ plantEq, nodeId, nodeName, userProfile, toast, onC
         if (mTank && mTank.horometro_actual !== undefined) {
           tankH = typeof mTank.horometro_actual === 'number' ? mTank.horometro_actual : (parseHours(mTank.horometro_actual) || 0);
         }
-      } catch(e) {}
+      } catch {}
 
       const initialLastM = Math.max(seedLastMaint, eqLastMaint, customMtto);
       const explicitH = Math.max(eqHoro, customH, tankH);
@@ -109,7 +108,7 @@ function CalibrateHoroModal({ plantEq, nodeId, nodeName, userProfile, toast, onC
               updatedAt: new Date().toISOString()
             };
             localStorage.setItem('airtek_plant_horometers_v1', JSON.stringify(ch));
-          } catch(e) {}
+          } catch {}
 
           // 4. Sincronizar en localStorage: airtek_fuel_tanks_v13
           try {
@@ -119,7 +118,7 @@ function CalibrateHoroModal({ plantEq, nodeId, nodeName, userProfile, toast, onC
               tk[idx].horometro_actual = finalH;
               localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(tk));
             }
-          } catch(e) {}
+          } catch {}
 
           // 5. Emitir evento global para actualizar todas las vistas reactivas
           window.dispatchEvent(new CustomEvent('airtek_horo_updated', {

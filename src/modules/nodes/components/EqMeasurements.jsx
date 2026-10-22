@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { MF } from '@/modules/nodes/components/MF';
 import { AWG_AMPACITY } from '@/config/constants';
 import { IconAlertTriangle } from '@/components/icons';

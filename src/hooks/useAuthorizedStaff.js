@@ -31,7 +31,7 @@ export function useAuthorizedStaff(userProfile) {
       if (old && !old.includes('Ángel Briceño') && !old.includes('Franklin Rincón')) {
         return JSON.parse(old);
       }
-    } catch (e) {}
+    } catch {}
     return DEFAULT_AUTHORIZED_STAFF;
   });
 
@@ -53,7 +53,7 @@ export function useAuthorizedStaff(userProfile) {
               setStaff(list);
               try {
                 localStorage.setItem('airtek_authorized_staff_v2', JSON.stringify(list));
-              } catch (e) {}
+              } catch {}
             } else if (Array.isArray(list) && (list.includes('Ángel Briceño') || list.includes('Franklin Rincón'))) {
               db.collection('energy_config')
                 .doc('personal')

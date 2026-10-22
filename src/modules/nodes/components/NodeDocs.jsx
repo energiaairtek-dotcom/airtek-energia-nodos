@@ -42,7 +42,7 @@ import { sanitize } from '@/utils/formatters';
           toast('Documento guardado.', 'success');
           setForm({ title: '', url: '', type: 'diagrama', notes: '' });
           setShowForm(false);
-        } catch (e) { toast('Error al guardar.', 'error'); }
+        } catch { toast('Error al guardar.', 'error'); }
         setSaving(false);
       };
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import firebase, { auth } from '@/services/firebase';
 
     function ChangePasswordModal({ onClose, toast }) {

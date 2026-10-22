@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { db } from '@/services/firebase';
 import { PlantCard } from '@/modules/nodes/components/PlantCard';
 import { PlantRecordForm } from '@/modules/nodes/components/PlantRecordForm';
@@ -28,7 +28,7 @@ function NodePlantas({ nodeId, nodeName, nodeType, equipment, records, userProfi
         try {
           const saved = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
           if (saved.length > 0) list = saved;
-        } catch(e) {}
+        } catch {}
         const match = list.filter(t => {
           const tNorm = norm(t.lugar);
           return tNorm === targetNorm || (targetNorm && tNorm.includes(targetNorm)) || (tNorm && targetNorm.includes(tNorm));
@@ -186,7 +186,7 @@ function NodePlantas({ nodeId, nodeName, nodeType, equipment, records, userProfi
                 try {
                   const saved = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
                   if (saved.length > 0) return saved;
-                } catch(e) {}
+                } catch {}
                 return INITIAL_FUEL_TANKS;
               })()}
               preselectedPlant={{

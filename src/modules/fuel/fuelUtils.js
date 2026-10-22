@@ -31,7 +31,7 @@ export async function persistNodeFuelUpdate({
     try {
       const raw = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
       return Array.isArray(raw) && raw.length > 0 ? raw : INITIAL_FUEL_TANKS;
-    } catch (e) {
+    } catch {
       return INITIAL_FUEL_TANKS;
     }
   };
@@ -140,7 +140,7 @@ export async function persistNodeFuelUpdate({
         resultingTotal: Number(resultingTotal) || 0
       }
     }));
-  } catch (e) {}
+  } catch {}
 }
 
 // Revierte el efecto de un surtido sobre los tanques: sub-tanque SOLO de la planta (por tag)

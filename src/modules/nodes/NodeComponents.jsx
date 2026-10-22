@@ -1,54 +1,42 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue, useTransition, useContext } from 'react';
-import { loadXLSX, loadJsPDF, loadQRCode } from '@/utils/exportLibs';
-import { computeDispatchLevels, validateDispatch } from '@/modules/fuel/fuelCalc';
-import { validateInspection } from '@/modules/nodes/inspectionValidation';
-import { getFieldLabel, getFieldUnit } from '@/modules/nodes/fieldLabels';
-import { generateReportText } from '@/utils/reportText';
-import firebase, { db, auth, TS, FieldValue } from '@/services/firebase';
-import { 
-  NODE_TYPES, EQ_TYPES, BAT_TYPES, BAT_CELL_TYPES, 
-  AWG_AMPACITY, AWG_OPTIONS, BAT_VN, REC_TYPES 
-} from '@/config/constants';
-import { DEFAULT_AUTHORIZED_STAFF, useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
-import { 
-  IconSearch, IconExcel, IconCheckCircle, IconAlertTriangle, 
-  IconMapPin, IconPdf, IconCopy, IconChecklist 
-} from '@/components/icons';
-import { ConfirmModal } from '@/components/common/ConfirmDialog';
-import { 
-  fmtDateTime, fmtDate, slugify, formatHHMMSS, parseHours, 
-  sanitize, normalizeNodeName, formatCleanHoro, parseHorometerToHours
-} from '@/utils/formatters';
-import { 
-  getBankId, getEqTypeFromTag, groupByBank, calcLoad, 
-  calcAutonomy, fmtHours, sortEquipment, checkAtsAlarms 
-} from '@/utils/energyCalculations';
-import { sendNotificationAlert } from '@/services/email';
-import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, persistNodeFuelUpdate, revertFuelTanks, generateFuelReportText } from '@/modules/fuel/fuelUtils';
-import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { QRModal } from '@/modules/nodes/components/QrModal';
 import { LoadChart } from '@/modules/nodes/components/LoadChart';
 import { NodeEvents } from '@/modules/nodes/components/NodeEvents';
-import { PersonnelMultiSelect } from '@/modules/nodes/components/PersonnelMultiSelect';
+
 import { NodeAlerts } from '@/modules/nodes/components/NodeAlerts';
 import { EditEqModal } from '@/modules/nodes/components/EditEqModal';
 import { NodeDocs } from '@/modules/nodes/components/NodeDocs';
 import { PlantRecordForm } from '@/modules/nodes/components/PlantRecordForm';
 import { RecordDetail } from '@/modules/nodes/components/RecordDetail';
 import { MeasurementDisplayCard } from '@/modules/nodes/components/MeasurementDisplayCard';
-import { InfoItem } from '@/modules/nodes/components/InfoItem';
+
 import { ReportModal } from '@/modules/nodes/components/ReportModal';
 import { RecordForm } from '@/modules/nodes/components/RecordForm';
-import { MF } from '@/modules/nodes/components/MF';
+
 import { EqMeasurements } from '@/modules/nodes/components/EqMeasurements';
-import { PlantCardContext } from '@/modules/nodes/context/plantCardContext';
-import { usePlantCard } from '@/modules/nodes/hooks/usePlantCard';
+
+
 import { CalibrateHoroModal } from '@/modules/nodes/components/CalibrateHoroModal';
 import { PlantCard } from '@/modules/nodes/components/PlantCard';
 import { NodePlantas } from '@/modules/nodes/components/NodePlantas';
 import { NodeDetail } from '@/modules/nodes/components/NodeDetail';
 import { NodeList } from '@/modules/nodes/components/NodeList';
-import { ALERT_PRIORITIES } from '@/modules/nodes/components/alertPriorities';
+
 
 
     // ═══════════════════════════════════════════════════

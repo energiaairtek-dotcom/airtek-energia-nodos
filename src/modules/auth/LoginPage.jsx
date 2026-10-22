@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { auth } from '@/services/firebase';
-import { AuthLogo, IconUser, IconKey, IconEye, IconEyeOff } from '@/components/icons';
-import { Toast } from '@/components/common/Toast';
+import { IconUser, IconKey, IconEye, IconEyeOff } from '@/components/icons';
+
 
     function LoginPage({ onRegister }) {
       const [email, setEmail] = useState('');

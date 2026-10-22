@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db } from '@/services/firebase';
+
+
 import { usePlantCard } from '@/modules/nodes/hooks/usePlantCard';
 import { PlantCardContext } from '@/modules/nodes/context/plantCardContext';
-import { CalibrateHoroModal } from '@/modules/nodes/components/CalibrateHoroModal';
-import { formatHHMMSS, parseHours, formatCleanHoro } from '@/utils/formatters';
+
+import { formatHHMMSS, parseHours } from '@/utils/formatters';
 import { INITIAL_MAINTENANCE_LOG } from '@/modules/fuel/fuelUtils';
 
 const PlantCard = {
@@ -34,7 +34,7 @@ const PlantCard = {
             if (ch[eq.tag].horometro_actual !== undefined) customH = parseFloat(ch[eq.tag].horometro_actual) || 0;
             if (ch[eq.tag].horometro_mtto !== undefined) customMtto = parseFloat(ch[eq.tag].horometro_mtto) || 0;
           }
-        } catch(e) {}
+        } catch {}
 
         let tankH = 0;
         try {
@@ -43,7 +43,7 @@ const PlantCard = {
           if (mTank && mTank.horometro_actual !== undefined) {
             tankH = typeof mTank.horometro_actual === 'number' ? mTank.horometro_actual : (parseHours(mTank.horometro_actual) || 0);
           }
-        } catch(e) {}
+        } catch {}
 
         const lastMaint = Math.max(seedLastMaint, eqLastMaint, customMtto);
         const seedCurrentH = catalogSeed ? (parseFloat(catalogSeed.horometro_actual) || 0) : 0;

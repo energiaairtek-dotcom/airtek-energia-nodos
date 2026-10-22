@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { IconAlertTriangle } from '@/components/icons';
 
     function ETPCalc() {

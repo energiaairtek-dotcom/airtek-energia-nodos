@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useMemo, useCallback, useDeferredValue, useTransition } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import firebase, { db, TS } from '@/services/firebase';
-import { NODE_TYPES, EQ_TYPES, REC_TYPES, BAT_TYPES, BAT_CELL_TYPES } from '@/config/constants';
-import { parseHours, formatHHMMSS, sanitize, normalizeNodeName } from '@/utils/formatters';
-import { sortEquipment, getEqTypeFromTag, groupByBank, calcLoad, calcAutonomy, fmtHours, checkAtsAlarms } from '@/utils/energyCalculations';
-import { persistNodeFuelUpdate, generateFuelReportText, revertFuelTanks, INITIAL_FUEL_TANKS } from '@/modules/fuel/fuelUtils';
+import { EQ_TYPES, REC_TYPES, BAT_TYPES, BAT_CELL_TYPES } from '@/config/constants';
+import { parseHours, sanitize, normalizeNodeName } from '@/utils/formatters';
+import { sortEquipment, groupByBank, calcLoad, calcAutonomy, fmtHours, checkAtsAlarms } from '@/utils/energyCalculations';
+import { persistNodeFuelUpdate, generateFuelReportText, INITIAL_FUEL_TANKS } from '@/modules/fuel/fuelUtils';
 import { computeDispatchLevels, validateDispatch } from '@/modules/fuel/fuelCalc';
 import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
 import { sendNotificationAlert } from '@/services/email';
-import { MeasurementDisplayCard } from '@/modules/nodes/components/MeasurementDisplayCard';
-import { InfoItem } from '@/modules/nodes/components/InfoItem';
-import { ReportModal } from '@/modules/nodes/components/ReportModal';
+
+
 import { MF } from '@/modules/nodes/components/MF';
 import { PersonnelMultiSelect } from '@/modules/nodes/components/PersonnelMultiSelect';
 import { generateReportText } from '@/utils/reportText';
@@ -23,7 +22,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         try {
           const saved = localStorage.getItem(DRAFT_KEY) || localStorage.getItem(`energy_draft_${nodeId}_general`);
           return saved ? JSON.parse(saved) : null;
-        } catch (e) { return null; }
+        } catch { return null; }
       };
 
       const initialDraft = getDraft();
@@ -36,7 +35,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
             localStorage.removeItem('airtek_presurtido');
             return JSON.parse(s);
           }
-        } catch(e) {}
+        } catch {}
         return null;
       })();
 
@@ -67,7 +66,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
         try {
           const savedTanks = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
           if (savedTanks.length > 0) list = savedTanks;
-        } catch(e) {}
+        } catch {}
 
         const matchingTanks = list.filter(t => {
           const tLugarNorm = norm(t.lugar);
@@ -164,7 +163,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
             nodeId, nodeName, formType: 'general', key: DRAFT_KEY, savedAt: now.toISOString()
           }));
           setLastSavedTime(now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
-        } catch (e) {
+        } catch {
           // silenciado
         }
       }, [type, date, shift, obs, participants, meas, eqAction, nodeId, nodeName, DRAFT_KEY]);
@@ -198,12 +197,12 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
             if (activeDraft && JSON.parse(activeDraft)?.key === DRAFT_KEY) {
               localStorage.removeItem('airtek_active_inspection');
             }
-          } catch (e) {}
+          } catch {}
           const active = localStorage.getItem('airtek_active_inspection');
           if (active && JSON.parse(active)?.key === DRAFT_KEY) {
             localStorage.removeItem('airtek_active_inspection');
           }
-        } catch (e) {}
+        } catch {}
         setMeas({});
         setObs('');
         setParticipants('');
@@ -375,7 +374,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
                     horometer: parsedHoro
                   });
                 }
-              } catch(e) {}
+              } catch {}
             }
 
             // Sincronizar con el catálogo global de surtidos en localStorage
@@ -403,7 +402,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
             try {
               const curRefills = JSON.parse(localStorage.getItem('airtek_fuel_refills_v12') || '[]');
               localStorage.setItem('airtek_fuel_refills_v12', JSON.stringify([newRefillObj, ...curRefills]));
-            } catch(e) {}
+            } catch {}
 
             // Persistir balance de combustible en Firestore (energy_nodes/{id}/fuel/state) y en LocalStorage
             await persistNodeFuelUpdate({
@@ -454,7 +453,7 @@ function RecordForm({ nodeId, nodeName, equipment, userProfile, onSave, onCancel
             if (activeDraft && JSON.parse(activeDraft)?.key === DRAFT_KEY) {
               localStorage.removeItem('airtek_active_inspection');
             }
-          } catch (e) {}
+          } catch {}
           // Verificar alarmas de conductores ATS
           if (type === 'inspeccion') {
             const alarms = checkAtsAlarms(cleanMeas, active);

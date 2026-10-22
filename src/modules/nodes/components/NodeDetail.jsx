@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import firebase, { db } from '@/services/firebase';
 import { RecordForm } from '@/modules/nodes/components/RecordForm';
 import { NodePlantas } from '@/modules/nodes/components/NodePlantas';
@@ -9,14 +9,13 @@ import { LoadChart } from '@/modules/nodes/components/LoadChart';
 import { RecordDetail } from '@/modules/nodes/components/RecordDetail';
 import { EditEqModal } from '@/modules/nodes/components/EditEqModal';
 import { QRModal } from '@/modules/nodes/components/QrModal';
-import { PlantRecordForm } from '@/modules/nodes/components/PlantRecordForm';
-import { CalibrateHoroModal } from '@/modules/nodes/components/CalibrateHoroModal';
+
 import { loadXLSX, loadJsPDF } from '@/utils/exportLibs';
-import { fmtDateTime, fmtDate, formatHHMMSS, parseHours, slugify, sanitize, normalizeNodeName } from '@/utils/formatters';
+import { fmtDate, slugify, sanitize, normalizeNodeName } from '@/utils/formatters';
 import { NODE_TYPES, EQ_TYPES, REC_TYPES } from '@/config/constants';
-import { generateReportText } from '@/utils/reportText';
+
 import { sortEquipment, getEqTypeFromTag, getBankId, calcLoad, calcAutonomy, fmtHours, groupByBank } from '@/utils/energyCalculations';
-import { IconCopy, IconPdf, IconExcel, IconMapPin } from '@/components/icons';
+import { IconPdf, IconExcel, IconMapPin } from '@/components/icons';
 import { INITIAL_FUEL_TANKS } from '@/modules/fuel/fuelUtils';
 import { ConfirmModal } from '@/components/common/ConfirmDialog';
 
@@ -354,7 +353,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                   updatedAt: new Date().toISOString()
                 };
                 localStorage.setItem('airtek_plant_horometers_v1', JSON.stringify(ch));
-              } catch(e) {}
+              } catch {}
               try {
                 const tk = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
                 const idx = tk.findIndex(t => t.tag === editEq.tag);
@@ -362,7 +361,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                   tk[idx].horometro_actual = updateData.horometer;
                   localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(tk));
                 }
-              } catch(e) {}
+              } catch {}
               window.dispatchEvent(new CustomEvent('airtek_horo_updated', {
                 detail: { plantTag: editEq.tag, horometer: updateData.horometer, lastMaint: updateData.lastMaintenanceHorometer }
               }));
@@ -371,7 +370,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
           await db.collection('energy_nodes').doc(node.id).collection('energy_equipment').doc(editEq.id).update(updateData);
           toast('Equipo actualizado.', 'success');
           setEditEq(null);
-        } catch (e) { toast('Error al guardar.', 'error'); }
+        } catch { toast('Error al guardar.', 'error'); }
       };
 
       return (
@@ -472,7 +471,7 @@ function NodeDetail({ node, userProfile, onBack, toast }) {
                                 try {
                                   const s = JSON.parse(localStorage.getItem('airtek_fuel_tanks_v13') || '[]');
                                   if (s.length > 0) list = s;
-                                } catch(e) {}
+                                } catch {}
                                 const norm = normalizeNodeName(node.name);
                                 const siteTanks = list.filter(t => normalizeNodeName(t.lugar) === norm);
                                 const plantTank = siteTanks.find(t => t.tag === eq.tag) || siteTanks[0];

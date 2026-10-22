@@ -14,7 +14,7 @@ import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
         try {
           const saved = localStorage.getItem(DRAFT_KEY) || localStorage.getItem(`energy_draft_${nodeId}_plant_${plantEq.tag}`);
           return saved ? JSON.parse(saved) : null;
-        } catch (e) { return null; }
+        } catch { return null; }
       };
 
       const initialDraft = getDraft();
@@ -84,7 +84,7 @@ import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
             nodeId, nodeName, nodeType: effectiveNodeType, plantTag: plantEq.tag, formType: 'plant', key: DRAFT_KEY, savedAt: now.toISOString()
           }));
           setLastSavedTime(now.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }));
-        } catch (e) {
+        } catch {
           // silenciado
         }
       }, [f, DRAFT_KEY, nodeId, nodeName, effectiveNodeType, plantEq.tag]);
@@ -118,12 +118,12 @@ import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
             if (activeDraft && JSON.parse(activeDraft)?.key === DRAFT_KEY) {
               localStorage.removeItem('airtek_active_inspection');
             }
-          } catch (e) {}
+          } catch {}
           const active = localStorage.getItem('airtek_active_inspection');
           if (active && JSON.parse(active)?.key === DRAFT_KEY) {
             localStorage.removeItem('airtek_active_inspection');
           }
-        } catch (e) {}
+        } catch {}
         toast('Borrador de planta eliminado', 'info');
         onCancel();
       };
@@ -276,7 +276,7 @@ ${f.obsGenerales}`;
             if (activeDraft && JSON.parse(activeDraft)?.key === DRAFT_KEY) {
               localStorage.removeItem('airtek_active_inspection');
             }
-          } catch (e) {}
+          } catch {}
           setOdooText(text);
         } catch (e) {
           toast('Error al guardar: ' + e.message, 'error');

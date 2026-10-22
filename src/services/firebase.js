@@ -11,7 +11,7 @@ const getEnv = (key, defaultVal) => {
       return process.env[key];
     }
     return defaultVal;
-  } catch (e) {
+  } catch {
     return defaultVal;
   }
 };
@@ -36,7 +36,7 @@ try {
       console.warn('Firestore persistence not enabled:', err.code);
     }
   });
-} catch (e) {
+} catch {
   // Persistence already enabled or unsupported
 }
 

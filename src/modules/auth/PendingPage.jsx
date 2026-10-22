@@ -1,5 +1,5 @@
-import React from 'react';
-import { AuthLogo, IconPlug } from '@/components/icons';
+
+import { IconPlug } from '@/components/icons';
 
 function PendingPage({ onLogout }) {
       return (

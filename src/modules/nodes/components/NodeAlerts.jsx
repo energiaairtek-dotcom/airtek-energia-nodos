@@ -20,7 +20,7 @@ import { ALERT_PRIORITIES } from '@/modules/nodes/components/alertPriorities';
             const d = new Date(dt);
             if (!isNaN(d.getTime())) return d.toLocaleDateString('es-VE');
           }
-        } catch (e) {}
+        } catch {}
         return new Date().toLocaleDateString('es-VE');
       };
       const [confirmModal, setConfirmModal] = useState(null);

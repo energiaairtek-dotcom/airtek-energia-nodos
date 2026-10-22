@@ -1,4 +1,4 @@
-import React, { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { useAuth } from './context/AuthContext';
 import { IconPlug, IconAlertTriangle } from '@/components/icons';
 import { Toast } from './components/common/Toast';

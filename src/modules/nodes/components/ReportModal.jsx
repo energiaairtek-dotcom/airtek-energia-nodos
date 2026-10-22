@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { generateReportText } from '@/utils/reportText';
 import { IconCheckCircle, IconCopy } from '@/components/icons';
 

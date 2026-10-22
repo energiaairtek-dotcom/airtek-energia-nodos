@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
 
 // --- CONFIRM DIALOG COMPOUND COMPONENT & EXPLICIT VARIANTS (vercel-composition-patterns) ---
 export const ConfirmDialogContext = createContext(null);

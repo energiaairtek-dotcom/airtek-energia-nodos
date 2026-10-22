@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
-import { db, auth, TS } from '@/services/firebase';
+import { db, TS } from '@/services/firebase';
 import { verifyAdminRole } from '@/context/AuthContext';
 import { SEED_NODES, NODE_TYPES, EQ_TYPES, BAT_TYPES } from '@/config/constants';
 import { DEFAULT_AUTHORIZED_STAFF } from '@/hooks/useAuthorizedStaff';
 import { ConfirmModal } from '@/components/common/ConfirmDialog';
-import { sanitize, slugify, formatHHMMSS, parseHours, fmtDateTime, fmtDate } from '@/utils/formatters';
-import { IconPlus, IconSearch, IconExcel, IconCheckCircle, IconAlertTriangle } from '@/components/icons';
+import { sanitize, slugify, formatHHMMSS, parseHours } from '@/utils/formatters';
+
 
     function AddExistingUser({ toast, userProfile }) {
       const [open, setOpen] = useState(false);
@@ -271,7 +271,7 @@ import { IconPlus, IconSearch, IconExcel, IconCheckCircle, IconAlertTriangle } f
           if (old && !old.includes('Ángel Briceño') && !old.includes('Franklin Rincón')) {
             return JSON.parse(old);
           }
-        } catch(e) {}
+        } catch {}
         return DEFAULT_AUTHORIZED_STAFF;
       });
       const [newName, setNewName] = useState('');
@@ -284,7 +284,7 @@ import { IconPlus, IconSearch, IconExcel, IconCheckCircle, IconAlertTriangle } f
             const list = snap.data().list;
             if (Array.isArray(list) && list.length > 0 && !list.includes('Ángel Briceño') && !list.includes('Franklin Rincón')) {
               setStaffList(list);
-              try { localStorage.setItem('airtek_authorized_staff_v2', JSON.stringify(list)); } catch(e) {}
+              try { localStorage.setItem('airtek_authorized_staff_v2', JSON.stringify(list)); } catch {}
             } else if (Array.isArray(list) && (list.includes('Ángel Briceño') || list.includes('Franklin Rincón'))) {
               db.collection('energy_config').doc('personal').set({
                 list: DEFAULT_AUTHORIZED_STAFF,

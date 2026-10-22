@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
 import { db } from '@/services/firebase';
 import { BAT_VN, BAT_DEFAULTS } from '@/config/constants';
@@ -265,7 +265,7 @@ import { getBankId, calcLoad, getEqTypeFromTag, calcAutonomy, fmtHours } from '@
                     const d = latestRec.date.toDate ? latestRec.date.toDate() : new Date(latestRec.date);
                     const typeLabel = latestRec.type === 'actualizacion_carga' ? ' (Act. Carga)' : '';
                     recDateStr = d.toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' }) + typeLabel;
-                  } catch (e) { recDateStr = 'Fecha no disponible'; }
+                  } catch { recDateStr = 'Fecha no disponible'; }
                 }
 
                 // Detectar todos los bancos presentes en inventario o en la última inspección

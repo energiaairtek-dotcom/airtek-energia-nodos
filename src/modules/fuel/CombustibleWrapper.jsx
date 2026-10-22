@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue, useTransition, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { loadXLSX, loadHtml2Canvas } from '@/utils/exportLibs';
 import { computeDispatchLevels, validateDispatch } from './fuelCalc';
-import firebase, { db, TS, FieldValue } from '@/services/firebase';
+import firebase, { db, TS } from '@/services/firebase';
 import { useAuthorizedStaff } from '@/hooks/useAuthorizedStaff';
 import { IconExcel, IconAlertTriangle, IconCheckCircle, IconCopy } from '@/components/icons';
 import { normalizeNodeName, formatCleanHoro, parseHorometerToHours } from '@/utils/formatters';
@@ -13,7 +13,7 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
         try {
           const saved = localStorage.getItem('airtek_fuel_refills_v12');
           return saved ? JSON.parse(saved) : INITIAL_FUEL_REFILLS;
-        } catch (e) { return INITIAL_FUEL_REFILLS; }
+        } catch { return INITIAL_FUEL_REFILLS; }
       });
       const direct100LTags = ['LTUN-PLT-00'];
       const normalizeTanksList = (rawList) => {
@@ -92,7 +92,7 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
           const saved = localStorage.getItem('airtek_fuel_tanks_v13');
           const loaded = saved ? JSON.parse(saved) : INITIAL_FUEL_TANKS;
           return normalizeTanksList(loaded);
-        } catch (e) { return normalizeTanksList(INITIAL_FUEL_TANKS); }
+        } catch { return normalizeTanksList(INITIAL_FUEL_TANKS); }
       });
       // Leer filtros/aceite de INITIAL_MAINTENANCE_LOG como catálogo de referencia
       const [maintenances, setMaintenances] = useState(INITIAL_MAINTENANCE_LOG);
@@ -132,7 +132,7 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
                     rawDate: rDate.getTime()
                   });
                 });
-              } catch(e) {}
+              } catch {}
               const eqSnap = await nDoc.ref.collection('energy_equipment').where('type', '==', 'GEN').get();
               eqSnap.forEach(eDoc => {
                 const d = eDoc.data();
@@ -150,7 +150,7 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
                     if (ch[d.tag].horometro_actual !== undefined) customH = parseFloat(ch[d.tag].horometro_actual) || 0;
                     if (ch[d.tag].horometro_mtto !== undefined) customMtto = parseFloat(ch[d.tag].horometro_mtto) || 0;
                   }
-                } catch(e) {}
+                } catch {}
 
                 const finalLastM = Math.max(seedLastM, dbLastM, customMtto);
                 const resolvedExplicitH = Math.max(dbCurrH, customH);
@@ -272,13 +272,13 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
       useEffect(() => {
         try {
           localStorage.setItem('airtek_fuel_refills_v12', JSON.stringify(refills));
-        } catch (e) {}
+        } catch {}
       }, [refills]);
 
       useEffect(() => {
         try {
           localStorage.setItem('airtek_fuel_tanks_v13', JSON.stringify(tanks));
-        } catch (e) {}
+        } catch {}
       }, [tanks]);
 
       // Estado de horómetros manuales y horas acumuladas por planta (persistencia local)
@@ -286,14 +286,14 @@ import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, INITIAL_FUEL_REFILLS, pers
         try {
           const saved = localStorage.getItem('airtek_plant_horometers_v1');
           return saved ? JSON.parse(saved) : {};
-        } catch (e) { return {}; }
+        } catch { return {}; }
       });
       const [showBatchHoroModal, setShowBatchHoroModal] = useState(false);
 
       useEffect(() => {
         try {
           localStorage.setItem('airtek_plant_horometers_v1', JSON.stringify(customHorometers));
-        } catch (e) {}
+        } catch {}
       }, [customHorometers]);
 
       // Actualizar horómetro/horas acumuladas de una planta de forma bidireccional

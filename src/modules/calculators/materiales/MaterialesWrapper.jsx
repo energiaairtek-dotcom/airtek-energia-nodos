@@ -1,12 +1,12 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { loadXLSX } from '@/utils/exportLibs';
-import { IconExcel, IconCheckCircle } from '@/components/icons';
+import { IconExcel } from '@/components/icons';
 
     function MaterialesWrapper() {
       const [tab, setTab] = useState(() => localStorage.getItem('airtek_materiales_calc_tab') || 'proyecto');
       const handleTab = (t) => {
         setTab(t);
-        try { localStorage.setItem('airtek_materiales_calc_tab', t); } catch(e) {}
+        try { localStorage.setItem('airtek_materiales_calc_tab', t); } catch {}
       };
 
       return (
@@ -233,7 +233,7 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         try {
           const saved = localStorage.getItem('airtek_calc_proyecto_form');
           if (saved) return { ...DEFAULT_PROYECTO_FORM, ...JSON.parse(saved) };
-        } catch(e) {}
+        } catch {}
         return DEFAULT_PROYECTO_FORM;
       });
       const [resultados, setResultados] = useState(() => {
@@ -243,7 +243,7 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
             const res = calcularMaterialesProyecto(JSON.parse(saved));
             if (res && res.length > 0) return res;
           }
-        } catch(e) {}
+        } catch {}
         return null;
       });
 
@@ -251,7 +251,7 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         try {
           localStorage.setItem('airtek_calc_proyecto_form', JSON.stringify(f));
           localStorage.setItem('airtek_calc_proyecto_nombre', proyecto);
-        } catch(e) {}
+        } catch {}
       }, [f, proyecto]);
 
       const getValNum = (key) => parseFloat(f[key]) || 0;
@@ -1111,7 +1111,7 @@ import { IconExcel, IconCheckCircle } from '@/components/icons';
         try {
           const s = localStorage.getItem('airtek_calc_proyecto_form');
           if (s) return { ...DEFAULT_PROYECTO_FORM, ...JSON.parse(s) };
-        } catch(e) {}
+        } catch {}
         return DEFAULT_PROYECTO_FORM;
       }, []);
 

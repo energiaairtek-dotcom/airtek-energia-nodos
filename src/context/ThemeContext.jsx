@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 const ThemeContext = createContext({
   theme: 'light',
@@ -10,7 +10,7 @@ export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState(() => {
     try {
       return localStorage.getItem('airtek_theme') || 'light';
-    } catch (e) {
+    } catch {
       return 'light';
     }
   });
@@ -19,7 +19,7 @@ export function ThemeProvider({ children }) {
     document.documentElement.setAttribute('data-theme', theme);
     try {
       localStorage.setItem('airtek_theme', theme);
-    } catch (e) {}
+    } catch {}
   }, [theme]);
 
   const toggleTheme = () => {

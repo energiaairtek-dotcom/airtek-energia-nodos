@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { auth, db, TS } from '../services/firebase';
 
 const AuthContext = createContext(null);
@@ -12,7 +12,7 @@ const readCachedProfile = () => {
     if (!raw) return null;
     const profile = JSON.parse(raw);
     return profile && profile.uid ? profile : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -38,7 +38,7 @@ export const verifyAdminRole = async (profile) => {
   try {
     const stored = JSON.parse(localStorage.getItem('energia_user_profile') || '{}');
     if (isDesignated(stored)) return true;
-  } catch (e) {}
+  } catch {}
 
   if (typeof auth !== 'undefined' && auth?.currentUser) {
     try {
@@ -51,7 +51,7 @@ export const verifyAdminRole = async (profile) => {
         const r = ((data.apps && data.apps.nodos) || data.role || 'tecnico').toLowerCase();
         return ['admin', 'supervisor', 'directivo'].includes(r) || isDesignated(data);
       }
-    } catch (e) {}
+    } catch {}
   }
   return false;
 };
@@ -84,7 +84,7 @@ export function AuthProvider({ children }) {
         setUserProfile(null);
         try {
           localStorage.removeItem('energia_user_profile');
-        } catch (e) {}
+        } catch {}
         return;
       }
 
@@ -122,7 +122,7 @@ export function AuthProvider({ children }) {
           setUserProfile({ uid: user.uid, ...defaultProfile });
           try {
             localStorage.setItem('energia_user_profile', JSON.stringify({ uid: user.uid, ...defaultProfile }));
-          } catch (e) {}
+          } catch {}
           setAuthState(isSuper ? 'authenticated' : 'pending');
           return;
         }
@@ -183,7 +183,7 @@ export function AuthProvider({ children }) {
         setUserProfile(p);
         try {
           localStorage.setItem('energia_user_profile', JSON.stringify(p));
-        } catch (e) {}
+        } catch {}
         setAuthState(approved ? 'authenticated' : 'pending');
         if (import.meta.env && import.meta.env.DEV) {
           console.debug(`[auth] sesión confirmada en ${Math.round(performance.now() - bootStart.current)} ms`);
@@ -209,7 +209,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     try {
       localStorage.removeItem('energia_user_profile');
-    } catch (e) {}
+    } catch {}
     return auth.signOut();
   };
 

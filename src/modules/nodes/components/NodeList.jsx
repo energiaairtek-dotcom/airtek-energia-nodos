@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
+import { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import { db } from '@/services/firebase';
 import { NodeDetail } from '@/modules/nodes/components/NodeDetail';
 import { NODE_TYPES } from '@/config/constants';
@@ -52,7 +52,7 @@ function NodeList({ userProfile, toast }) {
           localStorage.removeItem('airtek_active_inspection');
           setActiveInspection(null);
           toast('Borrador descartado', 'info');
-        } catch (e) {}
+        } catch {}
       };
 
       const isFiltered = search !== '' || fState !== 'all' || fType !== 'all';
