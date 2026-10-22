@@ -60,7 +60,7 @@ import { sanitize } from '@/utils/formatters';
         <div className="figma-login-container fin">
           <div className="figma-login-left">
             <div className="figma-login-left-brand">
-              <img src="./img/airtek-blanco.png" alt="AIRTEK" />
+              <img src="/img/airtek-blanco.png" alt="AIRTEK" />
               <div className="figma-login-left-title">Gerencia Operativa De Energia</div>
             </div>
           </div>
@@ -83,7 +83,7 @@ import { sanitize } from '@/utils/formatters';
         <div className="figma-login-container fin">
           <div className="figma-login-left">
             <div className="figma-login-left-brand">
-              <img src="./img/airtek-blanco.png" alt="AIRTEK" />
+              <img src="/img/airtek-blanco.png" alt="AIRTEK" />
               <div className="figma-login-left-title">Gerencia Operativa De Energia</div>
             </div>
           </div>

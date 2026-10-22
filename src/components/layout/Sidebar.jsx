@@ -74,7 +74,7 @@ import { useTheme } from '@/context/ThemeContext';
               <div className="sidebar-brand" onClick={() => setView('nodes')} title="Inicio - Airtek">
                 <div className="nav-item-icon">
                   <img 
-                    src={theme === 'dark' ? './img/user-logo-white.png' : './img/user-logo-black.png'}
+                    src={theme === 'dark' ? '/img/user-logo-white.png' : '/img/user-logo-black.png'}
                     alt="AIRTEK"
                   />
                 </div>
@@ -143,7 +143,7 @@ import { useTheme } from '@/context/ThemeContext';
           {/* MOBILE TOP BAR */}
           <header className="mobile-top-bar">
             <div className="mobile-brand" onClick={() => setView('nodes')}>
-              <img src={theme === 'dark' ? './img/user-logo-white.png' : './img/user-logo-black.png'} alt="AIRTEK" />
+              <img src={theme === 'dark' ? '/img/user-logo-white.png' : '/img/user-logo-black.png'} alt="AIRTEK" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button className="mobile-action-btn" onClick={toggleTheme} title={theme === 'light' ? 'Cambiar a Modo Oscuro' : 'Cambiar a Modo Claro'}>

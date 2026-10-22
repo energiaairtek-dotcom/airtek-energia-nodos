@@ -139,7 +139,7 @@ import React from 'react';
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <img 
-              src="./img/airtek-blanco.png"
+              src="/img/airtek-blanco.png"
               alt="AIRTEK"
               style={{
                 height: 28,
