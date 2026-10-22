@@ -15,14 +15,14 @@ import {
 import { ConfirmModal } from '@/components/common/ConfirmDialog';
 import { 
   fmtDateTime, fmtDate, slugify, formatHHMMSS, parseHours, 
-  sanitize, normalizeNodeName 
+  sanitize, normalizeNodeName, formatCleanHoro, parseHorometerToHours
 } from '@/utils/formatters';
 import { 
   getBankId, getEqTypeFromTag, groupByBank, calcLoad, 
   calcAutonomy, fmtHours, sortEquipment, checkAtsAlarms 
 } from '@/utils/energyCalculations';
 import { sendNotificationAlert } from '@/services/email';
-import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, persistNodeFuelUpdate } from '@/modules/fuel/fuelUtils';
+import { INITIAL_FUEL_TANKS, INITIAL_MAINTENANCE_LOG, persistNodeFuelUpdate, revertFuelTanks, generateFuelReportText } from '@/modules/fuel/fuelUtils';
 import { AdjustFuelLevelModal } from '@/modules/fuel/CombustibleWrapper';
 import { QRModal } from '@/modules/nodes/components/QrModal';
 import { LoadChart } from '@/modules/nodes/components/LoadChart';
@@ -431,162 +431,13 @@ import { ALERT_PRIORITIES } from '@/modules/nodes/components/alertPriorities';
     }
 
     // Helper para formatear horómetros limpios (ej. 674:12 o 674h)
-    function formatCleanHoro(val) {
-      if (val === null || val === undefined || val === '') return '—';
-      const s = String(val).trim();
-      if (s === '—' || s === '-' || s === '' || s.toLowerCase() === 'none') return '—';
-      if (s.includes(':')) {
-        const parts = s.split(':');
-        return `${parts[0]}:${String(parts[1] || '00').padStart(2, '0').slice(0, 2)}`;
-      }
-      const hmMatch = s.match(/^(\d+)\s*h(?:(?:oras?)?\s*(\d{1,2})\s*m(?:in)?)?$/i);
-      if (hmMatch) {
-        const h = hmMatch[1];
-        const m = hmMatch[2] ? String(hmMatch[2]).padStart(2, '0') : '00';
-        return `${h}:${m}`;
-      }
-      const num = parseFloat(s.replace(',', '.'));
-      if (isNaN(num)) return s;
-      const h = Math.floor(num);
-      const m = Math.round((num - h) * 60);
-      if (m === 60) return `${h + 1}:00`;
-      return `${h}:${String(m).padStart(2, '0')}`;
-    }
-
-    // Helper para parsear cualquier formato de horómetro a número flotante de horas
-    function parseHorometerToHours(val) {
-      if (val === null || val === undefined || val === '') return null;
-      const s = String(val).trim();
-      if (s === '—' || s === '-' || s === '' || s.toLowerCase() === 'none') return null;
-      const colonMatch = s.match(/^(\d+):(\d{1,2})(?::\d{1,2})?$/);
-      if (colonMatch) {
-        return parseInt(colonMatch[1]) + (parseInt(colonMatch[2]) / 60);
-      }
-      const hmMatch = s.match(/^(\d+)\s*h(?:(?:oras?)?\s*(\d{1,2})\s*m(?:in)?)?$/i);
-      if (hmMatch) {
-        return parseInt(hmMatch[1]) + (parseInt(hmMatch[2] || 0) / 60);
-      }
-      const num = parseFloat(s.replace(',', '.'));
-      return isNaN(num) ? null : num;
-    }
-
-    // DEFAULT_AUTHORIZED_STAFF & useAuthorizedStaff imported from @/hooks/useAuthorizedStaff
+        // Helper para parsear cualquier formato de horómetro a número flotante de horas
+        // DEFAULT_AUTHORIZED_STAFF & useAuthorizedStaff imported from @/hooks/useAuthorizedStaff
 
     // Revierte el efecto de un surtido sobre los tanques: sub-tanque SOLO de la planta (por tag)
     // y reserva compartida SOLO en las plantas del mismo nodo que realmente tienen reserva.
-    function revertFuelTanks(tanksList, r) {
-      const normFn = normalizeNodeName;
-      const target = normFn(r.lugar);
-      const capRes = x => parseFloat(x.cap_reserva_lts != null ? x.cap_reserva_lts : x.cap_reserva) || 0;
-      return tanksList.map(t => {
-        const exactNode = normFn(t.lugar) === target;
-        const isPlant = r.tag ? t.tag === r.tag : exactNode;
-        const resCap = capRes(t);
-        const subCap = parseFloat(t.tanque_lts) || 0;
-        const shareRes = exactNode && resCap > 0;
-        if (!isPlant && !shareRes) return t;
-
-        let dSub = 0, dRes;
-        const hasPrev = r.prevSub != null && r.resSub != null && !isNaN(parseFloat(r.prevSub)) && !isNaN(parseFloat(r.resSub));
-        if (hasPrev) {
-          dSub = parseFloat(r.resSub) - parseFloat(r.prevSub);
-          dRes = (r.prevRes != null && r.resRes != null) ? (parseFloat(r.resRes) - parseFloat(r.prevRes)) : 0;
-        } else {
-          const d = r.destino || 'Surtido Reserva';
-          const l = parseFloat(r.litros) || 0;
-          const lP = parseFloat(r.litrosPlanta) || 0;
-          const lR = parseFloat(r.litrosReserva) || 0;
-          if (d === 'Surtido Reserva' || d === 'Reserva') { dRes = l; }
-          else if (d === 'Surtido Planta' || d === 'Sub-tanque' || d === 'Trasiego Interno') { dSub = lP || l; dRes = -(lP || l); }
-          else { dSub = lP || (l / 2); dRes = lR || (l / 2); }
-        }
-
-        let sub = parseFloat(t.subtanque_actual != null ? t.subtanque_actual : t.tanque_lts) || 0;
-        let res = parseFloat(t.reserva_lts) || 0;
-        if (isPlant) sub = Math.max(0, sub - dSub);
-        if (subCap > 0) sub = Math.min(subCap, sub);
-        if (shareRes) {
-          res = Math.max(0, res - dRes);
-          res = Math.min(resCap, res);
-        }
-        const total = sub + res;
-        const autTotal = t.consumo_lh > 0 ? Number((total / t.consumo_lh).toFixed(1)) : t.aut_total_h;
-        const out = { ...t, subtanque_actual: sub, reserva_lts: res, aut_total_h: autTotal, dias_aut: Number((autTotal / 24).toFixed(2)) };
-        if (isPlant && r.prevHoro) out.horometro_actual = r.prevHoro;
-        return out;
-      });
-    }
-
-    // Generador de Formato de Texto de Surtido para WhatsApp / Reportes
-    function generateFuelReportText({ nodeName, date, record, equipment = [], tanks = [] }) {
-      const d = date instanceof Date ? date : (date?.toDate ? date.toDate() : new Date(date || Date.now()));
-      let fechaStr;
-      if (typeof date === 'string' && date.includes('/')) {
-        fechaStr = date;
-      } else {
-        const diaNum = String(d.getDate()).padStart(2, '0');
-        const mes = String(d.getMonth() + 1).padStart(2, '0');
-        const anio = d.getFullYear();
-        fechaStr = `${diaNum}/${mes}/${anio}`;
-      }
-
-      // Nombre de la sede limpio (ej. "Nodo Comedor" -> "Comedor", "Comedor" -> "Comedor")
-      let cleanNode = (nodeName || record?.lugar || 'Nodo').trim();
-      cleanNode = cleanNode.replace(/^nodo\s+/i, '').trim();
-
-      // Buscar tanques de este nodo
-      const normFn = normalizeNodeName;
-      const nodeNorm = normFn(cleanNode);
-      const siteTanks = (tanks && tanks.length > 0 ? tanks : INITIAL_FUEL_TANKS).filter(t => {
-        const tNorm = normFn(t.lugar);
-        return tNorm === nodeNorm || (nodeNorm && tNorm.includes(nodeNorm)) || (tNorm && nodeNorm.includes(tNorm));
-      });
-      const siteMaxRes = siteTanks.reduce((max, t) => Math.max(max, t.reserva_lts || 0), 0);
-      const currentReserva = record?.fuelReserveLevel !== undefined 
-        ? record.fuelReserveLevel 
-        : (record?.reserva_lts !== undefined ? record.reserva_lts : siteMaxRes);
-
-      // Generadores del nodo ordenados
-      const gens = (equipment || []).filter(e => e.type === 'GEN').sort((a,b) => (a.tag || '').localeCompare(b.tag || ''));
-
-      // Determinar litros a planta y a reserva
-      const isDual = record?.fuelDestination === 'Surtido Planta y Reserva' || record?.destino === 'Surtido Planta y Reserva' || ((record?.litros_planta > 0 || record?.fuelLitersPlanta > 0) && (record?.litros_reserva > 0 || record?.fuelLitersReserva > 0));
-      const isPlanta = isDual || record?.fuelDestination === 'Surtido Planta' || record?.destino === 'Surtido Planta' || record?.destino === 'Sub-tanque';
-      const isReserva = isDual || record?.fuelDestination === 'Surtido Reserva' || record?.destino === 'Surtido Reserva' || record?.destino === 'Reserva';
-
-      const ltsPlantaTotal = isDual ? (parseFloat(record?.fuelLitersPlanta || record?.litros_planta) || 0) : (isPlanta ? (parseFloat(record?.fuelLiters || record?.litros) || 0) : 0);
-      const ltsReserva = isDual ? (parseFloat(record?.fuelLitersReserva || record?.litros_reserva) || 0) : (isReserva ? (parseFloat(record?.fuelLiters || record?.litros) || 0) : 0);
-
-      // Horas del generador
-      const gHoro = formatCleanHoro(record?.fuelHorometer || record?.horometro || gens[0]?.horometer || '');
-
-      let lines = [];
-      lines.push(`${cleanNode} ${fechaStr}`);
-
-      const isTrasiego = record?.fuelDestination === 'Trasiego Interno' || record?.destino === 'Trasiego Interno';
-      if (isTrasiego) {
-        lines.push(`Trasiego interno a planta: ${ltsPlantaTotal} litros`);
-      } else if (isDual) {
-        lines.push(`Surtido a la planta: ${ltsPlantaTotal} litros`);
-        lines.push(`Surtido a la reserva: ${ltsReserva} litros`);
-      } else if (isReserva) {
-        lines.push(`Surtido a la reserva: ${ltsReserva} litros`);
-      } else {
-        lines.push(`Surtido a la planta: ${ltsPlantaTotal} litros`);
-      }
-
-      lines.push(`Reserva: ${currentReserva} litros`);
-      lines.push(`Horas: ${gHoro}`);
-
-      const obsText = (record?.observations || record?.obs || '').trim();
-      if (obsText) {
-        lines.push(`Obs: ${obsText}`);
-      }
-
-      return lines.join('\n');
-    }
-
-    function ReportModal({ data, onClose }) {
+        // Generador de Formato de Texto de Surtido para WhatsApp / Reportes
+        function ReportModal({ data, onClose }) {
       const [text, setText] = useState(() => generateReportText(data));
       const [copied, setCopied] = useState(false);
 
