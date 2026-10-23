@@ -152,14 +152,29 @@ import { sanitize, slugify } from '@/utils/formatters';
         const isRealAdmin = await verifyAdminRole(userProfile);
         if (!isRealAdmin) { toast('No tienes permisos de administrador.', 'error'); return; }
         try {
-          await Promise.allSettled([
-            db.collection('energy_users').doc(uid).delete(),
-            db.collection('airtek_users').doc(uid).delete()
+          // El cliente no puede borrar la cuenta de Firebase Auth (requiere Admin SDK).
+          // En vez de eliminar los documentos (lo que permitia que la cuenta volviera
+          // a registrarse como pendiente), se deja un perfil bloqueado y sin roles:
+          // el acceso queda revocado de forma permanente.
+          const revoke = {
+            approved: false,
+            blocked: true,
+            role: 'tecnico',
+            rol: 'tecnico',
+            revokedAt: TS(),
+            revokedBy: userProfile?.name || 'Admin',
+          };
+          const results = await Promise.allSettled([
+            db.collection('energy_users').doc(uid).set(revoke, { merge: true }),
+            db.collection('airtek_users').doc(uid).set(
+              { ...revoke, apps: { nodos: null, pm: null, almacen: null } },
+              { merge: true }
+            ),
           ]);
-          toast('Solicitud/Usuario eliminado correctamente.', 'success');
-          setUsers(prev => prev.filter(u => u.id !== uid));
+          if (results.every((r) => r.status === 'rejected')) throw new Error('No se pudo revocar el acceso');
+          toast('Acceso revocado. La cuenta de Auth se elimina desde la consola de Firebase.', 'success');
           loadUsers();
-        } catch (e) { toast('Error al eliminar: ' + e.message, 'error'); }
+        } catch (e) { toast('Error al revocar: ' + e.message, 'error'); }
       };
 
       const addNode = async () => {
@@ -265,7 +280,7 @@ import { sanitize, slugify } from '@/utils/formatters';
         });
       };
 
-      const pending = users.filter(u => !u.approved);
+      const pending = users.filter(u => !u.approved && !u.blocked);
 
       return (
         <div className="fin">
@@ -499,10 +514,10 @@ import { sanitize, slugify } from '@/utils/formatters';
                             <button className="bg" style={{ padding: '6px 16px', fontSize: '.78rem' }} onClick={() => approve(u.id, true, document.getElementById('role-' + u.id).value)}>Aprobar</button>
                             <button className="bd" style={{ padding: '6px 16px', fontSize: '.78rem' }} onClick={() => {
                               setConfirmModal({
-                                title: 'Rechazar y eliminar solicitud',
-                                msg: `¿Deseas eliminar permanentemente la solicitud de ${u.name || u.email || 'este usuario'}? Al eliminarla se podrá registrar nuevamente desde cero.`,
+                                title: 'Rechazar y bloquear solicitud',
+                                msg: `¿Deseas rechazar la solicitud de ${u.name || u.email || 'este usuario'}? Su cuenta quedará bloqueada y no podrá volver a registrarse con el mismo correo.`,
                                 type: 'danger',
-                                confirmText: 'Eliminar solicitud',
+                                confirmText: 'Bloquear solicitud',
                                 cancelText: 'Cancelar',
                                 onConfirm: () => deleteUser(u.id)
                               });
@@ -549,10 +564,10 @@ import { sanitize, slugify } from '@/utils/formatters';
                         }}>Revocar</button>
                         <button className="bd" style={{ padding: '5px 10px', fontSize: '.75rem', borderColor: 'rgba(245,91,93,0.3)', color: '#f55b5d' }} title="Eliminar de la base de datos" onClick={() => {
                           setConfirmModal({
-                            title: 'Eliminar usuario permanentemente',
-                            msg: `¿Estás seguro de eliminar el perfil de ${u.name || u.email || 'este usuario'}? Podrá registrarse nuevamente desde cero.`,
+                            title: 'Revocar acceso y bloquear usuario',
+                            msg: `¿Estás seguro de revocar el acceso de ${u.name || u.email || 'este usuario'}? Su perfil quedará bloqueado. Para eliminarlo definitivamente hay que borrar la cuenta desde la consola de Firebase.`,
                             type: 'danger',
-                            confirmText: 'Eliminar',
+                            confirmText: 'Revocar acceso',
                             cancelText: 'Cancelar',
                             onConfirm: () => deleteUser(u.id)
                           });

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { NODE_TYPES } from '@/config/constants';
 import { loadQRCode } from '@/utils/exportLibs';
+import { sanitize } from '@/utils/formatters';
 
 // Modal con el QR del nodo. La librería se carga solo al abrir el modal.
 export function QRModal({ node, onClose }) {
@@ -32,10 +33,14 @@ export function QRModal({ node, onClose }) {
     const w = window.open('', '_blank');
     const canvas = ref.current?.querySelector('canvas');
     const img = canvas ? canvas.toDataURL() : '';
+    // El nombre, la zona y la URL son datos editables: se escapan antes de
+    // inyectarlos en el HTML de la ventana de impresión (evita XSS almacenado).
+    const safeName = sanitize(node.name || '');
+    const safeZone = sanitize(node.zone || '');
+    const safeType = sanitize((NODE_TYPES[node.type] || {}).label || node.type || '');
+    const safeUrl = sanitize(url);
     w.document.write(
-      `<html><head><title>QR ${node.name}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:40px}h2{font-size:15px;margin:8px 0}p{font-size:11px;color:#666;margin:3px 0}</style></head><body><h2 style="color:#0166ff">AIRTEK ENERGÍA</h2><img src="${img}" style="width:200px;height:200px;border:2px solid #eee;border-radius:6px"><h2>${node.name}</h2><p>${node.zone || ''} — ${
-        (NODE_TYPES[node.type] || {}).label || node.type
-      }</p><p style="font-size:9px;color:#aaa;margin-top:12px;word-break:break-all">${url}</p><script>window.print();window.close();<\/script></body></html>`
+      `<html><head><title>QR ${safeName}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:40px}h2{font-size:15px;margin:8px 0}p{font-size:11px;color:#666;margin:3px 0}</style></head><body><h2 style="color:#0166ff">AIRTEK ENERGÍA</h2><img src="${img}" style="width:200px;height:200px;border:2px solid #eee;border-radius:6px"><h2>${safeName}</h2><p>${safeZone} — ${safeType}</p><p style="font-size:9px;color:#aaa;margin-top:12px;word-break:break-all">${safeUrl}</p><script>window.print();window.close();<\/script></body></html>`
     );
   };
 
